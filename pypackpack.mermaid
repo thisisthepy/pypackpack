@@ -1,0 +1,97 @@
+classDiagram
+    class PyPackPack {
+        +initialize()
+        +build()
+        +deploy()
+    }
+
+    class CompilerService {
+        -compilerType: CompilerType
+        +compile(source: SourceCode): Binary
+        +generateMetadata(): Metadata
+    }
+
+    class BundleManager {
+        +createBundle(binary: Binary): Bundle
+        +createPatch(oldBundle: Bundle, newBundle: Bundle): Patch
+        +applyPatch(bundle: Bundle, patch: Patch): Bundle
+    }
+
+    class VersionControl {
+        -primaryVersion: Version
+        -patches: List~Patch~
+        +trackChanges(source: SourceCode)
+        +generatePatch(): Patch
+        +mergePatch(patch: Patch)
+    }
+
+    class DependencyManager {
+        -dependencies: List~Dependency~
+        +resolveDependencies()
+        +installDependencies()
+        +updateDependencies()
+    }
+
+    class PathOverrider {
+        -originalPaths: Map~String, String~
+        -overriddenPaths: Map~String, String~
+        +override(path: String): String
+        +restore(path: String): String
+    }
+
+    class DeploymentService {
+        -serverUrl: String
+        +uploadBundle(bundle: Bundle)
+        +uploadPatch(patch: Patch)
+        +validateDeployment()
+    }
+
+    class MetadataManager {
+        -presets: List~Preset~
+        +generateMetadata(): Metadata
+        +applyPreset(preset: Preset)
+        +validateMetadata()
+    }
+
+    class ClientSDK {
+        +checkForUpdates()
+        +downloadUpdate()
+        +applyUpdate()
+    }
+
+    PyPackPack --> CompilerService
+    PyPackPack --> BundleManager
+    PyPackPack --> VersionControl
+    PyPackPack --> DependencyManager
+    PyPackPack --> PathOverrider
+    PyPackPack --> DeploymentService
+    PyPackPack --> MetadataManager
+    
+    CompilerService --> MetadataManager
+    BundleManager --> VersionControl
+    DeploymentService --> ClientSDK
+    
+    class Bundle {
+        -content: Binary
+        -metadata: Metadata
+        -version: Version
+    }
+
+    class Patch {
+        -changes: List~Change~
+        -baseVersion: Version
+        -targetVersion: Version
+        +apply(bundle: Bundle): Bundle
+    }
+
+    class Preset {
+        -name: String
+        -configuration: Map~String, Any~
+        +apply(): void
+    }
+
+    class CompilerType {
+        <<enumeration>>
+        NUITKA
+        PYINSTALLER
+    }

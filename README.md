@@ -9,6 +9,8 @@
 
 A multiplatform solution to distribute python project.
 
+pypackpack = crossenv + compiler(nuitka, pyinstaller) + bundler(js webpack) + codepush(js expo)
+
 
 #### Supporting multiplatforms:
 
