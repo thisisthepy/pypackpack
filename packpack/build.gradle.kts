@@ -3,6 +3,10 @@ plugins {
 }
 
 
+group = rootProject.group
+version = rootProject.version
+
+
 kotlin {
     jvm("gradle")
 
@@ -16,6 +20,7 @@ kotlin {
         target.binaries {
             executable {
                 entryPoint("org.thisisthepy.python.multiplatform.packpack.main")
+                version = "1.0.0"
             }
             sharedLib {
                 baseName = "packpack"
