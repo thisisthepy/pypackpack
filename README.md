@@ -19,7 +19,7 @@ pypackpack = crossenv + compiler(nuitka, pyinstaller) + bundler(js webpack) + co
 - masOS (universal)
 - Linux (x86_64)
 - Windows (x86_64)
-- WASM - 
+- WASM -
 
 
 > [!NOTE]  

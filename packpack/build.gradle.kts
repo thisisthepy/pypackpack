@@ -1,30 +1,18 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.jvm)
 }
 
+group = "org.thisisthepy.python.multiplatform"
+version = "1.0-SNAPSHOT"
 
-group = rootProject.group
-version = rootProject.version
+repositories {
+    mavenCentral()
+}
 
+dependencies {
+    testImplementation(kotlin("test"))
+}
 
-kotlin {
-    jvm("gradle")
-
-    listOf(
-        mingwX64(),
-        linuxX64(),
-        linuxArm64(),
-        macosArm64(),
-        macosX64()
-    ).forEach { target ->
-        target.binaries {
-            executable {
-                entryPoint("org.thisisthepy.python.multiplatform.packpack.main")
-                version = "1.0.0"
-            }
-            sharedLib {
-                baseName = "packpack"
-            }
-        }
-    }
+tasks.test {
+    useJUnitPlatform()
 }

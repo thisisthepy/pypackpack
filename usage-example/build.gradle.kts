@@ -1,12 +1,8 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.jvm)
 }
 
-
-kotlin {
-    jvm("desktop")
-    
-    sourceSets {
-        val desktopMain by getting
-    }
+dependencies {
+    implementation(project(":usage-example"))
+    testImplementation(kotlin("test"))
 }
