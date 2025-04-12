@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    id("org.graalvm.buildtools.native") version "0.10.6"
 }
 
 group = "org.thisisthepy.python.multiplatform"
@@ -15,4 +16,17 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("pypackpack")
+            mainClass.set("org.thisisthepy.python.multiplatform.packpack.MainKt")
+            javaLauncher.set(javaToolchains.launcherFor {
+                languageVersion.set(JavaLanguageVersion.of(22))
+            })
+        }
+    }
+    toolchainDetection.set(false)
 }
