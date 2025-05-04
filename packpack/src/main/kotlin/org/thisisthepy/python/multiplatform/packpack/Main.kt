@@ -94,7 +94,8 @@ object PypackpackCli {
             Examples:
                 ppp init my-project       Initialize a new project named 'my-project'
                 ppp add numpy             Add numpy module to the project
-        """.trimIndent())
+        """.trimIndent())  // TODO: 자동으로 실행 exe 이름 변경해서 출력하기 (ppp로 했으면 ppp, pypackpack으로 했으면 pypackpack)
+        // TODO: Optional 태그 제대로 표기
     }
 }
 
