@@ -11,6 +11,7 @@ repositories {
 }
 
 dependencies {
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(kotlin("test"))
 }
 
@@ -22,7 +23,7 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("pypackpack")
-            mainClass.set("org.thisisthepy.python.multiplatform.packpack.MainKt")
+            mainClass.set("org.thisisthepy.python.multiplatform.packpack.util.CommandLineKt")
             javaLauncher.set(javaToolchains.launcherFor {
                 languageVersion.set(JavaLanguageVersion.of(22))
             })

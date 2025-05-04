@@ -190,8 +190,8 @@ pypaackpack python use <python version>
 #### 프로젝트 파이썬 관련 추가 기능 (DevEnv.kt)
 ```bash
 pypackpack python list
-pypackpack python find <python verision>
-pypackpack python install <python verision>
+pypackpack python find <python version>
+pypackpack python install <python version>
 pypackpack python uninstall <python version> 
 ```
 - nv python ~~ 으로 명령어 포워딩
