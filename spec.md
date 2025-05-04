@@ -41,7 +41,7 @@
   - packpack
     - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack
       - util
-        - CommandLine.kt  # CLI endpoint
+        - CommandLine.kt  # CLI endpoint (Main 함수)
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader)
         - DownloadSpec.kt  # external tool download spec
       - dependency
