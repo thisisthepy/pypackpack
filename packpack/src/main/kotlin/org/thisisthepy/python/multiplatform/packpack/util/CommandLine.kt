@@ -4,12 +4,23 @@ import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
+import org.thisisthepy.python.multiplatform.packpack.di.KoinInitializer
 import java.io.File
 
 /**
  * Main entry point for CLI
  */
 fun main(args: Array<String>) {
+    // Initialize Koin DI container
+    if (!KoinInitializer.isInitialized()) {
+        KoinInitializer.initialize()
+    }
+    
+    // Add shutdown hook to clean up Koin
+    Runtime.getRuntime().addShutdownHook(Thread {
+        KoinInitializer.shutdown()
+    })
+    
     if (args.isEmpty()) {
         printHelp()
         return
@@ -39,8 +50,8 @@ fun main(args: Array<String>) {
                 newArgs.add(0, "package") // Insert 'package' before the package name
                 handlePackageCommand(newArgs.toTypedArray())
             } else {
-                println("Unknown command: $command")
-                printHelp()
+                val availableCommands = listOf("help", "version", "init", "python", "package", "target", "add", "remove", "sync", "tree")
+                ErrorHandler.unknownCommand(command, availableCommands)
             }
         }
     }
@@ -112,12 +123,12 @@ fun printVersion() {
         if (backend.isToolInstalled()) {
             val result = backend.executeCommand(listOf(backend.toString(), "--version"))
             if (result.success) {
-                println("UV version: ${result.output.trim()}")
+                ErrorHandler.showInfo("UV version: ${result.output.trim()}")
             } else {
-                println("UV is installed but version check failed")
+                ErrorHandler.showWarning("UV is installed but version check failed")
             }
         } else {
-            println("UV is not installed")
+            ErrorHandler.toolNotFound("UV")
         }
     }
 }
@@ -135,9 +146,24 @@ fun handleInit(args: Array<String>) {
     val devEnv = DevEnv()
     devEnv.initialize(middleware.getBackend())
     
-    val result = devEnv.initProject(projectName, pythonVersion)
+    val result = runWithProgressBlocking("Initializing project...") { indicator ->
+        devEnv.initProject(projectName, pythonVersion)
+    }
+    
     if (!result) {
-        println("Failed to initialize project")
+        ErrorHandler.operationFailed(
+            operation = "initialize project",
+            suggestions = listOf(
+                "Check if you have write permissions in the current directory",
+                "Verify UV is installed: pypackpack version",
+                "Make sure the directory is not already a PyPackPack project",
+                "Try a different project name or Python version"
+            )
+        )
+    } else {
+        val projectDisplayName = projectName ?: "current directory"
+        val versionDisplayName = pythonVersion ?: "default Python version"
+        ErrorHandler.showSuccess("Successfully initialized project '$projectDisplayName' with $versionDisplayName")
     }
 }
 
@@ -146,8 +172,11 @@ fun handleInit(args: Array<String>) {
  */
 fun handlePython(args: Array<String>) {
     if (args.size < 2) {
-        println("Missing python subcommand")
-        printHelp()
+        ErrorHandler.missingArgument(
+            argumentName = "subcommand",
+            command = "python",
+            example = "pypackpack python use 3.11"
+        )
         return
     }
     
@@ -162,52 +191,170 @@ fun handlePython(args: Array<String>) {
     when (subcommand) {
         "use" -> {
             if (args.size < 3) {
-                println("Missing Python version")
+                ErrorHandler.missingArgument(
+                    argumentName = "python version",
+                    command = "python use",
+                    example = "pypackpack python use 3.11"
+                )
                 return
             }
             val pythonVersion = args[2]
-            if (!devEnv.changePythonVersion(pythonVersion)) {
-                println("Failed to change Python version")
+            
+            // Validate Python version format
+            if (!ErrorHandler.validatePythonVersion(pythonVersion)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "python version",
+                    value = pythonVersion,
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                )
+                return
+            }
+            
+            val success = runWithProgressBlocking("Changing Python version to $pythonVersion...") { indicator ->
+                devEnv.changePythonVersion(pythonVersion)
+            }
+            
+            if (!success) {
+                ErrorHandler.operationFailed(
+                    operation = "change Python version to $pythonVersion",
+                    suggestions = listOf(
+                        "Check if the Python version is available: pypackpack python find $pythonVersion",
+                        "Install the Python version first: pypackpack python install $pythonVersion",
+                        "Verify UV is installed and working: pypackpack version"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Changed Python version to $pythonVersion")
             }
         }
         "list" -> {
-            if (!devEnv.listPythonVersions()) {
-                println("Failed to list Python versions")
+            val success = runWithProgressBlocking("Fetching available Python versions...") { indicator ->
+                devEnv.listPythonVersions()
+            }
+            
+            if (!success) {
+                ErrorHandler.operationFailed(
+                    operation = "list Python versions",
+                    suggestions = listOf(
+                        "Verify UV is installed: pypackpack version",
+                        "Check your internet connection",
+                        "Try running: uv python list"
+                    )
+                )
             }
         }
         "find" -> {
             if (args.size < 3) {
-                println("Missing Python version to find")
+                ErrorHandler.missingArgument(
+                    argumentName = "python version",
+                    command = "python find",
+                    example = "pypackpack python find 3.11"
+                )
                 return
             }
             val pythonVersion = args[2]
+            
+            // Validate Python version format
+            if (!ErrorHandler.validatePythonVersion(pythonVersion)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "python version",
+                    value = pythonVersion,
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                )
+                return
+            }
+            
             if (!devEnv.findPythonVersion(pythonVersion)) {
-                println("Failed to find Python version")
+                ErrorHandler.operationFailed(
+                    operation = "find Python version $pythonVersion",
+                    suggestions = listOf(
+                        "Try a different version format (e.g., 3.11 instead of 3.11.0)",
+                        "Check available versions: pypackpack python list",
+                        "Install the version: pypackpack python install $pythonVersion"
+                    )
+                )
             }
         }
         "install" -> {
             if (args.size < 3) {
-                println("Missing Python version to install")
+                ErrorHandler.missingArgument(
+                    argumentName = "python version",
+                    command = "python install",
+                    example = "pypackpack python install 3.11"
+                )
                 return
             }
             val pythonVersion = args[2]
-            if (!devEnv.installPythonVersion(pythonVersion)) {
-                println("Failed to install Python version")
+            
+            // Validate Python version format
+            if (!ErrorHandler.validatePythonVersion(pythonVersion)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "python version",
+                    value = pythonVersion,
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                )
+                return
+            }
+            
+            val success = runWithProgressBlocking("Installing Python $pythonVersion...") { indicator ->
+                devEnv.installPythonVersion(pythonVersion)
+            }
+            
+            if (!success) {
+                ErrorHandler.operationFailed(
+                    operation = "install Python version $pythonVersion",
+                    suggestions = listOf(
+                        "Check your internet connection",
+                        "Verify UV is installed: pypackpack version",
+                        "Check available versions: pypackpack python list",
+                        "Try running manually: uv python install $pythonVersion"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Successfully installed Python $pythonVersion")
             }
         }
         "uninstall" -> {
             if (args.size < 3) {
-                println("Missing Python version to uninstall")
+                ErrorHandler.missingArgument(
+                    argumentName = "python version",
+                    command = "python uninstall",
+                    example = "pypackpack python uninstall 3.11"
+                )
                 return
             }
             val pythonVersion = args[2]
-            if (!devEnv.uninstallPythonVersion(pythonVersion)) {
-                println("Failed to uninstall Python version")
+            
+            // Validate Python version format
+            if (!ErrorHandler.validatePythonVersion(pythonVersion)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "python version",
+                    value = pythonVersion,
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                )
+                return
+            }
+            
+            val success = runWithProgressBlocking("Uninstalling Python $pythonVersion...") { indicator ->
+                devEnv.uninstallPythonVersion(pythonVersion)
+            }
+            
+            if (!success) {
+                ErrorHandler.operationFailed(
+                    operation = "uninstall Python version $pythonVersion",
+                    suggestions = listOf(
+                        "Check if the version is installed: pypackpack python list",
+                        "Verify UV is installed: pypackpack version",
+                        "Try running manually: uv python uninstall $pythonVersion"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Successfully uninstalled Python $pythonVersion")
             }
         }
         else -> {
-            println("Unknown python subcommand: $subcommand")
-            printHelp()
+            val availableSubcommands = listOf("use", "list", "find", "install", "uninstall")
+            ErrorHandler.unknownCommand("python $subcommand", availableSubcommands.map { "python $it" })
         }
     }
 }
@@ -217,8 +364,11 @@ fun handlePython(args: Array<String>) {
  */
 fun handlePackage(args: Array<String>) {
     if (args.size < 2) {
-        println("Missing package subcommand")
-        printHelp()
+        ErrorHandler.missingArgument(
+            argumentName = "subcommand",
+            command = "package",
+            example = "pypackpack package add my_package"
+        )
         return
     }
     
@@ -227,10 +377,24 @@ fun handlePackage(args: Array<String>) {
     when (subcommand) {
         "add" -> {
             if (args.size < 3) {
-                println("Missing package name")
+                ErrorHandler.missingArgument(
+                    argumentName = "package name",
+                    command = "package add",
+                    example = "pypackpack package add my_package"
+                )
                 return
             }
             val packageName = args[2]
+            
+            // Validate package name
+            if (!ErrorHandler.validatePackageName(packageName)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "package name",
+                    value = packageName,
+                    expectedFormat = "Valid Python package name (letters, numbers, underscores, starting with letter)"
+                )
+                return
+            }
             
             val frontend = BaseInterface.create("cli")
             frontend.initialize()
@@ -238,13 +402,30 @@ fun handlePackage(args: Array<String>) {
             val crossEnv = CrossEnv()
             crossEnv.initialize(middleware.getBackend())
             
-            if (!crossEnv.addPackage(packageName)) {
-                println("Failed to add package: $packageName")
+            val success = runWithProgressBlocking("Adding package '$packageName'...") { indicator ->
+                crossEnv.addPackage(packageName)
+            }
+            
+            if (!success) {
+                ErrorHandler.operationFailed(
+                    operation = "add package '$packageName'",
+                    suggestions = listOf(
+                        "Check if you're in a PyPackPack project directory",
+                        "Verify the package name doesn't already exist",
+                        "Make sure you have write permissions in the current directory"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Successfully added package '$packageName'")
             }
         }
         "remove" -> {
             if (args.size < 3) {
-                println("Missing package name")
+                ErrorHandler.missingArgument(
+                    argumentName = "package name",
+                    command = "package remove",
+                    example = "pypackpack package remove my_package"
+                )
                 return
             }
             val packageName = args[2]
@@ -255,15 +436,31 @@ fun handlePackage(args: Array<String>) {
             val crossEnv = CrossEnv()
             crossEnv.initialize(middleware.getBackend())
             
-            if (!crossEnv.removePackage(packageName)) {
-                println("Failed to remove package: $packageName")
+            val success = runWithProgressBlocking("Removing package '$packageName'...") { indicator ->
+                crossEnv.removePackage(packageName)
+            }
+            
+            if (!success) {
+                ErrorHandler.operationFailed(
+                    operation = "remove package '$packageName'",
+                    suggestions = listOf(
+                        "Check if the package exists in the project",
+                        "Verify you're in a PyPackPack project directory",
+                        "Make sure you have write permissions"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Successfully removed package '$packageName'")
             }
         }
         else -> {
             // Handle package-specific commands
             if (args.size < 3) {
-                println("Missing package command arguments")
-                printHelp()
+                ErrorHandler.missingArgument(
+                    argumentName = "command arguments",
+                    command = "package",
+                    example = "pypackpack package add my_package"
+                )
                 return
             }
             
@@ -277,8 +474,11 @@ fun handlePackage(args: Array<String>) {
  */
 fun handleTarget(args: Array<String>) {
     if (args.size < 2) {
-        println("Missing target subcommand")
-        printHelp()
+        ErrorHandler.missingArgument(
+            argumentName = "subcommand",
+            command = "target",
+            example = "pypackpack target add windows my_package"
+        )
         return
     }
     
@@ -287,14 +487,32 @@ fun handleTarget(args: Array<String>) {
     when (subcommand) {
         "add" -> {
             if (args.size < 3) {
-                println("Missing target name")
+                ErrorHandler.missingArgument(
+                    argumentName = "target name",
+                    command = "target add",
+                    example = "pypackpack target add windows my_package"
+                )
                 return
             }
             val targetName = args[2]
             val packageName = if (args.size > 3) args[3] else null
             
             if (packageName == null) {
-                println("Missing package name")
+                ErrorHandler.missingArgument(
+                    argumentName = "package name",
+                    command = "target add",
+                    example = "pypackpack target add windows my_package"
+                )
+                return
+            }
+            
+            // Validate package name
+            if (!ErrorHandler.validatePackageName(packageName)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "package name",
+                    value = packageName,
+                    expectedFormat = "Valid Python package name (letters, numbers, underscores, starting with letter)"
+                )
                 return
             }
             
@@ -305,19 +523,47 @@ fun handleTarget(args: Array<String>) {
             crossEnv.initialize(middleware.getBackend())
             
             if (!crossEnv.addTargetPlatform(packageName, listOf(targetName))) {
-                println("Failed to add target $targetName to package $packageName")
+                ErrorHandler.operationFailed(
+                    operation = "add target '$targetName' to package '$packageName'",
+                    suggestions = listOf(
+                        "Check if the package '$packageName' exists in the project",
+                        "Verify you're in a PyPackPack project directory",
+                        "Supported targets: windows, linux, macos, android, ios",
+                        "Make sure you have write permissions"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Successfully added target '$targetName' to package '$packageName'")
             }
         }
         "remove" -> {
             if (args.size < 3) {
-                println("Missing target name")
+                ErrorHandler.missingArgument(
+                    argumentName = "target name",
+                    command = "target remove",
+                    example = "pypackpack target remove windows my_package"
+                )
                 return
             }
             val targetName = args[2]
             val packageName = if (args.size > 3) args[3] else null
             
             if (packageName == null) {
-                println("Missing package name")
+                ErrorHandler.missingArgument(
+                    argumentName = "package name",
+                    command = "target remove",
+                    example = "pypackpack target remove windows my_package"
+                )
+                return
+            }
+            
+            // Validate package name
+            if (!ErrorHandler.validatePackageName(packageName)) {
+                ErrorHandler.invalidArgument(
+                    argumentName = "package name",
+                    value = packageName,
+                    expectedFormat = "Valid Python package name (letters, numbers, underscores, starting with letter)"
+                )
                 return
             }
             
@@ -328,12 +574,21 @@ fun handleTarget(args: Array<String>) {
             crossEnv.initialize(middleware.getBackend())
             
             if (!crossEnv.removeTargetPlatform(packageName, listOf(targetName))) {
-                println("Failed to remove target $targetName from package $packageName")
+                ErrorHandler.operationFailed(
+                    operation = "remove target '$targetName' from package '$packageName'",
+                    suggestions = listOf(
+                        "Check if the target '$targetName' exists for package '$packageName'",
+                        "Verify the package '$packageName' exists in the project",
+                        "Make sure you have write permissions"
+                    )
+                )
+            } else {
+                ErrorHandler.showSuccess("Successfully removed target '$targetName' from package '$packageName'")
             }
         }
         else -> {
-            println("Unknown target subcommand: $subcommand")
-            printHelp()
+            val availableSubcommands = listOf("add", "remove")
+            ErrorHandler.unknownCommand("target $subcommand", availableSubcommands.map { "target $it" })
         }
     }
 }
@@ -343,7 +598,11 @@ fun handleTarget(args: Array<String>) {
  */
 fun handleAddDependency(args: Array<String>) {
     if (args.size < 2) {
-        println("Missing dependency name")
+        ErrorHandler.missingArgument(
+            argumentName = "dependency name",
+            command = "add",
+            example = "pypackpack add requests==2.25.1"
+        )
         return
     }
     
@@ -371,7 +630,11 @@ fun handleAddDependency(args: Array<String>) {
     }
     
     if (dependencies.isEmpty()) {
-        println("No dependencies specified")
+        ErrorHandler.showError(
+            type = ErrorHandler.ErrorType.VALIDATION_ERROR,
+            message = "No dependencies specified",
+            suggestions = listOf("Provide at least one dependency name", "Example: pypackpack add requests numpy")
+        )
         return
     }
     
@@ -379,8 +642,22 @@ fun handleAddDependency(args: Array<String>) {
     frontend.initialize()
     val middleware = frontend.getMiddleware()
     
-    if (!middleware.addDependencies(null, dependencies, null, extraArgs.ifEmpty { null })) {
-        println("Failed to add dependencies: ${dependencies.joinToString(", ")}")
+    val success = runWithProgressBlocking("Adding dependencies: ${dependencies.joinToString(", ")}...") { indicator ->
+        middleware.addDependencies(null, dependencies, null, extraArgs.ifEmpty { null })
+    }
+    
+    if (!success) {
+        ErrorHandler.operationFailed(
+            operation = "add dependencies: ${dependencies.joinToString(", ")}",
+            suggestions = listOf(
+                "Check your internet connection",
+                "Verify the dependency names are correct",
+                "Make sure you're in a PyPackPack project directory",
+                "Try running: pypackpack sync"
+            )
+        )
+    } else {
+        ErrorHandler.showSuccess("Successfully added dependencies: ${dependencies.joinToString(", ")}")
     }
 }
 
@@ -389,7 +666,11 @@ fun handleAddDependency(args: Array<String>) {
  */
 fun handleRemoveDependency(args: Array<String>) {
     if (args.size < 2) {
-        println("Missing dependency name")
+        ErrorHandler.missingArgument(
+            argumentName = "dependency name",
+            command = "remove",
+            example = "pypackpack remove requests"
+        )
         return
     }
     
@@ -417,7 +698,11 @@ fun handleRemoveDependency(args: Array<String>) {
     }
     
     if (dependencies.isEmpty()) {
-        println("No dependencies specified")
+        ErrorHandler.showError(
+            type = ErrorHandler.ErrorType.VALIDATION_ERROR,
+            message = "No dependencies specified",
+            suggestions = listOf("Provide at least one dependency name", "Example: pypackpack remove requests numpy")
+        )
         return
     }
     
@@ -425,8 +710,22 @@ fun handleRemoveDependency(args: Array<String>) {
     frontend.initialize()
     val middleware = frontend.getMiddleware()
     
-    if (!middleware.removeDependencies(null, dependencies, null, extraArgs.ifEmpty { null })) {
-        println("Failed to remove dependencies: ${dependencies.joinToString(", ")}")
+    val success = runWithProgressBlocking("Removing dependencies: ${dependencies.joinToString(", ")}...") { indicator ->
+        middleware.removeDependencies(null, dependencies, null, extraArgs.ifEmpty { null })
+    }
+    
+    if (!success) {
+        ErrorHandler.operationFailed(
+            operation = "remove dependencies: ${dependencies.joinToString(", ")}",
+            suggestions = listOf(
+                "Check if the dependencies are installed",
+                "Verify the dependency names are correct",
+                "Make sure you're in a PyPackPack project directory",
+                "Try running: pypackpack tree"
+            )
+        )
+    } else {
+        ErrorHandler.showSuccess("Successfully removed dependencies: ${dependencies.joinToString(", ")}")
     }
 }
 
@@ -451,7 +750,7 @@ fun handleSyncDependency(args: Array<String>) {
             }
         } else {
             // Unexpected argument
-            println("Unexpected argument: $arg")
+            ErrorHandler.showWarning("Unexpected argument ignored: $arg")
             i++
         }
     }
@@ -460,8 +759,22 @@ fun handleSyncDependency(args: Array<String>) {
     frontend.initialize()
     val middleware = frontend.getMiddleware()
     
-    if (!middleware.syncDependencies(null, null, extraArgs.ifEmpty { null })) {
-        println("Failed to synchronize dependencies")
+    val success = runWithProgressBlocking("Synchronizing dependencies...") { indicator ->
+        middleware.syncDependencies(null, null, extraArgs.ifEmpty { null })
+    }
+    
+    if (!success) {
+        ErrorHandler.operationFailed(
+            operation = "synchronize dependencies",
+            suggestions = listOf(
+                "Check your internet connection",
+                "Verify pyproject.toml exists and is valid",
+                "Make sure you're in a PyPackPack project directory",
+                "Try running: pypackpack add <dependency> to add missing dependencies"
+            )
+        )
+    } else {
+        ErrorHandler.showSuccess("Successfully synchronized dependencies")
     }
 }
 
@@ -486,7 +799,7 @@ fun handleTreeDependency(args: Array<String>) {
             }
         } else {
             // Unexpected argument
-            println("Unexpected argument: $arg")
+            ErrorHandler.showWarning("Unexpected argument ignored: $arg")
             i++
         }
     }
@@ -496,7 +809,14 @@ fun handleTreeDependency(args: Array<String>) {
     val middleware = frontend.getMiddleware()
     
     if (!middleware.showDependencyTree(null, null, extraArgs.ifEmpty { null })) {
-        println("Failed to show dependency tree")
+        ErrorHandler.operationFailed(
+            operation = "show dependency tree",
+            suggestions = listOf(
+                "Make sure you're in a PyPackPack project directory",
+                "Verify dependencies are installed: pypackpack sync",
+                "Check if pyproject.toml exists and is valid"
+            )
+        )
     }
 }
 

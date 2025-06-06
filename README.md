@@ -4,13 +4,11 @@
 [![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 
-
 ### Description
 
 A multiplatform solution to distribute python project.
 
 pypackpack = crossenv + compiler(nuitka, pyinstaller) + bundler(js webpack) + codepush(js expo)
-
 
 #### Supporting multiplatforms:
 
@@ -21,34 +19,87 @@ pypackpack = crossenv + compiler(nuitka, pyinstaller) + bundler(js webpack) + co
 - Windows (x86_64)
 - WASM -
 
-
 > [!NOTE]  
-> ** Since Xcode only runs on macOS, you need macOS to build this repo for iOS.
-
-
-### Template ToDo list ✨
-- [] ?
-
-___
+> \*\* Since Xcode only runs on macOS, you need macOS to build this repo for iOS.
 
 ## Build Manually 🛠️
+
+### Prerequisites
+
+- **GraalVM 22+** with Native Image support
+- **Gradle 8.5+** (included via wrapper)
 
 #### (1) Clone this repo
 
 - RC version
 
-
-    git clone https://github.com/thisisthepy/pypackpack PyPackPack
+```bash
+git clone https://github.com/thisisthepy/pypackpack PyPackPack
+```
 
 - dev version
 
+```bash
+git clone https://github.com/thisisthepy/pypackpack@develop PyPackPack
+```
 
-    git clone https://github.com/thisisthepy/pypackpack@develop PyPackPack
+#### (2) Setup GraalVM
 
+Download and install GraalVM from [https://www.graalvm.org/](https://www.graalvm.org/)
 
-#### (2) Build gradle project
+Set environment variables:
 
-    ./gradlew mingwX64MainDebugExecutable
+```bash
+export GRAALVM_HOME=/path/to/graalvm
+export PATH=$GRAALVM_HOME/bin:$PATH
+```
+
+Install Native Image component:
+
+```bash
+gu install native-image
+```
+
+#### (3) Build Options
+
+**Standard Gradle Build:**
+
+```bash
+./gradlew build
+```
+
+**Build Native Executable:**
+
+```bash
+./gradlew buildNativeExecutable
+```
+
+**Package Native Distribution:**
+
+```bash
+./gradlew packageNative
+```
+
+**Quick Build Script (Unix):**
+
+```bash
+chmod +x scripts/build-native.sh
+./scripts/build-native.sh
+```
+
+**Quick Build Script (Windows):**
+
+```cmd
+scripts\build-native.bat
+```
+
+#### (4) Available Gradle Tasks
+
+- `build` - Standard build with tests
+- `nativeCompile` - Compile to native executable
+- `buildNativeExecutable` - Build and copy native executable
+- `packageNative` - Create distribution package
+- `buildAllPlatforms` - Cross-platform build (requires Docker)
 
 ---
 
@@ -75,18 +126,16 @@ In your project settings.gradle.kts
             }
             mavenCentral()
             gradlePluginPortal()
-    
+
             maven {
                 setUrl("https://jitpack.io")  // Add this line!
             }
         }
     }
 
-
 In your project build.gradle.kts
 
     implementation("com.github.thisisthepy:python-multiplatform-mobile:0.0.1")
-
 
 > [!TIP]
 > Some tips
