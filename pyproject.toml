@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pypackpack"
+version = "0.1.0"
+description = "PyPackPack (PPP) - A multiplatform solution to distribute python project"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "thisisthepy", email = "thisisthepy@gmail.com" },
+]
+keywords = [
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+]
+requires-python = ">=3.9"
+dependencies = [
+]
+
+[project.urls]
+Homepage = "https://github.com/thisisthepy/PyPackPack"
+Documentation = "https://pypackpack.readthedocs.io"
+Repository = "https://github.com/thisisthepy/PyPackPack"
+"Bug Tracker" = "https://github.com/thisisthepy/PyPackPack/issues"
+"Discussions" = "https://github.com/thisisthepy/PyPackPack/discussions"
+Changelog = "https://github.com/thisisthepy/PyPackPack/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["packpack/src/main/python"]
+
+[tool.setuptools.package-data]
+your_package = [
+    "packpack/build/native/nativeCompile/*.exe",
+    "packpack/build/native/nativeCompile/*.dll",
+    "packpack/build/native/nativeCompile/*.so",
+]
