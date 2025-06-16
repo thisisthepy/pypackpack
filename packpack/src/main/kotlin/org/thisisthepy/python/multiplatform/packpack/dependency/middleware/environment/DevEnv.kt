@@ -79,7 +79,7 @@ class DevEnv {
             version = "0.1.0"
             description = "A Python multi-platform project"
             readme = "README.md"
-            requires-python = ">=3.8"
+            requires-python = ">=3.13"
             
             [tool.pypackpack]
             managed = true
@@ -162,31 +162,20 @@ class DevEnv {
      */
     private fun installDependencies(venvDir: File, dependencies: List<String>, extraArgs: Map<String, String>?): Boolean {
         return runBlocking {
-            // Copy lock file to venv if it exists
             val projectRoot = venvDir.parentFile
-            val lockFileInProject = File(projectRoot, lockFile)
-            val lockFileInVenv = File(venvDir, lockFile)
             
-            if (lockFileInProject.exists()) {
-                Files.copy(
-                    lockFileInProject.toPath(),
-                    lockFileInVenv.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            }
-            
+            // Install dependencies using UV
             val result = backend.installDependencies(venvDir.absolutePath, dependencies, extraArgs)
             if (result.success) {
-                // Copy lock file back to project root
-                if (lockFileInVenv.exists()) {
-                    Files.copy(
-                        lockFileInVenv.toPath(),
-                        lockFileInProject.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING
-                    )
+                // Generate/update UV lock file for the project
+                val lockResult = backend.generateLockFile(projectRoot.absolutePath)
+                if (lockResult.success) {
+                    println("Lock file updated successfully")
+                } else {
+                    println("Warning: Failed to update lock file: ${lockResult.error}")
                 }
                 
-                // Update requirements.txt
+                // Update requirements.txt for compatibility
                 updateRequirementsFile(projectRoot)
                 
                 println("Added dependencies: ${dependencies.joinToString(", ")}")
@@ -217,30 +206,18 @@ class DevEnv {
         }
         
         return runBlocking {
-            // Copy lock file to venv if it exists
-            val lockFileInProject = File(projectRoot, lockFile)
-            val lockFileInVenv = File(venvDir, lockFile)
-            
-            if (lockFileInProject.exists()) {
-                Files.copy(
-                    lockFileInProject.toPath(),
-                    lockFileInVenv.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            }
-            
+            // Remove dependencies using UV
             val result = backend.uninstallDependencies(venvDir.absolutePath, dependencies, extraArgs)
             if (result.success) {
-                // Copy lock file back to project root
-                if (lockFileInVenv.exists()) {
-                    Files.copy(
-                        lockFileInVenv.toPath(),
-                        lockFileInProject.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING
-                    )
+                // Generate/update UV lock file for the project
+                val lockResult = backend.generateLockFile(projectRoot.absolutePath)
+                if (lockResult.success) {
+                    println("Lock file updated successfully")
+                } else {
+                    println("Warning: Failed to update lock file: ${lockResult.error}")
                 }
                 
-                // Update requirements.txt
+                // Update requirements.txt for compatibility
                 updateRequirementsFile(projectRoot)
                 
                 println("Removed dependencies: ${dependencies.joinToString(", ")}")
@@ -288,31 +265,12 @@ class DevEnv {
      */
     private fun syncDependenciesInVenv(venvDir: File, extraArgs: Map<String, String>?): Boolean {
         return runBlocking {
-            // Copy lock file to venv if it exists
             val projectRoot = venvDir.parentFile
-            val lockFileInProject = File(projectRoot, lockFile)
-            val lockFileInVenv = File(venvDir, lockFile)
             
-            if (lockFileInProject.exists()) {
-                Files.copy(
-                    lockFileInProject.toPath(),
-                    lockFileInVenv.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            }
-            
-            val result = backend.syncDependencies(venvDir.absolutePath, extraArgs)
+            // Use UV's native sync functionality
+            val result = backend.syncFromLockFile(projectRoot.absolutePath, null, extraArgs)
             if (result.success) {
-                // Copy lock file back to project root
-                if (lockFileInVenv.exists()) {
-                    Files.copy(
-                        lockFileInVenv.toPath(),
-                        lockFileInProject.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING
-                    )
-                }
-                
-                // Update requirements.txt
+                // Update requirements.txt for compatibility
                 updateRequirementsFile(projectRoot)
                 
                 println("Dependencies synchronized successfully")
@@ -485,6 +443,159 @@ class DevEnv {
                 true
             } else {
                 println("Failed to change Python version to $pythonVersion: ${result.error}")
+                false
+            }
+        }
+    }
+    
+    /**
+     * Generate or update project lock file using UV
+     * @param extraArgs Extra arguments (optional)
+     * @return Success status
+     */
+    fun generateLockFile(extraArgs: Map<String, String>? = null): Boolean {
+        val projectRoot = findProjectRoot() ?: run {
+            println("Project root not found. Please initialize a project first.")
+            return false
+        }
+        
+        return runBlocking {
+            val result = backend.generateLockFile(projectRoot.absolutePath, extraArgs)
+            if (result.success) {
+                println("Lock file generated successfully")
+                println(result.output)
+                true
+            } else {
+                println("Failed to generate lock file: ${result.error}")
+                false
+            }
+        }
+    }
+    
+    /**
+     * Upgrade all packages in lock file to latest versions
+     * @param extraArgs Extra arguments (optional)
+     * @return Success status
+     */
+    fun upgradeLockFile(extraArgs: Map<String, String>? = null): Boolean {
+        val projectRoot = findProjectRoot() ?: run {
+            println("Project root not found. Please initialize a project first.")
+            return false
+        }
+        
+        return runBlocking {
+            val result = backend.upgradeLockFile(projectRoot.absolutePath, extraArgs)
+            if (result.success) {
+                println("Lock file upgraded successfully")
+                println(result.output)
+                true
+            } else {
+                println("Failed to upgrade lock file: ${result.error}")
+                false
+            }
+        }
+    }
+    
+    /**
+     * Upgrade specific package in lock file
+     * @param packageName Package name to upgrade
+     * @param version Specific version (optional)
+     * @param extraArgs Extra arguments (optional)
+     * @return Success status
+     */
+    fun upgradePackageInLock(packageName: String, version: String? = null, extraArgs: Map<String, String>? = null): Boolean {
+        val projectRoot = findProjectRoot() ?: run {
+            println("Project root not found. Please initialize a project first.")
+            return false
+        }
+        
+        return runBlocking {
+            val result = backend.upgradePackageInLock(projectRoot.absolutePath, packageName, version, extraArgs)
+            if (result.success) {
+                val versionText = if (version != null) " to version $version" else " to latest version"
+                println("Package $packageName upgraded$versionText successfully")
+                println(result.output)
+                true
+            } else {
+                println("Failed to upgrade package $packageName: ${result.error}")
+                false
+            }
+        }
+    }
+    
+    /**
+     * Validate if lock file is up-to-date
+     * @param extraArgs Extra arguments (optional)
+     * @return Success status
+     */
+    fun validateLockFile(extraArgs: Map<String, String>? = null): Boolean {
+        val projectRoot = findProjectRoot() ?: run {
+            println("Project root not found. Please initialize a project first.")
+            return false
+        }
+        
+        return runBlocking {
+            val result = backend.validateLockFile(projectRoot.absolutePath, extraArgs)
+            if (result.success) {
+                println("Lock file is up-to-date")
+                true
+            } else {
+                println("Lock file validation failed: ${result.error}")
+                false
+            }
+        }
+    }
+    
+    /**
+     * Export lock file to different format
+     * @param format Export format (requirements-txt, pylock-toml)
+     * @param outputPath Output file path (optional)
+     * @param extraArgs Extra arguments (optional)
+     * @return Success status
+     */
+    fun exportLockFile(format: String, outputPath: String? = null, extraArgs: Map<String, String>? = null): Boolean {
+        val projectRoot = findProjectRoot() ?: run {
+            println("Project root not found. Please initialize a project first.")
+            return false
+        }
+        
+        return runBlocking {
+            val result = backend.exportLockFile(projectRoot.absolutePath, format, outputPath, extraArgs)
+            if (result.success) {
+                val outputText = outputPath ?: "standard output"
+                println("Lock file exported to $format format at $outputText")
+                if (result.output.isNotEmpty()) {
+                    println(result.output)
+                }
+                true
+            } else {
+                println("Failed to export lock file: ${result.error}")
+                false
+            }
+        }
+    }
+    
+    /**
+     * Synchronize environment from lock file
+     * @param lockFilePath Lock file path (optional, defaults to project lock file)
+     * @param extraArgs Extra arguments (optional)
+     * @return Success status
+     */
+    fun syncFromLockFile(lockFilePath: String? = null, extraArgs: Map<String, String>? = null): Boolean {
+        val projectRoot = findProjectRoot() ?: run {
+            println("Project root not found. Please initialize a project first.")
+            return false
+        }
+        
+        return runBlocking {
+            val result = backend.syncFromLockFile(projectRoot.absolutePath, lockFilePath, extraArgs)
+            if (result.success) {
+                val sourceText = lockFilePath ?: "project lock file"
+                println("Environment synchronized from $sourceText")
+                println(result.output)
+                true
+            } else {
+                println("Failed to synchronize from lock file: ${result.error}")
                 false
             }
         }

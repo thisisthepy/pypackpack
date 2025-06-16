@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
 import org.thisisthepy.python.multiplatform.packpack.util.CommandResult
 import java.io.File
 import java.nio.file.Files
@@ -117,7 +118,7 @@ class CrossEnv {
             version = "0.1.0"
             description = "A Python package managed by PyPackPack"
             readme = "../README.md"
-            requires-python = ">=3.8"
+            requires-python = ">=3.13"
             
             [tool.pypackpack]
             managed = true
@@ -157,7 +158,7 @@ class CrossEnv {
         val venvDir = File(crossenvDir, hostPlatform)
         
         return runBlocking {
-            val result = backend.createVirtualEnvironment(venvDir.absolutePath, null)
+            val result = backend.createVirtualEnvironment(venvDir.absolutePath, null, null)
             if (result.success) {
                 println("Created package '$packageName' with host platform environment ($hostPlatform)")
                 true
@@ -286,7 +287,7 @@ class CrossEnv {
                     val result = backend.createVirtualEnvironment(
                         venvDir.absolutePath,
                         null,
-                        mapOf("platform" to platform)
+                        null
                     )
                     if (!result.success) {
                         println("Failed to create virtual environment for $platform: ${result.error}")
@@ -489,7 +490,7 @@ class CrossEnv {
                     val result = backend.createVirtualEnvironment(
                         venvDir.absolutePath,
                         null,
-                        mapOf("platform" to target)
+                        null
                     )
                     if (!result.success) {
                         println("Failed to create virtual environment for $target: ${result.error}")
@@ -519,15 +520,34 @@ class CrossEnv {
                 
                 val result = backend.installDependencies(venvDir.absolutePath, dependencies, args)
                 if (result.success) {
-                    // Copy lock file back to package directory
-                    if (venvLockFile.exists()) {
-                        val targetLockFile = File(packageDir, "$target.lock")
-                        Files.copy(
-                            venvLockFile.toPath(),
-                            targetLockFile.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
+                    // Generate lock file in the venv
+                    val lockResult = backend.generateLockFile(venvDir.absolutePath, args)
+                    if (lockResult.success) {
+                        // Export requirements.txt for the target platform
+                        val requirementsPath = File(packageDir, "$target.requirements.txt").absolutePath
+                        val exportResult = (backend as UVInterface).exportLockFile(
+                            venvDir.absolutePath,
+                            requirementsPath,
+                            "requirements-txt"
                         )
+                        
+                        if (exportResult.success) {
+                            println("Generated platform-specific requirements file for $target: $target.requirements.txt")
+                        } else {
+                            println("Warning: Failed to export platform-specific requirements file for $target: ${exportResult.error}")
+                        }
+                        
+                        // Copy main uv.lock file as platform-specific backup
+                        if (venvLockFile.exists()) {
+                            val targetLockFile = File(packageDir, "$target.uv.lock")
+                            Files.copy(
+                                venvLockFile.toPath(),
+                                targetLockFile.toPath(),
+                                StandardCopyOption.REPLACE_EXISTING
+                            )
+                        }
                     }
+                    
                     println("Added dependencies to target $target: ${dependencies.joinToString(", ")}")
                 } else {
                     println("Failed to add dependencies to target $target: ${result.error}")
@@ -621,15 +641,34 @@ class CrossEnv {
                 
                 val result = backend.uninstallDependencies(venvDir.absolutePath, dependencies, args)
                 if (result.success) {
-                    // Copy lock file back to package directory
-                    if (venvLockFile.exists()) {
-                        val targetLockFile = File(packageDir, "$target.lock")
-                        Files.copy(
-                            venvLockFile.toPath(),
-                            targetLockFile.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
+                    // Generate updated lock file in the venv
+                    val lockResult = backend.generateLockFile(venvDir.absolutePath, args)
+                    if (lockResult.success) {
+                        // Export updated requirements.txt for the target platform
+                        val requirementsPath = File(packageDir, "$target.requirements.txt").absolutePath
+                        val exportResult = (backend as UVInterface).exportLockFile(
+                            venvDir.absolutePath,
+                            requirementsPath,
+                            "requirements-txt"
                         )
+                        
+                        if (exportResult.success) {
+                            println("Updated platform-specific requirements file for $target: $target.requirements.txt")
+                        } else {
+                            println("Warning: Failed to export updated platform-specific requirements file for $target: ${exportResult.error}")
+                        }
+                        
+                        // Copy updated uv.lock file as platform-specific backup
+                        if (venvLockFile.exists()) {
+                            val targetLockFile = File(packageDir, "$target.uv.lock")
+                            Files.copy(
+                                venvLockFile.toPath(),
+                                targetLockFile.toPath(),
+                                StandardCopyOption.REPLACE_EXISTING
+                            )
+                        }
                     }
+                    
                     println("Removed dependencies from target $target: ${dependencies.joinToString(", ")}")
                 } else {
                     println("Failed to remove dependencies from target $target: ${result.error}")
@@ -700,7 +739,7 @@ class CrossEnv {
                     val result = backend.createVirtualEnvironment(
                         venvDir.absolutePath,
                         null,
-                        mapOf("platform" to target)
+                        null
                     )
                     if (!result.success) {
                         println("Failed to create virtual environment for $target: ${result.error}")
@@ -713,37 +752,76 @@ class CrossEnv {
                 continue
             }
             
-            // Check if we have a platform-specific lock file
-            val targetLockFile = File(packageDir, "$target.lock")
-            val venvLockFile = File(venvDir, lockFile)
-            
-            if (targetLockFile.exists()) {
-                // Copy platform-specific lock file to venv
-                Files.copy(
-                    targetLockFile.toPath(),
-                    venvLockFile.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            }
+            // Check if we have platform-specific requirements files
+            val requirementsFile = File(packageDir, "$target.requirements.txt")
+            val targetLockFile = File(packageDir, "$target.uv.lock")
+            val venvLockFile = File(venvDir, "uv.lock")
             
             runBlocking {
                 val platform = mapOf("platform" to target)
                 val args = if (extraArgs != null) extraArgs + platform else platform
                 
-                val result = backend.syncDependencies(venvDir.absolutePath, args)
-                if (result.success) {
-                    // Copy lock file back to package directory as platform-specific lock
-                    if (venvLockFile.exists()) {
-                        Files.copy(
-                            venvLockFile.toPath(),
-                            targetLockFile.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
-                        )
+                if (requirementsFile.exists()) {
+                    // Use platform-specific requirements.txt for synchronization
+                    val syncResult = (backend as UVInterface).syncFromRequirements(
+                        venvDir.absolutePath,
+                        requirementsFile.absolutePath,
+                        extraArgs
+                    )
+                    
+                    if (syncResult.success) {
+                        println("Synchronized dependencies for target $target using $target.requirements.txt")
+                    } else {
+                        println("Failed to synchronize dependencies for target $target: ${syncResult.error}")
+                        success = false
                     }
-                    println("Synchronized dependencies for target $target")
+                } else if (targetLockFile.exists()) {
+                    // Fallback: Copy platform-specific uv.lock to venv and sync
+                    Files.copy(
+                        targetLockFile.toPath(),
+                        venvLockFile.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                    
+                    val syncResult = backend.syncFromLockFile(venvDir.absolutePath, null, args)
+                    if (syncResult.success) {
+                        println("Synchronized dependencies for target $target using $target.uv.lock")
+                    } else {
+                        println("Failed to synchronize dependencies for target $target: ${syncResult.error}")
+                        success = false
+                    }
                 } else {
-                    println("Failed to synchronize dependencies for target $target: ${result.error}")
-                    success = false
+                    // No platform-specific files, perform regular sync
+                    val syncResult = backend.syncDependencies(venvDir.absolutePath, args)
+                    if (syncResult.success) {
+                        // Generate lock file and export requirements.txt
+                        val lockResult = backend.generateLockFile(venvDir.absolutePath, args)
+                        if (lockResult.success) {
+                            val exportResult = (backend as UVInterface).exportLockFile(
+                                venvDir.absolutePath,
+                                requirementsFile.absolutePath,
+                                "requirements-txt"
+                            )
+                            
+                            if (exportResult.success) {
+                                println("Generated platform-specific requirements file for $target: $target.requirements.txt")
+                            }
+                            
+                            // Copy uv.lock as backup
+                            if (venvLockFile.exists()) {
+                                Files.copy(
+                                    venvLockFile.toPath(),
+                                    targetLockFile.toPath(),
+                                    StandardCopyOption.REPLACE_EXISTING
+                                )
+                            }
+                        }
+                        
+                        println("Synchronized dependencies for target $target")
+                    } else {
+                        println("Failed to synchronize dependencies for target $target: ${syncResult.error}")
+                        success = false
+                    }
                 }
             }
         }
