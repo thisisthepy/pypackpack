@@ -98,6 +98,59 @@ interface BaseInterface {
     suspend fun uninstallPythonVersion(pythonVersion: String): CommandResult
 
     /**
+     * Generate or update lock file for the project
+     * @param projectPath Project path
+     * @param extraArgs Extra arguments (optional)
+     * @return Result of lock file generation
+     */
+    suspend fun generateLockFile(projectPath: String, extraArgs: Map<String, String>? = null): CommandResult
+    
+    /**
+     * Upgrade all packages in lock file to latest versions
+     * @param projectPath Project path
+     * @param extraArgs Extra arguments (optional)
+     * @return Result of lock file upgrade
+     */
+    suspend fun upgradeLockFile(projectPath: String, extraArgs: Map<String, String>? = null): CommandResult
+    
+    /**
+     * Upgrade specific package in lock file
+     * @param projectPath Project path
+     * @param packageName Package name to upgrade
+     * @param version Specific version (optional)
+     * @param extraArgs Extra arguments (optional)
+     * @return Result of package upgrade
+     */
+    suspend fun upgradePackageInLock(projectPath: String, packageName: String, version: String? = null, extraArgs: Map<String, String>? = null): CommandResult
+    
+    /**
+     * Validate if lock file is up-to-date
+     * @param projectPath Project path
+     * @param extraArgs Extra arguments (optional)
+     * @return Result of lock file validation
+     */
+    suspend fun validateLockFile(projectPath: String, extraArgs: Map<String, String>? = null): CommandResult
+    
+    /**
+     * Export lock file to different format
+     * @param projectPath Project path
+     * @param format Export format (requirements-txt, pylock-toml)
+     * @param outputPath Output file path (optional)
+     * @param extraArgs Extra arguments (optional)
+     * @return Result of lock file export
+     */
+    suspend fun exportLockFile(projectPath: String, format: String, outputPath: String? = null, extraArgs: Map<String, String>? = null): CommandResult
+    
+    /**
+     * Synchronize environment from lock file
+     * @param projectPath Project path
+     * @param lockFilePath Lock file path (optional, defaults to project lock file)
+     * @param extraArgs Extra arguments (optional)
+     * @return Result of environment synchronization
+     */
+    suspend fun syncFromLockFile(projectPath: String, lockFilePath: String? = null, extraArgs: Map<String, String>? = null): CommandResult
+
+    /**
      * Helper method to execute command in a virtual environment
      * @param venvPath Virtual environment path
      * @param command Command to execute

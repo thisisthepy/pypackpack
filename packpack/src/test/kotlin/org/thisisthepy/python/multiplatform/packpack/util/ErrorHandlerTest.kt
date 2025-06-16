@@ -85,13 +85,13 @@ class ErrorHandlerTest {
         ErrorHandler.missingArgument(
             argumentName = "python version",
             command = "python use",
-            example = "pypackpack python use 3.11"
+            example = "pypackpack python use 3.13"
         )
         
         val output = testOut.toString()
         assertTrue(output.contains("Missing required argument: python version"))
         assertTrue(output.contains("Command 'python use' requires"))
-        assertTrue(output.contains("Example: pypackpack python use 3.11"))
+        assertTrue(output.contains("Example: pypackpack python use 3.13"))
     }
     
     @Test
@@ -185,16 +185,14 @@ class ErrorHandlerTest {
     @Test
     fun `should validate Python version correctly`() {
         // Valid versions
-        assertTrue(ErrorHandler.validatePythonVersion("3.11"))
-        assertTrue(ErrorHandler.validatePythonVersion("3.11.5"))
-        assertTrue(ErrorHandler.validatePythonVersion("2.7"))
-        assertTrue(ErrorHandler.validatePythonVersion("3.12.0"))
+        assertTrue(ErrorHandler.validatePythonVersion("3.13"))
+        assertTrue(ErrorHandler.validatePythonVersion("3.13.2"))
         
         // Invalid versions
         assertFalse(ErrorHandler.validatePythonVersion("3"))
-        assertFalse(ErrorHandler.validatePythonVersion("3.11.5.1"))
+        assertFalse(ErrorHandler.validatePythonVersion("3.13.5.1"))
         assertFalse(ErrorHandler.validatePythonVersion("invalid"))
-        assertFalse(ErrorHandler.validatePythonVersion("3.11-beta"))
+        assertFalse(ErrorHandler.validatePythonVersion("3.13-beta"))
         assertFalse(ErrorHandler.validatePythonVersion(""))
     }
     

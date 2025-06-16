@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external.UV
 import org.thisisthepy.python.multiplatform.packpack.util.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.util.Downloader
 import org.thisisthepy.python.multiplatform.packpack.util.DownloadSpec
@@ -15,172 +16,35 @@ import kotlinx.coroutines.withContext
  * UV implementation of backend interface
  */
 class UVInterface : BaseInterface {
-    private val uvCommand = if (System.getProperty("os.name").lowercase().contains("win")) "uv.exe" else "uv"
-    private var uvPath: String? = null
+    private val uv = UV()
     
     /**
      * Initialize UV backend
      */
     override fun initialize() {
-        // Find UV in PATH
-        val path = System.getenv("PATH")?.split(File.pathSeparator) ?: emptyList()
-        
-        for (dir in path) {
-            val uvFile = File(dir, uvCommand)
-            if (uvFile.exists() && uvFile.canExecute()) {
-                uvPath = uvFile.absolutePath
-                break
-            }
-        }
+        // UV initialization is handled by the UV class
     }
     
     /**
      * Check if UV is installed
      */
     override suspend fun isToolInstalled(): Boolean {
-        if (uvPath != null) {
-            return true
-        }
-        
-        // Try to find UV again
-        initialize()
-        
-        if (uvPath != null) {
-            return true
-        }
-        
-        // Check if UV exists in user's home directory
-        val userHome = System.getProperty("user.home")
-        val uvInHome = if (isWindows()) {
-            File("$userHome\\.uv\\bin\\$uvCommand")
-        } else {
-            File("$userHome/.uv/bin/$uvCommand")
-        }
-        
-        if (uvInHome.exists() && uvInHome.canExecute()) {
-            uvPath = uvInHome.absolutePath
-            return true
-        }
-        
-        return false
+        return uv.isInstalled()
     }
     
     /**
      * Install UV
      */
     override suspend fun installTool(): CommandResult {
-        val os = System.getProperty("os.name").lowercase()
-        val arch = System.getProperty("os.arch").lowercase()
-        
-        val downloadSpec = when {
-            os.contains("win") -> {
-                if (arch.contains("amd64") || arch.contains("x86_64")) {
-                    DownloadSpec("https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip", "uv.zip")
-                } else {
-                    return CommandResult(false, "", "Unsupported architecture: $arch")
-                }
-            }
-            os.contains("mac") -> {
-                if (arch.contains("aarch64") || arch.contains("arm")) {
-                    DownloadSpec("https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz", "uv.tar.gz")
-                } else {
-                    DownloadSpec("https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz", "uv.tar.gz")
-                }
-            }
-            os.contains("linux") -> {
-                if (arch.contains("amd64") || arch.contains("x86_64")) {
-                    DownloadSpec("https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz", "uv.tar.gz")
-                } else if (arch.contains("aarch64") || arch.contains("arm64")) {
-                    DownloadSpec("https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz", "uv.tar.gz")
-                } else {
-                    return CommandResult(false, "", "Unsupported architecture: $arch")
-                }
-            }
-            else -> {
-                return CommandResult(false, "", "Unsupported operating system: $os")
-            }
-        }
-        
-        // Download UV
-        val downloader = Downloader()
-        val downloadResult = downloader.download(downloadSpec)
-        
-        if (!downloadResult.success) {
-            return CommandResult(false, "", "Failed to download UV: ${downloadResult.error}")
-        }
-        
-        // Extract UV
-        val userHome = System.getProperty("user.home")
-        val uvDir = if (isWindows()) {
-            File("$userHome\\.uv\\bin")
-        } else {
-            File("$userHome/.uv/bin")
-        }
-        
-        if (!uvDir.exists() && !uvDir.mkdirs()) {
-            return CommandResult(false, "", "Failed to create UV directory: ${uvDir.absolutePath}")
-        }
-        
-        val uvExecutable = File(uvDir, uvCommand)
-        
-        return withContext(Dispatchers.IO) {
-            try {
-                when {
-                    downloadSpec.fileName.endsWith(".zip") -> {
-                        // Extract zip file
-                        val zipFile = java.util.zip.ZipFile(downloadResult.filePath)
-                        val entries = zipFile.entries()
-                        
-                        while (entries.hasMoreElements()) {
-                            val entry = entries.nextElement()
-                            if (!entry.isDirectory && entry.name.contains(uvCommand)) {
-                                val input = zipFile.getInputStream(entry)
-                                Files.copy(input, uvExecutable.toPath())
-                                input.close()
-                                break
-                            }
-                        }
-                        
-                        zipFile.close()
-                    }
-                    downloadSpec.fileName.endsWith(".tar.gz") -> {
-                        // Extract tar.gz file
-                        val command = if (isWindows()) {
-                            listOf("tar", "-xzf", downloadResult.filePath, "-C", uvDir.absolutePath)
-                        } else {
-                            listOf("tar", "-xzf", downloadResult.filePath, "-C", uvDir.absolutePath, "--strip-components=1")
-                        }
-                        
-                        val extractResult = executeCommand(command)
-                        if (!extractResult.success) {
-                            return@withContext CommandResult(false, "", "Failed to extract UV: ${extractResult.error}")
-                        }
-                    }
-                }
-                
-                // Make executable on Unix-like systems
-                if (!isWindows()) {
-                    val permissions = HashSet<PosixFilePermission>()
-                    permissions.add(PosixFilePermission.OWNER_READ)
-                    permissions.add(PosixFilePermission.OWNER_WRITE)
-                    permissions.add(PosixFilePermission.OWNER_EXECUTE)
-                    permissions.add(PosixFilePermission.GROUP_READ)
-                    permissions.add(PosixFilePermission.GROUP_EXECUTE)
-                    permissions.add(PosixFilePermission.OTHERS_READ)
-                    permissions.add(PosixFilePermission.OTHERS_EXECUTE)
-                    
-                    Files.setPosixFilePermissions(uvExecutable.toPath(), permissions)
-                }
-                
-                uvPath = uvExecutable.absolutePath
-                
-                // Clean up downloaded file
-                File(downloadResult.filePath).delete()
-                
+        return try {
+            val success = uv.ensureInstalled()
+            if (success) {
                 CommandResult(true, "UV installed successfully", "")
-            } catch (e: Exception) {
-                CommandResult(false, "", "Failed to install UV: ${e.message}")
+            } else {
+                CommandResult(false, "", "Failed to install UV")
             }
+        } catch (e: Exception) {
+            CommandResult(false, "", "Failed to install UV: ${e.message}")
         }
     }
     
@@ -192,20 +56,19 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = mutableListOf(uvPath!!, "venv", path)
+        val command = mutableListOf("venv", path)
         
-        if (pythonVersion != null) {
-            command.add("--python")
-            command.add(pythonVersion)
+        // Use provided version or default to 3.13
+        val versionToUse = pythonVersion ?: "3.13"
+        command.add("--python")
+        command.add(versionToUse)
+        
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
         }
-        
-        // Add platform if specified
-        if (extraArgs != null && extraArgs.containsKey("platform")) {
-            command.add("--platform")
-            command.add(extraArgs["platform"]!!)
-        }
-        
-        return executeCommand(command)
     }
     
     /**
@@ -216,7 +79,7 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = mutableListOf(uvPath!!, "pip", "install")
+        val command = mutableListOf("pip", "install")
         command.addAll(dependencies)
         
         // Add extra arguments
@@ -224,11 +87,6 @@ class UVInterface : BaseInterface {
             if (extraArgs.containsKey("extra-index-url")) {
                 command.add("--extra-index-url")
                 command.add(extraArgs["extra-index-url"]!!)
-            }
-            
-            if (extraArgs.containsKey("platform") && !command.contains("--platform")) {
-                command.add("--platform")
-                command.add(extraArgs["platform"]!!)
             }
         }
         
@@ -243,14 +101,8 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = mutableListOf(uvPath!!, "pip", "uninstall", "--yes")
+        val command = mutableListOf("pip", "uninstall", "--yes")
         command.addAll(dependencies)
-        
-        // Add platform if specified
-        if (extraArgs != null && extraArgs.containsKey("platform") && !command.contains("--platform")) {
-            command.add("--platform")
-            command.add(extraArgs["platform"]!!)
-        }
         
         return executeInVenv(venvPath, command)
     }
@@ -263,13 +115,7 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = mutableListOf(uvPath!!, "pip", "sync")
-        
-        // Add platform if specified
-        if (extraArgs != null && extraArgs.containsKey("platform") && !command.contains("--platform")) {
-            command.add("--platform")
-            command.add(extraArgs["platform"]!!)
-        }
+        val command = mutableListOf("pip", "sync")
         
         return executeInVenv(venvPath, command)
     }
@@ -282,13 +128,7 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = mutableListOf(uvPath!!, "pip", "list", "--tree")
-        
-        // Add platform if specified
-        if (extraArgs != null && extraArgs.containsKey("platform") && !command.contains("--platform")) {
-            command.add("--platform")
-            command.add(extraArgs["platform"]!!)
-        }
+        val command = mutableListOf("pip", "list", "--tree")
         
         return executeInVenv(venvPath, command)
     }
@@ -301,9 +141,14 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = listOf(uvPath!!, "python", "list")
+        val command = listOf("python", "list")
         
-        return executeCommand(command)
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
     }
     
     /**
@@ -314,9 +159,14 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = listOf(uvPath!!, "python", "find", pythonVersion)
+        val command = listOf("python", "find", pythonVersion)
         
-        return executeCommand(command)
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
     }
     
     /**
@@ -327,9 +177,14 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = listOf(uvPath!!, "python", "install", pythonVersion)
+        val command = listOf("python", "install", pythonVersion)
         
-        return executeCommand(command)
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
     }
     
     /**
@@ -340,8 +195,309 @@ class UVInterface : BaseInterface {
             return CommandResult(false, "", "UV is not installed")
         }
         
-        val command = listOf(uvPath!!, "python", "uninstall", pythonVersion)
+        val command = listOf("python", "uninstall", pythonVersion)
         
-        return executeCommand(command)
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
+    }
+    
+    /**
+     * Generate or update lock file for the project
+     */
+    override suspend fun generateLockFile(projectPath: String, extraArgs: Map<String, String>?): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("lock")
+        
+        // Add extra arguments
+        if (extraArgs != null) {
+            if (extraArgs.containsKey("upgrade")) {
+                command.add("--upgrade")
+            }
+            if (extraArgs.containsKey("check")) {
+                command.add("--check")
+            }
+            if (extraArgs.containsKey("frozen")) {
+                command.add("--frozen")
+            }
+            if (extraArgs.containsKey("script") && extraArgs["script"] != null) {
+                command.add("--script")
+                command.add(extraArgs["script"]!!)
+            }
+        }
+        
+        return executeCommandInDirectory(command, projectPath)
+    }
+    
+    /**
+     * Upgrade all packages in lock file to latest versions
+     */
+    override suspend fun upgradeLockFile(projectPath: String, extraArgs: Map<String, String>?): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("lock", "--upgrade")
+        
+        // Add extra arguments
+        if (extraArgs != null) {
+            if (extraArgs.containsKey("platform")) {
+                command.add("--platform")
+                command.add(extraArgs["platform"]!!)
+            }
+        }
+        
+        return executeCommandInDirectory(command, projectPath)
+    }
+    
+    /**
+     * Upgrade specific package in lock file
+     */
+    override suspend fun upgradePackageInLock(projectPath: String, packageName: String, version: String?, extraArgs: Map<String, String>?): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("lock", "--upgrade-package")
+        
+        if (version != null) {
+            command.add("$packageName==$version")
+        } else {
+            command.add(packageName)
+        }
+        
+        // Add extra arguments
+        if (extraArgs != null) {
+            if (extraArgs.containsKey("platform")) {
+                command.add("--platform")
+                command.add(extraArgs["platform"]!!)
+            }
+        }
+        
+        return executeCommandInDirectory(command, projectPath)
+    }
+    
+    /**
+     * Validate if lock file is up-to-date
+     */
+    override suspend fun validateLockFile(projectPath: String, extraArgs: Map<String, String>?): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("lock", "--check")
+        
+        return executeCommandInDirectory(command, projectPath)
+    }
+    
+    /**
+     * Export lock file to different format
+     */
+    override suspend fun exportLockFile(projectPath: String, format: String, outputPath: String?, extraArgs: Map<String, String>?): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("export")
+        
+        when (format.lowercase()) {
+            "requirements-txt", "requirements" -> {
+                command.add("--format")
+                command.add("requirements-txt")
+            }
+            "pylock-toml", "pylock" -> {
+                // Default export format for pylock.toml
+            }
+            else -> {
+                return CommandResult(false, "", "Unsupported export format: $format. Supported formats: requirements-txt, pylock-toml")
+            }
+        }
+        
+        if (outputPath != null) {
+            command.add("-o")
+            command.add(outputPath)
+        }
+        
+        // Add extra arguments
+        if (extraArgs != null) {
+            if (extraArgs.containsKey("no-hashes")) {
+                command.add("--no-hashes")
+            }
+            if (extraArgs.containsKey("no-header")) {
+                command.add("--no-header")
+            }
+            if (extraArgs.containsKey("no-emit-package")) {
+                command.add("--no-emit-package")
+                command.add(extraArgs["no-emit-package"]!!)
+            }
+        }
+        
+        return executeCommandInDirectory(command, projectPath)
+    }
+    
+    /**
+     * Helper method to execute command in a specific directory
+     */
+    private suspend fun executeCommandInDirectory(command: List<String>, directory: String): CommandResult {
+        val (exitCode, output) = uv.executeCommand(command, File(directory))
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
+    }
+
+    /**
+     * Synchronize dependencies from lock file
+     */
+    override suspend fun syncFromLockFile(projectPath: String, lockFilePath: String?, extraArgs: Map<String, String>?): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("pip", "sync")
+        
+        // Add lock file path if specified
+        if (!lockFilePath.isNullOrEmpty()) {
+            command.add(lockFilePath)
+        }
+        
+        // Add other extra arguments (excluding platform-specific ones)
+        extraArgs?.forEach { (key, value) ->
+            if (key != "platform") {
+                command.addAll(listOf("--$key", value))
+            }
+        }
+        
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
+    }
+    
+    /**
+     * Generate lock file export (simplified without platform-specific options)
+     * @param projectPath Project path
+     * @param outputPath Output path for the exported file
+     * @param format Export format (default: "requirements-txt")
+     * @return Result of lock file export
+     */
+    suspend fun exportLockFile(
+        projectPath: String, 
+        outputPath: String, 
+        format: String = "requirements-txt"
+    ): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        return try {
+            val command = mutableListOf("export")
+            
+            // Add format specification
+            when (format.lowercase()) {
+                "requirements-txt", "requirements" -> {
+                    command.addAll(listOf("--format", "requirements-txt"))
+                }
+                else -> {
+                    return CommandResult(false, "", "Unsupported export format: $format. Supported formats: requirements-txt")
+                }
+            }
+            
+            // Add output path
+            if (outputPath.isNotEmpty()) {
+                command.addAll(listOf("-o", outputPath))
+            }
+            
+            val result = executeCommandInDirectory(command, projectPath)
+            if (result.success) {
+                CommandResult(true, "Exported $format", result.output)
+            } else {
+                CommandResult(false, "", "Failed to export $format: ${result.error}")
+            }
+        } catch (e: Exception) {
+            CommandResult(false, "", "Error exporting lock file: ${e.message}")
+        }
+    }
+    
+    /**
+     * Convert platform name to UV environment marker
+     */
+    private fun getPlatformMarker(platform: String): String {
+        return when {
+            platform.startsWith("linux") -> "linux"
+            platform.startsWith("windows") -> "win32"
+            platform.startsWith("macos") -> "darwin"
+            platform.startsWith("android") -> "linux"  // Android uses Linux kernel
+            else -> platform
+        }
+    }
+    
+
+    
+    /**
+     * Sync dependencies from requirements file
+     * @param venvPath Virtual environment path
+     * @param requirementsPath Path to requirements file
+     * @param extraArgs Extra arguments
+     * @return Result of dependency synchronization
+     */
+    suspend fun syncFromRequirements(
+        venvPath: String,
+        requirementsPath: String,
+        extraArgs: Map<String, String>? = null
+    ): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+        
+        val command = mutableListOf("pip", "sync")
+        
+        // Add the requirements file path
+        command.add(requirementsPath)
+        
+        // Add extra arguments (excluding platform-specific ones)
+        extraArgs?.forEach { (key, value) ->
+            if (key != "platform") {
+                command.addAll(listOf("--$key", value))
+            }
+        }
+        
+        return executeInVenv(venvPath, command)
+    }
+    
+    /**
+     * Override executeCommand to use UV class
+     */
+    override suspend fun executeCommand(command: List<String>): CommandResult {
+        val (exitCode, output) = uv.executeCommand(command)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
+    }
+    
+    /**
+     * Override executeInVenv to use UV class with virtual environment
+     */
+    override suspend fun executeInVenv(venvPath: String, command: List<String>): CommandResult {
+        // For UV, we can use the virtual environment directly by setting the working directory
+        // UV will automatically detect and use the virtual environment in the project directory
+        val venvDir = File(venvPath)
+        val (exitCode, output) = uv.executeCommand(command, venvDir)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
     }
 }

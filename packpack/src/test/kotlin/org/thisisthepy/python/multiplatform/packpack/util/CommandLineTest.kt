@@ -113,7 +113,7 @@ class CommandLineTest {
     
     @Test
     fun `should handle init command with project name and python version`() {
-        main(arrayOf("init", "test_project", "3.11"))
+        main(arrayOf("init", "test_project", "3.13"))
         
         val output = testOut.toString()
         assertTrue(output.contains("Initializing") || output.contains("project"))
@@ -134,7 +134,7 @@ class CommandLineTest {
         
         val output = testOut.toString()
         assertTrue(output.contains("Missing required argument: python version"))
-        assertTrue(output.contains("Example: pypackpack python use 3.11"))
+        assertTrue(output.contains("Example: pypackpack python use 3.13"))
     }
     
     @Test
@@ -148,10 +148,10 @@ class CommandLineTest {
     
     @Test
     fun `should handle python use with valid version`() {
-        main(arrayOf("python", "use", "3.11"))
+        main(arrayOf("python", "use", "3.13"))
         
         val output = testOut.toString()
-        assertTrue(output.contains("Switching") || output.contains("Python") || output.contains("3.11"))
+        assertTrue(output.contains("Switching") || output.contains("Python") || output.contains("3.13"))
     }
     
     @Test
@@ -172,10 +172,10 @@ class CommandLineTest {
     
     @Test
     fun `should handle python install with valid version`() {
-        main(arrayOf("python", "install", "3.11"))
+        main(arrayOf("python", "install", "3.13"))
         
         val output = testOut.toString()
-        assertTrue(output.contains("Installing") || output.contains("Python") || output.contains("3.11"))
+        assertTrue(output.contains("Installing") || output.contains("Python") || output.contains("3.13"))
     }
     
     @Test
@@ -278,6 +278,21 @@ class CommandLineTest {
     }
     
     @Test
+    fun `should handle target list command`() {
+        main(arrayOf("target", "list"))
+        
+        val output = testOut.toString()
+        assertTrue(output.contains("Supported target platforms:"))
+        assertTrue(output.contains("android_21_arm64"))
+        assertTrue(output.contains("android_21_x86_64"))
+        assertTrue(output.contains("windows_amd64"))
+        assertTrue(output.contains("macos_arm64"))
+        assertTrue(output.contains("macos_x86_64"))
+        assertTrue(output.contains("linux_amd64"))
+        assertTrue(output.contains("Usage examples:"))
+    }
+    
+    @Test
     fun `should handle dependency add without package name`() {
         main(arrayOf("add"))
         
@@ -357,7 +372,7 @@ class CommandLineTest {
     @Test
     fun `should validate python version format in various commands`() {
         // Test invalid formats
-        val invalidVersions = listOf("3", "3.11.5.1", "invalid", "3.11-beta")
+        val invalidVersions = listOf("3", "3.13.5.1", "invalid", "3.14-beta")
         
         for (version in invalidVersions) {
             testOut.reset()
@@ -379,7 +394,7 @@ class CommandLineTest {
     
     @Test
     fun `should handle multiple arguments correctly`() {
-        main(arrayOf("init", "test_project", "3.11", "--extra-arg"))
+        main(arrayOf("init", "test_project", "3.13", "--extra-arg"))
         
         val output = testOut.toString()
         // Should handle extra arguments gracefully

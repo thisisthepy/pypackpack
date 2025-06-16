@@ -73,9 +73,10 @@ fun printHelp() {
         Usage: $processName <command> [options]
 
         Commands:
-            init init [<project name>] [<python version>]         Initialize a new project (default: python 3.11)
+            init [<project name>] [<python version>]             Initialize a new project (default: python 3.13)
             package add <package name>                            Add a new package to the project
             package remove <package name>                         Remove a package from the project
+            target list                                           List all supported target platforms
             target add <target name> [<package name>]             Add target platform to a package (default: all)
             target remove <target name> [<package name>]          Remove target platform from a package (default: all)
             
@@ -98,7 +99,7 @@ fun printHelp() {
             version, --version, -v                                Show version information
 
         Examples:
-            $processName init my_project 3.11
+            $processName init my_project 3.13
             $processName python use 3.13
             $processName package add my_package
             $processName target add windows my_package
@@ -175,7 +176,7 @@ fun handlePython(args: Array<String>) {
         ErrorHandler.missingArgument(
             argumentName = "subcommand",
             command = "python",
-            example = "pypackpack python use 3.11"
+            example = "pypackpack python use 3.13"
         )
         return
     }
@@ -194,7 +195,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.missingArgument(
                     argumentName = "python version",
                     command = "python use",
-                    example = "pypackpack python use 3.11"
+                    example = "pypackpack python use 3.13"
                 )
                 return
             }
@@ -205,7 +206,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.invalidArgument(
                     argumentName = "python version",
                     value = pythonVersion,
-                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.13 or 3.13.1)"
                 )
                 return
             }
@@ -248,7 +249,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.missingArgument(
                     argumentName = "python version",
                     command = "python find",
-                    example = "pypackpack python find 3.11"
+                    example = "pypackpack python find 3.13"
                 )
                 return
             }
@@ -259,7 +260,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.invalidArgument(
                     argumentName = "python version",
                     value = pythonVersion,
-                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.13 or 3.13.1)"
                 )
                 return
             }
@@ -268,7 +269,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.operationFailed(
                     operation = "find Python version $pythonVersion",
                     suggestions = listOf(
-                        "Try a different version format (e.g., 3.11 instead of 3.11.0)",
+                        "Try a different version format (e.g., 3.13 instead of 3.13.0)",
                         "Check available versions: pypackpack python list",
                         "Install the version: pypackpack python install $pythonVersion"
                     )
@@ -280,7 +281,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.missingArgument(
                     argumentName = "python version",
                     command = "python install",
-                    example = "pypackpack python install 3.11"
+                    example = "pypackpack python install 3.13"
                 )
                 return
             }
@@ -291,7 +292,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.invalidArgument(
                     argumentName = "python version",
                     value = pythonVersion,
-                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.13 or 3.13.1)"
                 )
                 return
             }
@@ -319,7 +320,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.missingArgument(
                     argumentName = "python version",
                     command = "python uninstall",
-                    example = "pypackpack python uninstall 3.11"
+                    example = "pypackpack python uninstall 3.13"
                 )
                 return
             }
@@ -330,7 +331,7 @@ fun handlePython(args: Array<String>) {
                 ErrorHandler.invalidArgument(
                     argumentName = "python version",
                     value = pythonVersion,
-                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.11 or 3.11.5)"
+                    expectedFormat = "X.Y or X.Y.Z (e.g., 3.13 or 3.13.1)"
                 )
                 return
             }
@@ -485,6 +486,27 @@ fun handleTarget(args: Array<String>) {
     val subcommand = args[1].lowercase()
     
     when (subcommand) {
+        "list" -> {
+            // List all supported target platforms
+            val supportedTargets = listOf(
+                "android_21_arm64",
+                "android_21_x86_64", 
+                "windows_amd64",
+                "macos_arm64",
+                "macos_x86_64",
+                "linux_amd64"
+            )
+            
+            println("Supported target platforms:")
+            supportedTargets.forEach { target ->
+                println("  - $target")
+            }
+            println()
+            println("Usage examples:")
+            println("  pypackpack target add windows_amd64 my_package")
+            println("  pypackpack target add android_21_arm64 my_package")
+            println("  pypackpack target add linux_amd64 my_package")
+        }
         "add" -> {
             if (args.size < 3) {
                 ErrorHandler.missingArgument(
@@ -528,7 +550,7 @@ fun handleTarget(args: Array<String>) {
                     suggestions = listOf(
                         "Check if the package '$packageName' exists in the project",
                         "Verify you're in a PyPackPack project directory",
-                        "Supported targets: windows, linux, macos, android, ios",
+                        "Supported targets: android_21_arm64, android_21_x86_64, windows_amd64, macos_arm64, macos_x86_64, linux_amd64",
                         "Make sure you have write permissions"
                     )
                 )
@@ -587,7 +609,7 @@ fun handleTarget(args: Array<String>) {
             }
         }
         else -> {
-            val availableSubcommands = listOf("add", "remove")
+            val availableSubcommands = listOf("list", "add", "remove")
             ErrorHandler.unknownCommand("target $subcommand", availableSubcommands.map { "target $it" })
         }
     }
