@@ -14,7 +14,6 @@ repositories {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.koin.core)
     implementation("com.akuleshov7:ktoml-core:0.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
     testImplementation(kotlin("test"))

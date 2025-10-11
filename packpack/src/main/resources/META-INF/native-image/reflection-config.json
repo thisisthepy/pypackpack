@@ -95,32 +95,5 @@
     "allPublicMethods": true,
     "allDeclaredFields": true,
     "allPublicFields": true
-  },
-  {
-    "name": "org.koin.core.context.GlobalContext",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true,
-    "allDeclaredFields": true,
-    "allPublicFields": true
-  },
-  {
-    "name": "org.koin.core.logger.PrintLogger",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true,
-    "allDeclaredFields": true,
-    "allPublicFields": true
-  },
-  {
-    "name": "org.thisisthepy.python.multiplatform.packpack.di.KoinInitializer",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true,
-    "allDeclaredFields": true,
-    "allPublicFields": true
   }
 ]

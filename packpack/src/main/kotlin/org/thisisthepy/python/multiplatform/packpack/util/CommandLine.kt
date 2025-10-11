@@ -4,23 +4,12 @@ import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
-import org.thisisthepy.python.multiplatform.packpack.di.KoinInitializer
 import java.io.File
 
 /**
  * Main entry point for CLI
  */
 fun main(args: Array<String>) {
-    // Initialize Koin DI container
-    if (!KoinInitializer.isInitialized()) {
-        KoinInitializer.initialize()
-    }
-    
-    // Add shutdown hook to clean up Koin
-    Runtime.getRuntime().addShutdownHook(Thread {
-        KoinInitializer.shutdown()
-    })
-    
     if (args.isEmpty()) {
         printHelp()
         return
