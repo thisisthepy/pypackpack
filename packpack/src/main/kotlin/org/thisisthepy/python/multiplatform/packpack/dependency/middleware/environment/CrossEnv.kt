@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
  */
 class CrossEnv {
     private lateinit var backend: BaseInterface
+    private lateinit var devEnv: DevEnv
     private val venvPath = ".venv"
     private val pyprojectFile = "pyproject.toml"
     private val lockFile = "pyproject.lock"
@@ -23,9 +24,10 @@ class CrossEnv {
      * Available target platforms
      */
     private val availablePlatforms = listOf(
-        "android_21_arm64",
-        "android_21_x86_64",
+        "android_24_arm64",
+        "android_24_x86_64",
         "windows_amd64",
+        "windows_arm64",
         "macos_arm64",
         "macos_x86_64",
         "linux_amd64"
@@ -109,16 +111,12 @@ class CrossEnv {
         
         // Create package pyproject.toml
         val pyprojectContent = """
-            [build-system]
-            requires = ["setuptools>=61.0"]
-            build-backend = "setuptools.build_meta"
-
             [project]
             name = "$packageName"
             version = "0.1.0"
             description = "A Python package managed by PyPackPack"
             readme = "../README.md"
-            requires-python = ">=3.13"
+            requires-python = ">=${devEnv.projectPythonVersion}"
             
             [tool.pypackpack]
             managed = true
@@ -218,9 +216,11 @@ class CrossEnv {
     private fun detectHostPlatform(): String {
         val os = System.getProperty("os.name").lowercase()
         val arch = System.getProperty("os.arch").lowercase()
+
+        println("Detected OS: $os, Architecture: $arch")
         
         return when {
-            os.contains("win") -> "windows_amd64"
+            os.contains("win") -> if (arch.contains("aarch64") || arch.contains("arm64")) "windows_arm64" else "windows_amd64"
             os.contains("mac") -> if (arch.contains("aarch64") || arch.contains("arm")) "macos_arm64" else "macos_x86_64"
             else -> "linux_amd64" // Default to Linux x86_64
         }

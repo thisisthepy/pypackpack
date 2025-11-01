@@ -18,6 +18,10 @@ class DevEnv {
     private val lockFile = "pyproject.lock"
     private val requirementsFile = "requirements.txt"
     private val constraintsFile = "constraints.txt"
+    private val DefaultPythonVersion = "3.10"
+    
+    var projectPythonVersion: String = DefaultPythonVersion
+        private set
     
     /**
      * Initialize development environment
@@ -69,17 +73,14 @@ class DevEnv {
         
         // Create pyproject.toml
         val projectNameInFile = projectName ?: projectDir.name
+        this.projectPythonVersion = pythonVersion ?: DefaultPythonVersion
         val pyprojectContent = """
-            [build-system]
-            requires = ["setuptools>=61.0"]
-            build-backend = "setuptools.build_meta"
-
             [project]
             name = "$projectNameInFile"
             version = "0.1.0"
             description = "A Python multi-platform project"
             readme = "README.md"
-            requires-python = ">=3.13"
+            requires-python = ">=$projectPythonVersion"
             
             [tool.pypackpack]
             managed = true
@@ -109,7 +110,7 @@ class DevEnv {
         val venvDir = File(projectDir, venvPath)
         if (!venvDir.exists()) {
             return runBlocking {
-                val result = backend.createVirtualEnvironment(venvDir.absolutePath, pythonVersion)
+                val result = backend.createVirtualEnvironment(venvDir.absolutePath, projectPythonVersion)
                 if (result.success) {
                     println("Created project with virtual environment in: ${projectDir.absolutePath}")
                     true
@@ -175,9 +176,6 @@ class DevEnv {
                     println("Warning: Failed to update lock file: ${lockResult.error}")
                 }
                 
-                // Update requirements.txt for compatibility
-                updateRequirementsFile(projectRoot)
-                
                 println("Added dependencies: ${dependencies.joinToString(", ")}")
                 true
             } else {
@@ -216,9 +214,6 @@ class DevEnv {
                 } else {
                     println("Warning: Failed to update lock file: ${lockResult.error}")
                 }
-                
-                // Update requirements.txt for compatibility
-                updateRequirementsFile(projectRoot)
                 
                 println("Removed dependencies: ${dependencies.joinToString(", ")}")
                 true
@@ -270,9 +265,6 @@ class DevEnv {
             // Use UV's native sync functionality
             val result = backend.syncFromLockFile(projectRoot.absolutePath, null, extraArgs)
             if (result.success) {
-                // Update requirements.txt for compatibility
-                updateRequirementsFile(projectRoot)
-                
                 println("Dependencies synchronized successfully")
                 true
             } else {
@@ -307,29 +299,6 @@ class DevEnv {
                 true
             } else {
                 println("Failed to show dependency tree: ${result.error}")
-                false
-            }
-        }
-    }
-    
-    /**
-     * Update requirements.txt file
-     * @param projectRoot Project root directory
-     */
-    private fun updateRequirementsFile(projectRoot: File): Boolean {
-        val venvDir = File(projectRoot, venvPath)
-        if (!venvDir.exists()) {
-            return false
-        }
-        
-        return runBlocking {
-            val command = listOf("pip", "freeze")
-            val result = backend.executeInVenv(venvDir.absolutePath, command)
-            
-            if (result.success) {
-                File(projectRoot, requirementsFile).writeText(result.output)
-                true
-            } else {
                 false
             }
         }
@@ -413,6 +382,7 @@ class DevEnv {
      * @param pythonVersion Python version
      * @return Success status
      */
+    // TODO: Change toml python version when changing python version
     fun changePythonVersion(pythonVersion: String): Boolean {
         val projectRoot = findProjectRoot() ?: run {
             println("Project root not found. Please initialize a project first.")
