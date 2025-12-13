@@ -5,5 +5,5 @@ package org.thisisthepy.python.multiplatform.packpack.util
  */
 data class DownloadSpec(
     val url: String,
-    val fileName: String
+    val fileName: String,
 )

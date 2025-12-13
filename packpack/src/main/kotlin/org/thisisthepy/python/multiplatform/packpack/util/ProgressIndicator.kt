@@ -11,14 +11,14 @@ import java.util.concurrent.atomic.AtomicLong
 class ProgressIndicator(
     private val message: String,
     private val showPercentage: Boolean = false,
-    private val showElapsedTime: Boolean = true
+    private val showElapsedTime: Boolean = true,
 ) {
     private val isRunning = AtomicBoolean(false)
     private val startTime = AtomicLong(0)
     private val currentStep = AtomicInteger(0)
     private val totalSteps = AtomicInteger(0)
     private var progressJob: Job? = null
-    
+
     // ANSI escape codes
     private val CURSOR_HIDE = "\u001B[?25l"
     private val CURSOR_SHOW = "\u001B[?25h"
@@ -29,113 +29,117 @@ class ProgressIndicator(
     private val YELLOW = "\u001B[33m"
     private val RESET = "\u001B[0m"
     private val BOLD = "\u001B[1m"
-    
+
     // Spinner characters
     private val spinnerChars = charArrayOf('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
-    
+
     /**
      * Start the progress indicator with indeterminate progress
      */
     fun start() {
         if (isRunning.get()) return
-        
+
         isRunning.set(true)
         startTime.set(System.currentTimeMillis())
         print(CURSOR_HIDE)
-        
-        progressJob = CoroutineScope(Dispatchers.IO).launch {
-            var spinnerIndex = 0
-            
-            while (isRunning.get()) {
-                val elapsed = formatElapsedTime(System.currentTimeMillis() - startTime.get())
-                val spinner = spinnerChars[spinnerIndex % spinnerChars.size]
-                
-                val progressText = buildString {
-                    append(CLEAR_LINE)
-                    append(CURSOR_TO_START)
-                    append("$BLUE$spinner$RESET ")
-                    append("$BOLD$message$RESET")
-                    
-                    if (showElapsedTime) {
-                        append(" ${YELLOW}[$elapsed]$RESET")
-                    }
+
+        progressJob =
+            CoroutineScope(Dispatchers.IO).launch {
+                var spinnerIndex = 0
+
+                while (isRunning.get()) {
+                    val elapsed = formatElapsedTime(System.currentTimeMillis() - startTime.get())
+                    val spinner = spinnerChars[spinnerIndex % spinnerChars.size]
+
+                    val progressText =
+                        buildString {
+                            append(CLEAR_LINE)
+                            append(CURSOR_TO_START)
+                            append("$BLUE$spinner$RESET ")
+                            append("$BOLD$message$RESET")
+
+                            if (showElapsedTime) {
+                                append(" $YELLOW[$elapsed]$RESET")
+                            }
+                        }
+
+                    print(progressText)
+
+                    spinnerIndex++
+                    delay(100) // Update every 100ms
                 }
-                
-                print(progressText)
-                
-                spinnerIndex++
-                delay(100) // Update every 100ms
             }
-        }
     }
-    
+
     /**
      * Start the progress indicator with determinate progress
      */
     fun start(totalSteps: Int) {
         if (isRunning.get()) return
-        
+
         this.totalSteps.set(totalSteps)
         this.currentStep.set(0)
         isRunning.set(true)
         startTime.set(System.currentTimeMillis())
         print(CURSOR_HIDE)
-        
-        progressJob = CoroutineScope(Dispatchers.IO).launch {
-            var spinnerIndex = 0
-            
-            while (isRunning.get()) {
-                val elapsed = formatElapsedTime(System.currentTimeMillis() - startTime.get())
-                val spinner = spinnerChars[spinnerIndex % spinnerChars.size]
-                val current = currentStep.get()
-                val total = this@ProgressIndicator.totalSteps.get()
-                
-                val progressText = buildString {
-                    append(CLEAR_LINE)
-                    append(CURSOR_TO_START)
-                    append("$BLUE$spinner$RESET ")
-                    append("$BOLD$message$RESET")
-                    
-                    if (showPercentage && total > 0) {
-                        val percentage = (current * 100) / total
-                        append(" ${GREEN}[$current/$total - $percentage%]$RESET")
-                        
-                        // Progress bar
-                        val barWidth = 20
-                        val filledWidth = (current * barWidth) / total
-                        append(" [")
-                        repeat(filledWidth) { append("█") }
-                        repeat(barWidth - filledWidth) { append("░") }
-                        append("]")
-                    }
-                    
-                    if (showElapsedTime) {
-                        append(" ${YELLOW}[$elapsed]$RESET")
-                    }
+
+        progressJob =
+            CoroutineScope(Dispatchers.IO).launch {
+                var spinnerIndex = 0
+
+                while (isRunning.get()) {
+                    val elapsed = formatElapsedTime(System.currentTimeMillis() - startTime.get())
+                    val spinner = spinnerChars[spinnerIndex % spinnerChars.size]
+                    val current = currentStep.get()
+                    val total = this@ProgressIndicator.totalSteps.get()
+
+                    val progressText =
+                        buildString {
+                            append(CLEAR_LINE)
+                            append(CURSOR_TO_START)
+                            append("$BLUE$spinner$RESET ")
+                            append("$BOLD$message$RESET")
+
+                            if (showPercentage && total > 0) {
+                                val percentage = (current * 100) / total
+                                append(" $GREEN[$current/$total - $percentage%]$RESET")
+
+                                // Progress bar
+                                val barWidth = 20
+                                val filledWidth = (current * barWidth) / total
+                                append(" [")
+                                repeat(filledWidth) { append("█") }
+                                repeat(barWidth - filledWidth) { append("░") }
+                                append("]")
+                            }
+
+                            if (showElapsedTime) {
+                                append(" $YELLOW[$elapsed]$RESET")
+                            }
+                        }
+
+                    print(progressText)
+
+                    spinnerIndex++
+                    delay(100) // Update every 100ms
                 }
-                
-                print(progressText)
-                
-                spinnerIndex++
-                delay(100) // Update every 100ms
             }
-        }
     }
-    
+
     /**
      * Update the current step (for determinate progress)
      */
     fun updateStep(step: Int) {
         currentStep.set(step)
     }
-    
+
     /**
      * Increment the current step by 1
      */
     fun incrementStep() {
         currentStep.incrementAndGet()
     }
-    
+
     /**
      * Update the message
      */
@@ -143,7 +147,7 @@ class ProgressIndicator(
         // For simplicity, we'll create a new indicator with the new message
         // In a more complex implementation, we could update the message dynamically
     }
-    
+
     /**
      * Stop the progress indicator with success message
      */
@@ -151,11 +155,11 @@ class ProgressIndicator(
         stop()
         val elapsed = formatElapsedTime(System.currentTimeMillis() - startTime.get())
         val finalMessage = successMessage ?: "Completed"
-        
-        println("${CLEAR_LINE}${CURSOR_TO_START}${GREEN}✓$RESET $BOLD$finalMessage$RESET ${YELLOW}[$elapsed]$RESET")
+
+        println("${CLEAR_LINE}${CURSOR_TO_START}$GREEN✓$RESET $BOLD$finalMessage$RESET $YELLOW[$elapsed]$RESET")
         print(CURSOR_SHOW)
     }
-    
+
     /**
      * Stop the progress indicator with error message
      */
@@ -163,25 +167,25 @@ class ProgressIndicator(
         stop()
         val elapsed = formatElapsedTime(System.currentTimeMillis() - startTime.get())
         val finalMessage = errorMessage ?: "Failed"
-        
-        println("${CLEAR_LINE}${CURSOR_TO_START}${ErrorHandler.RED}✗$RESET $BOLD$finalMessage$RESET ${YELLOW}[$elapsed]$RESET")
+
+        println("${CLEAR_LINE}${CURSOR_TO_START}${ErrorHandler.RED}✗$RESET $BOLD$finalMessage$RESET $YELLOW[$elapsed]$RESET")
         print(CURSOR_SHOW)
     }
-    
+
     /**
      * Stop the progress indicator
      */
     fun stop() {
         if (!isRunning.get()) return
-        
+
         isRunning.set(false)
         progressJob?.cancel()
         progressJob = null
-        
+
         // Clear the line and show cursor
         print("$CLEAR_LINE$CURSOR_TO_START$CURSOR_SHOW")
     }
-    
+
     /**
      * Format elapsed time in human-readable format
      */
@@ -189,14 +193,14 @@ class ProgressIndicator(
         val seconds = milliseconds / 1000
         val minutes = seconds / 60
         val hours = minutes / 60
-        
+
         return when {
             hours > 0 -> String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60)
             minutes > 0 -> String.format("%02d:%02d", minutes, seconds % 60)
             else -> String.format("%.1fs", seconds + (milliseconds % 1000) / 1000.0)
         }
     }
-    
+
     companion object {
         /**
          * Execute a block of code with a progress indicator
@@ -205,7 +209,7 @@ class ProgressIndicator(
             message: String,
             showPercentage: Boolean = false,
             showElapsedTime: Boolean = true,
-            block: suspend (ProgressIndicator) -> T
+            block: suspend (ProgressIndicator) -> T,
         ): T {
             val indicator = ProgressIndicator(message, showPercentage, showElapsedTime)
             return try {
@@ -218,7 +222,7 @@ class ProgressIndicator(
                 throw e
             }
         }
-        
+
         /**
          * Execute a block of code with determinate progress indicator
          */
@@ -226,7 +230,7 @@ class ProgressIndicator(
             message: String,
             totalSteps: Int,
             showElapsedTime: Boolean = true,
-            block: suspend (ProgressIndicator) -> T
+            block: suspend (ProgressIndicator) -> T,
         ): T {
             val indicator = ProgressIndicator(message, showPercentage = true, showElapsedTime)
             return try {
@@ -239,20 +243,19 @@ class ProgressIndicator(
                 throw e
             }
         }
-        
+
         /**
          * Simple progress indicator for quick operations
          */
-        fun simple(message: String): ProgressIndicator {
-            return ProgressIndicator(message, showPercentage = false, showElapsedTime = false)
-        }
-        
+        fun simple(message: String): ProgressIndicator = ProgressIndicator(message, showPercentage = false, showElapsedTime = false)
+
         /**
          * Detailed progress indicator for complex operations
          */
-        fun detailed(message: String, totalSteps: Int): ProgressIndicator {
-            return ProgressIndicator(message, showPercentage = true, showElapsedTime = true)
-        }
+        fun detailed(
+            message: String,
+            totalSteps: Int,
+        ): ProgressIndicator = ProgressIndicator(message, showPercentage = true, showElapsedTime = true)
     }
 }
 
@@ -261,7 +264,7 @@ class ProgressIndicator(
  */
 suspend fun <T> runWithProgress(
     message: String,
-    block: suspend (ProgressIndicator) -> T
+    block: suspend (ProgressIndicator) -> T,
 ): T = ProgressIndicator.withProgress(message, block = block)
 
 /**
@@ -269,7 +272,7 @@ suspend fun <T> runWithProgress(
  */
 fun <T> runWithProgressBlocking(
     message: String,
-    block: (ProgressIndicator) -> T
+    block: (ProgressIndicator) -> T,
 ): T {
     val indicator = ProgressIndicator(message)
     return try {
@@ -281,4 +284,4 @@ fun <T> runWithProgressBlocking(
         indicator.error(e.message)
         throw e
     }
-} 
+}
