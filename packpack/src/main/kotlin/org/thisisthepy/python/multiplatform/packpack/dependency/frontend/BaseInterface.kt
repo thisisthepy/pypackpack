@@ -10,24 +10,23 @@ interface BaseInterface {
      * Initialize frontend
      */
     fun initialize()
-    
+
     /**
      * Get middleware interface
      */
     fun getMiddleware(): MiddlewareBaseInterface
-    
+
     companion object {
         /**
          * Create frontend instance
          * @param type Frontend type
          * @return Frontend instance
          */
-        fun create(type: String): BaseInterface {
-            return when (type.lowercase()) {
+        fun create(type: String): BaseInterface =
+            when (type.lowercase()) {
                 "cli" -> Cli()
                 "gradle" -> Gradle()
                 else -> Cli() // Default to CLI
             }
-        }
     }
 }

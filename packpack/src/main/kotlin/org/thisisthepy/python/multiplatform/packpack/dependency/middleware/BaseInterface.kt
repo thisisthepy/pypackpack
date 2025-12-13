@@ -1,21 +1,29 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface as BackendBaseInterface
 
-/**
- * Base interface for middleware
- */
+/** Base interface for middleware */
 interface BaseInterface {
-    /**
-     * Initialize middleware
-     */
+    /** Initialize middleware */
     fun initialize()
-    
-    /**
-     * Get backend interface
-     */
+
+    /** Get backend interface */
     fun getBackend(): BackendBaseInterface
-    
+
+    /** Get development environment */
+    fun getDevEnv(): DevEnv
+
+    /** Get cross-platform environment */
+    fun getCrossEnv(): CrossEnv
+
+    /** Init Project */
+    fun initProject(
+        projectName: String,
+        pythonVersion: String,
+    ): Boolean
+
     /**
      * Add dependencies to a package
      * @param packageName Package name (optional)
@@ -24,8 +32,13 @@ interface BaseInterface {
      * @param extraArgs Extra arguments (optional)
      * @return Success status
      */
-    fun addDependencies(packageName: String?, dependencies: List<String>, targets: List<String>?, extraArgs: Map<String, String>?): Boolean
-    
+    fun addDependencies(
+        packageName: String?,
+        dependencies: List<String>,
+        targets: List<String>?,
+        extraArgs: Map<String, String>?,
+    ): Boolean
+
     /**
      * Remove dependencies from a package
      * @param packageName Package name (optional)
@@ -34,8 +47,13 @@ interface BaseInterface {
      * @param extraArgs Extra arguments (optional)
      * @return Success status
      */
-    fun removeDependencies(packageName: String?, dependencies: List<String>, targets: List<String>?, extraArgs: Map<String, String>?): Boolean
-    
+    fun removeDependencies(
+        packageName: String?,
+        dependencies: List<String>,
+        targets: List<String>?,
+        extraArgs: Map<String, String>?,
+    ): Boolean
+
     /**
      * Synchronize dependencies for a package
      * @param packageName Package name (optional)
@@ -43,8 +61,12 @@ interface BaseInterface {
      * @param extraArgs Extra arguments (optional)
      * @return Success status
      */
-    fun syncDependencies(packageName: String?, targets: List<String>?, extraArgs: Map<String, String>?): Boolean
-    
+    fun syncDependencies(
+        packageName: String?,
+        targets: List<String>?,
+        extraArgs: Map<String, String>?,
+    ): Boolean
+
     /**
      * Show dependency tree for a package
      * @param packageName Package name (optional)
@@ -52,5 +74,9 @@ interface BaseInterface {
      * @param extraArgs Extra arguments (optional)
      * @return Success status
      */
-    fun showDependencyTree(packageName: String?, targets: List<String>?, extraArgs: Map<String, String>?): Boolean
+    fun showDependencyTree(
+        packageName: String?,
+        targets: List<String>?,
+        extraArgs: Map<String, String>?,
+    ): Boolean
 }
