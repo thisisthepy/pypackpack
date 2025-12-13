@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.thisisthepy.python.multiplatform.packpack.util.DownloadSpec
 import org.thisisthepy.python.multiplatform.packpack.util.Downloader
+import org.thisisthepy.python.multiplatform.packpack.util.TargetPlatforms
 import java.io.File
 import java.net.URL
 import java.nio.file.Files
@@ -22,35 +23,15 @@ class UV {
         // Platform-specific UV binary information
         private val PLATFORM_BINARIES =
             mapOf(
-                "linux_amd64" to "uv-x86_64-unknown-linux-gnu.tar.gz",
-                "linux_arm64" to "uv-aarch64-unknown-linux-gnu.tar.gz",
-                "macos_amd64" to "uv-x86_64-apple-darwin.tar.gz",
-                "macos_arm64" to "uv-aarch64-apple-darwin.tar.gz",
-                "windows_amd64" to "uv-x86_64-pc-windows-msvc.zip",
-                "windows_arm64" to "uv-aarch64-pc-windows-msvc.zip",
+                "x86_64-unknown-linux-gnu" to "uv-x86_64-unknown-linux-gnu.tar.gz",
+                "aarch64-unknown-linux-gnu" to "uv-aarch64-unknown-linux-gnu.tar.gz",
+                "x86_64-apple-darwin" to "uv-x86_64-apple-darwin.tar.gz",
+                "aarch64-apple-darwin" to "uv-aarch64-apple-darwin.tar.gz",
+                "x86_64-pc-windows-msvc" to "uv-x86_64-pc-windows-msvc.zip",
+                "aarch64-pc-windows-msvc" to "uv-aarch64-pc-windows-msvc.zip",
             )
 
-        private fun getCurrentPlatform(): String {
-            val osName = System.getProperty("os.name").lowercase()
-            val osArch = System.getProperty("os.arch").lowercase()
-
-            val platform =
-                when {
-                    osName.contains("linux") -> "linux"
-                    osName.contains("mac") || osName.contains("darwin") -> "macos"
-                    osName.contains("windows") -> "windows"
-                    else -> throw UnsupportedOperationException("Unsupported OS: $osName")
-                }
-
-            val arch =
-                when {
-                    osArch.contains("amd64") || osArch.contains("x86_64") -> "amd64"
-                    osArch.contains("aarch64") || osArch.contains("arm64") -> "arm64"
-                    else -> throw UnsupportedOperationException("Unsupported architecture: $osArch")
-                }
-
-            return "${platform}_$arch"
-        }
+        private fun getCurrentPlatformTarget(): String = TargetPlatforms.detectHostTarget()
 
         private fun getUvInstallDir(): File {
             val userHome = System.getProperty("user.home")
@@ -134,7 +115,7 @@ class UV {
      */
     private suspend fun downloadAndInstall() =
         withContext(Dispatchers.IO) {
-            val platform = getCurrentPlatform()
+            val platform = getCurrentPlatformTarget()
             val binaryName =
                 PLATFORM_BINARIES[platform]
                     ?: throw UnsupportedOperationException("No UV binary available for platform: $platform")

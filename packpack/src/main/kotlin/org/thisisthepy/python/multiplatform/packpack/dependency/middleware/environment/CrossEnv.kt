@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
+import org.thisisthepy.python.multiplatform.packpack.util.TargetPlatforms
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -21,16 +22,19 @@ class CrossEnv {
     private val crossenvDir = "build/crossenv"
 
     /** Available target platforms */
-    private val availablePlatforms =
-        listOf(
-            "android_24_arm64",
-            "android_24_x86_64",
-            "windows_amd64",
-            "windows_arm64",
-            "macos_arm64",
-            "macos_x86_64",
-            "linux_amd64",
-        )
+    private fun normalizeTargetsOrFail(targets: List<String>): Pair<List<String>, List<String>> {
+        val normalized = mutableListOf<String>()
+        val invalid = mutableListOf<String>()
+        for (target in targets) {
+            val canonical = TargetPlatforms.normalizeOrNull(target)
+            if (canonical == null) {
+                invalid.add(target)
+            } else {
+                normalized.add(canonical)
+            }
+        }
+        return Pair(normalized.distinct(), invalid.distinct())
+    }
 
     /**
      * Initialize cross-platform environment
@@ -232,27 +236,7 @@ class CrossEnv {
 
         println("Detected OS: $os, Architecture: $arch")
 
-        return when {
-            os.contains("win") -> {
-                if (arch.contains("aarch64") || arch.contains("arm64")) {
-                    "windows_arm64"
-                } else {
-                    "windows_amd64"
-                }
-            }
-
-            os.contains("mac") -> {
-                if (arch.contains("aarch64") || arch.contains("arm")) {
-                    "macos_arm64"
-                } else {
-                    "macos_x86_64"
-                }
-            }
-
-            else -> {
-                "linux_amd64"
-            } // Default to Linux x86_64
-        }
+        return TargetPlatforms.detectHostTarget(osName = os, osArch = arch)
     }
 
     /**
@@ -285,18 +269,17 @@ class CrossEnv {
             return false
         }
 
-        // Verify target platforms
-        val invalidPlatforms = targetPlatforms.filter { it !in availablePlatforms }
+        val (normalizedTargets, invalidPlatforms) = normalizeTargetsOrFail(targetPlatforms)
         if (invalidPlatforms.isNotEmpty()) {
             println("Invalid target platforms: ${invalidPlatforms.joinToString(", ")}")
-            println("Available platforms: ${availablePlatforms.joinToString(", ")}")
+            println("Available platforms: ${TargetPlatforms.DISPLAY_TARGETS.joinToString(", ")}")
             return false
         }
 
         // Create source directories for each platform
         val srcDir = File(packageDir, "src")
-        for (platform in targetPlatforms) {
-            val platformDir = File(srcDir, platformToSourceDir(platform))
+        for (platform in normalizedTargets) {
+            val platformDir = File(srcDir, TargetPlatforms.sourceDirNameForTarget(platform))
             if (!platformDir.exists() && !platformDir.mkdirs()) {
                 println("Failed to create source directory for platform: $platform")
                 return false
@@ -314,7 +297,7 @@ class CrossEnv {
         }
 
         var success = true
-        for (platform in targetPlatforms) {
+        for (platform in normalizedTargets) {
             val venvDir = File(crossenvDir, platform)
             if (!venvDir.exists()) {
                 runBlocking {
@@ -335,7 +318,7 @@ class CrossEnv {
             if (pyprojectContent.contains("[tool.pypackpack.targets]")) {
                 // Add targets to existing section
                 var content = pyprojectContent
-                for (platform in targetPlatforms) {
+                for (platform in normalizedTargets) {
                     if (!content.contains("\"$platform\"")) {
                         content =
                             content.replace(
@@ -351,13 +334,13 @@ class CrossEnv {
                 $pyprojectContent
                 
                 [tool.pypackpack.targets]
-                ${targetPlatforms.joinToString("\n") { "\"$it\" = true" }}
+                ${normalizedTargets.joinToString("\n") { "\"$it\" = true" }}
                 """.trimIndent()
             }
         packagePyproject.writeText(updatedContent)
 
         println(
-            "Added target platforms to package $packageName: ${targetPlatforms.joinToString(", ")}",
+            "Added target platforms to package $packageName: ${normalizedTargets.joinToString(", ")}",
         )
         return success
     }
@@ -392,9 +375,17 @@ class CrossEnv {
             return false
         }
 
+        val (normalizedTargets, invalidPlatforms) = normalizeTargetsOrFail(targetPlatforms)
+        if (invalidPlatforms.isNotEmpty()) {
+            println("Invalid target platforms: ${invalidPlatforms.joinToString(", ")}")
+            println("Available platforms: ${TargetPlatforms.DISPLAY_TARGETS.joinToString(", ")}")
+            return false
+        }
+
         // Remove virtual environments for each platform
         val crossenvDir = File(packageDir, "build/crossenv")
-        for (platform in targetPlatforms) {
+        val venvDirsToRemove = (targetPlatforms + normalizedTargets).distinct()
+        for (platform in venvDirsToRemove) {
             val venvDir = File(crossenvDir, platform)
             if (venvDir.exists() && venvDir.isDirectory) {
                 if (!venvDir.deleteRecursively()) {
@@ -405,8 +396,8 @@ class CrossEnv {
 
         // Remove source directories for each platform (if empty)
         val srcDir = File(packageDir, "src")
-        for (platform in targetPlatforms) {
-            val platformDir = File(srcDir, platformToSourceDir(platform))
+        for (platform in normalizedTargets) {
+            val platformDir = File(srcDir, TargetPlatforms.sourceDirNameForTarget(platform))
             if (platformDir.exists() && platformDir.isDirectory) {
                 // Only delete if directory contains only __init__.py or is empty
                 val files = platformDir.listFiles() ?: emptyArray()
@@ -423,13 +414,14 @@ class CrossEnv {
         // Update package pyproject.toml
         val pyprojectContent = packagePyproject.readText()
         var updatedContent = pyprojectContent
-        for (platform in targetPlatforms) {
+        val targetsToRemove = (targetPlatforms + normalizedTargets).distinct()
+        for (platform in targetsToRemove) {
             updatedContent = updatedContent.replace("\"$platform\" = true\n", "")
         }
         packagePyproject.writeText(updatedContent)
 
         println(
-            "Removed target platforms from package $packageName: ${targetPlatforms.joinToString(", ")}",
+            "Removed target platforms from package $packageName: ${normalizedTargets.joinToString(", ")}",
         )
         return true
     }
@@ -439,15 +431,6 @@ class CrossEnv {
      * @param platform Platform identifier
      * @return Source directory name
      */
-    private fun platformToSourceDir(platform: String): String =
-        when {
-            platform.startsWith("android") -> "android"
-            platform.startsWith("windows") -> "windows"
-            platform.startsWith("macos") -> "macos"
-            platform.startsWith("linux") -> "linux"
-            platform.startsWith("wasm") -> "wasm"
-            else -> platform.split("_")[0]
-        }
 
     /**
      * Add dependencies to a package
@@ -611,7 +594,7 @@ class CrossEnv {
 
         // Determine which targets to process
         val targetsToProcess =
-            if (targets != null && targets.isNotEmpty()) {
+            if (!targets.isNullOrEmpty()) {
                 val invalidTargets = targets.filter { it !in availableTargets }
                 if (invalidTargets.isNotEmpty()) {
                     println("Invalid target platforms: ${invalidTargets.joinToString(", ")}")
@@ -705,7 +688,7 @@ class CrossEnv {
 
         // Determine which targets to process
         val targetsToProcess =
-            if (targets != null && targets.isNotEmpty()) {
+            if (!targets.isNullOrEmpty()) {
                 val invalidTargets = targets.filter { it !in availableTargets }
                 if (invalidTargets.isNotEmpty()) {
                     println("Invalid target platforms: ${invalidTargets.joinToString(", ")}")
@@ -720,6 +703,9 @@ class CrossEnv {
             }
 
         // Show dependency tree for each target
+        // NOTE: Do not automatically inject a target/platform flag.
+        // Only add the platform flag when the user explicitly provided --target.
+        val shouldAddPythonPlatform = !targets.isNullOrEmpty()
         var success = true
         for (target in targetsToProcess) {
             val venvDir = File(crossenvDir, target)
@@ -731,8 +717,13 @@ class CrossEnv {
             println("\n=== Dependencies for $packageName (target: $target) ===")
 
             runBlocking {
-                val platform = mapOf("platform" to target)
-                val args = if (extraArgs != null) extraArgs + platform else platform
+                val args =
+                    buildMap {
+                        if (extraArgs != null) putAll(extraArgs)
+                        if (shouldAddPythonPlatform && !containsKey("python-platform")) {
+                            put("python-platform", target)
+                        }
+                    }.ifEmpty { null }
 
                 val result = backend.showDependencyTree(venvDir.absolutePath, args)
                 if (result.success) {

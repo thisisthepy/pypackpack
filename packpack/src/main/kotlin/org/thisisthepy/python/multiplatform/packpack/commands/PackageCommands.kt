@@ -121,9 +121,7 @@ fun handlePackageCommand(args: Array<String>) {
     }
 
     val packageName = args[1]
-    val subcommand = args[2].lowercase()
-
-    when (subcommand) {
+    when (val subcommand = args[2].lowercase()) {
         "add" -> {
             if (args.size < 4) {
                 println("Missing dependency name")

@@ -2,6 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.commands
 
 import org.thisisthepy.python.multiplatform.packpack.util.CliContext
 import org.thisisthepy.python.multiplatform.packpack.util.ErrorHandler
+import org.thisisthepy.python.multiplatform.packpack.util.TargetPlatforms
 
 /** Handle target command */
 fun handleTarget(args: Array<String>) {
@@ -14,28 +15,12 @@ fun handleTarget(args: Array<String>) {
         return
     }
 
-    val subcommand = args[1].lowercase()
-
-    when (subcommand) {
+    when (val subcommand = args[1].lowercase()) {
         "list" -> {
-            // List all supported target platforms
-            val supportedTargets =
-                listOf(
-                    "android_21_arm64",
-                    "android_21_x86_64",
-                    "windows_amd64",
-                    "macos_arm64",
-                    "macos_x86_64",
-                    "linux_amd64",
-                )
-
-            println("Supported target platforms:")
-            supportedTargets.forEach { target -> println("  - $target") }
-            println()
-            println("Usage examples:")
-            println("  pypackpack target add windows_amd64 my_package")
-            println("  pypackpack target add android_21_arm64 my_package")
-            println("  pypackpack target add linux_amd64 my_package")
+            println("Possible values:")
+            TargetPlatforms.DISPLAY_TARGETS.forEach { target ->
+                println("  - $target")
+            }
         }
 
         "add" -> {
