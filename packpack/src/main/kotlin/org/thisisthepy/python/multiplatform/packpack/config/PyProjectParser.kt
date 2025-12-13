@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.config
 
 import com.akuleshov7.ktoml.Toml
+import com.akuleshov7.ktoml.TomlIndentation
 import com.akuleshov7.ktoml.TomlInputConfig
 import com.akuleshov7.ktoml.TomlOutputConfig
 import com.akuleshov7.ktoml.exceptions.TomlDecodingException
@@ -31,7 +32,8 @@ class PyProjectParser {
                 ),
             outputConfig =
                 TomlOutputConfig(
-                    indentation = com.akuleshov7.ktoml.TomlIndentation.FOUR_SPACES,
+                    // Conventional TOML format typically does not indent key/value lines.
+                    indentation = TomlIndentation.NONE,
                 ),
         )
 
@@ -127,7 +129,7 @@ class PyProjectParser {
         filePath: Path,
     ) {
         try {
-            val content = toml.encodeToString(config)
+            val content = toml.encodeToString(normalizeForOutput(config))
             filePath.writeText(content)
         } catch (e: TomlEncodingException) {
             throw PyProjectParseException("Failed to encode TOML content: ${e.message}", e)
@@ -159,12 +161,49 @@ class PyProjectParser {
      */
     fun writeToString(config: PyProjectConfig): String =
         try {
-            toml.encodeToString(config)
+            toml.encodeToString(normalizeForOutput(config))
         } catch (e: TomlEncodingException) {
             throw PyProjectParseException("Failed to encode TOML content: ${e.message}", e)
         } catch (e: Exception) {
             throw PyProjectParseException("Unexpected error during TOML encoding: ${e.message}", e)
         }
+
+    private fun normalizeForOutput(config: PyProjectConfig): PyProjectConfig {
+        fun <V> Map<String, V>.sortedKeys(): Map<String, V> = toSortedMap()
+
+        fun normalizeProject(project: ProjectConfig): ProjectConfig =
+            project.copy(
+                urls = project.urls?.sortedKeys(),
+                optionalDependencies = project.optionalDependencies?.sortedKeys(),
+            )
+
+        fun normalizeTarget(target: TargetConfig): TargetConfig =
+            target.copy(
+                optionalDependencies = target.optionalDependencies?.sortedKeys(),
+                environment = target.environment?.sortedKeys(),
+            )
+
+        fun normalizePyPackPack(tool: PyPackPackConfig): PyPackPackConfig =
+            tool.copy(
+                targets = tool.targets?.toSortedMap()?.mapValues { (_, v) -> normalizeTarget(v) },
+                deploy = tool.deploy?.copy(credentials = tool.deploy.credentials?.sortedKeys()),
+            )
+
+        fun normalizeTool(tool: ToolConfig): ToolConfig =
+            tool.copy(
+                pypackpack = tool.pypackpack?.let(::normalizePyPackPack),
+                setuptools = tool.setuptools?.sortedKeys(),
+                wheel = tool.wheel?.sortedKeys(),
+                poetry = tool.poetry?.sortedKeys(),
+                hatch = tool.hatch?.sortedKeys(),
+                pdm = tool.pdm?.sortedKeys(),
+            )
+
+        return config.copy(
+            project = config.project?.let(::normalizeProject),
+            tool = config.tool?.let(::normalizeTool),
+        )
+    }
 
     /**
      * Validate a PyProjectConfig object
