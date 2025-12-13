@@ -133,12 +133,8 @@ class DefaultInterface : BaseInterface {
         val venvDir = File(projectDir, ".venv")
         if (!venvDir.exists()) {
             return runBlocking {
-                val versionToUse =
-                    if (pythonVersion.isNotEmpty()) {
-                        pythonVersion
-                    } else {
-                        PackPackConfig.defaultPythonVersion
-                    }
+                val versionToUse = pythonVersion.ifEmpty { PackPackConfig.defaultPythonVersion }
+
                 val result = backend.createVirtualEnvironment(venvDir.absolutePath, versionToUse)
                 if (result.success) {
                     println(

@@ -92,12 +92,10 @@ class UVInterface : BaseInterface {
             command.addAll(dependencies)
 
             // Add extra arguments
-            if (extraArgs != null) {
-                extraArgs.forEach { (key, value) ->
-                    command.add("--$key")
-                    if (value.isNotEmpty()) {
-                        command.add(value)
-                    }
+            extraArgs?.forEach { (key, value) ->
+                command.add("--$key")
+                if (value.isNotEmpty()) {
+                    command.add(value)
                 }
             }
 
@@ -133,12 +131,10 @@ class UVInterface : BaseInterface {
         command.addAll(dependencies)
 
         // Add extra arguments
-        if (extraArgs != null) {
-            extraArgs.forEach { (key, value) ->
-                command.add("--$key")
-                if (value.isNotEmpty()) {
-                    command.add(value)
-                }
+        extraArgs?.forEach { (key, value) ->
+            command.add("--$key")
+            if (value.isNotEmpty()) {
+                command.add(value)
             }
         }
 
@@ -179,17 +175,55 @@ class UVInterface : BaseInterface {
         val command = mutableListOf("sync")
 
         // Add extra arguments
-        if (extraArgs != null) {
-            extraArgs.forEach { (key, value) ->
-                command.add("--$key")
-                if (value.isNotEmpty()) {
-                    command.add(value)
-                }
+        extraArgs?.forEach { (key, value) ->
+            command.add("--$key")
+            if (value.isNotEmpty()) {
+                command.add(value)
             }
         }
 
         // Execute uv sync in project root
         val (exitCode, output) = uv.executeCommand(command, projectRoot)
+        return if (exitCode == 0) {
+            CommandResult(true, output, "")
+        } else {
+            CommandResult(false, "", output)
+        }
+    }
+
+    /** Show dependency tree */
+    override suspend fun showDependencyTree(
+        packageName: String?,
+        extraArgs: Map<String, String>?,
+    ): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+
+        val projectRoot =
+            findProjectRoot()
+                ?: return CommandResult(false, "", "Project root not found.")
+
+        val command = mutableListOf("tree")
+
+        // Add extra arguments
+        extraArgs?.forEach { (key, value) ->
+            command.add("--$key")
+            if (value.isNotEmpty()) {
+                command.add(value)
+            }
+        }
+
+        // Execute in packageName directory if provided, otherwise in project root
+        val executionDir =
+            if (packageName != null) {
+                val packageDir = File(packageName)
+                packageDir
+            } else {
+                projectRoot
+            }
+
+        val (exitCode, output) = uv.executeCommand(command, executionDir)
         return if (exitCode == 0) {
             CommandResult(true, output, "")
         } else {
@@ -212,20 +246,6 @@ class UVInterface : BaseInterface {
         } else {
             CommandResult(false, "", output)
         }
-    }
-
-    /** Show dependency tree */
-    override suspend fun showDependencyTree(
-        venvPath: String,
-        extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
-
-        val command = mutableListOf("pip", "list", "--tree")
-
-        return executeInVenv(venvPath, command)
     }
 
     /** List available Python versions */

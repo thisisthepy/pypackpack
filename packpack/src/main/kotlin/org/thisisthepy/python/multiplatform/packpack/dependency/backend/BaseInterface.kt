@@ -78,22 +78,22 @@ interface BaseInterface {
     ): CommandResult
 
     /**
-     * Lock dependencies (generate lock file)
-     * @param projectRoot Project root directory
-     * @return Result of lock operation
-     */
-    suspend fun lockDependencies(projectRoot: String): CommandResult
-
-    /**
      * Show dependency tree
      * @param venvPath Virtual environment path
      * @param extraArgs Extra arguments (optional)
      * @return Result containing dependency tree
      */
     suspend fun showDependencyTree(
-        venvPath: String,
+        packageName: String?,
         extraArgs: Map<String, String>? = null,
     ): CommandResult
+
+    /**
+     * Lock dependencies (generate lock file)
+     * @param projectRoot Project root directory
+     * @return Result of lock operation
+     */
+    suspend fun lockDependencies(projectRoot: String): CommandResult
 
     /**
      * List available Python versions

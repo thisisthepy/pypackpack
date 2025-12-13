@@ -187,7 +187,7 @@ class DevEnv {
         }
 
         return runBlocking {
-            val result = backend.showDependencyTree(venvDir.absolutePath, extraArgs)
+            val result = backend.showDependencyTree(packageName = null, extraArgs = extraArgs)
             if (result.success) {
                 println("=== Dependencies for project ===")
                 println(result.output)
