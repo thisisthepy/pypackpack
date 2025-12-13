@@ -12,7 +12,7 @@ data class PyProjectConfig(
     val project: ProjectConfig? = null,
     @SerialName("build-system")
     val buildSystem: BuildSystemConfig? = null,
-    val tool: ToolConfig? = null
+    val tool: ToolConfig? = null,
 )
 
 /**
@@ -35,7 +35,7 @@ data class ProjectConfig(
     val optionalDependencies: Map<String, List<String>>? = null,
     @SerialName("requires-python")
     val requiresPython: String? = null,
-    val dynamic: List<String>? = null
+    val dynamic: List<String>? = null,
 )
 
 /**
@@ -44,7 +44,7 @@ data class ProjectConfig(
 @Serializable
 data class LicenseConfig(
     val text: String? = null,
-    val file: String? = null
+    val file: String? = null,
 )
 
 /**
@@ -53,7 +53,7 @@ data class LicenseConfig(
 @Serializable
 data class AuthorConfig(
     val name: String? = null,
-    val email: String? = null
+    val email: String? = null,
 )
 
 /**
@@ -65,7 +65,7 @@ data class BuildSystemConfig(
     @SerialName("build-backend")
     val buildBackend: String? = null,
     @SerialName("backend-path")
-    val backendPath: List<String>? = null
+    val backendPath: List<String>? = null,
 )
 
 /**
@@ -78,7 +78,7 @@ data class ToolConfig(
     val wheel: Map<String, String>? = null,
     val poetry: Map<String, String>? = null,
     val hatch: Map<String, String>? = null,
-    val pdm: Map<String, String>? = null
+    val pdm: Map<String, String>? = null,
 )
 
 /**
@@ -91,7 +91,7 @@ data class PyPackPackConfig(
     val build: BuildConfig? = null,
     val bundle: BundleConfig? = null,
     val deploy: DeployConfig? = null,
-    val dependencies: DependencyConfig? = null
+    val dependencies: DependencyConfig? = null,
 )
 
 /**
@@ -107,7 +107,7 @@ data class TargetConfig(
     @SerialName("optional-dependencies")
     val optionalDependencies: Map<String, List<String>>? = null,
     val environment: Map<String, String>? = null,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
 )
 
 /**
@@ -119,7 +119,7 @@ data class BuildConfig(
     val type: BuildType = BuildType.DEBUG,
     val optimization: OptimizationConfig? = null,
     val compilation: CompilationConfig? = null,
-    val resources: ResourceConfig? = null
+    val resources: ResourceConfig? = null,
 )
 
 /**
@@ -129,12 +129,15 @@ data class BuildConfig(
 enum class BuildLevel {
     @SerialName("instant")
     INSTANT,
+
     @SerialName("bytecode")
     BYTECODE,
+
     @SerialName("native")
     NATIVE,
+
     @SerialName("mixed")
-    MIXED
+    MIXED,
 }
 
 /**
@@ -144,8 +147,9 @@ enum class BuildLevel {
 enum class BuildType {
     @SerialName("debug")
     DEBUG,
+
     @SerialName("release")
-    RELEASE
+    RELEASE,
 }
 
 /**
@@ -156,7 +160,7 @@ data class OptimizationConfig(
     val minification: Boolean = false,
     val compression: Boolean = true,
     val deadCodeElimination: Boolean = false,
-    val inlining: Boolean = false
+    val inlining: Boolean = false,
 )
 
 /**
@@ -166,7 +170,7 @@ data class OptimizationConfig(
 data class CompilationConfig(
     val backend: CompilationBackend = CompilationBackend.NUITKA,
     val flags: List<String>? = null,
-    val plugins: List<String>? = null
+    val plugins: List<String>? = null,
 )
 
 /**
@@ -176,10 +180,12 @@ data class CompilationConfig(
 enum class CompilationBackend {
     @SerialName("nuitka")
     NUITKA,
+
     @SerialName("cython")
     CYTHON,
+
     @SerialName("lpython")
-    LPYTHON
+    LPYTHON,
 }
 
 /**
@@ -189,7 +195,7 @@ enum class CompilationBackend {
 data class ResourceConfig(
     val include: List<String>? = null,
     val exclude: List<String>? = null,
-    val compression: Boolean = true
+    val compression: Boolean = true,
 )
 
 /**
@@ -200,7 +206,7 @@ data class BundleConfig(
     val type: BundleType = BundleType.BINARY,
     val format: BundleFormat = BundleFormat.WHEEL,
     val compression: CompressionConfig? = null,
-    val patch: PatchConfig? = null
+    val patch: PatchConfig? = null,
 )
 
 /**
@@ -210,12 +216,15 @@ data class BundleConfig(
 enum class BundleType {
     @SerialName("binary")
     BINARY,
+
     @SerialName("fat")
     FAT,
+
     @SerialName("single")
     SINGLE,
+
     @SerialName("patch")
-    PATCH
+    PATCH,
 }
 
 /**
@@ -225,10 +234,12 @@ enum class BundleType {
 enum class BundleFormat {
     @SerialName("wheel")
     WHEEL,
+
     @SerialName("executable")
     EXECUTABLE,
+
     @SerialName("archive")
-    ARCHIVE
+    ARCHIVE,
 }
 
 /**
@@ -237,7 +248,7 @@ enum class BundleFormat {
 @Serializable
 data class CompressionConfig(
     val algorithm: CompressionAlgorithm = CompressionAlgorithm.GZIP,
-    val level: Int = 6
+    val level: Int = 6,
 )
 
 /**
@@ -247,10 +258,12 @@ data class CompressionConfig(
 enum class CompressionAlgorithm {
     @SerialName("gzip")
     GZIP,
+
     @SerialName("bzip2")
     BZIP2,
+
     @SerialName("lzma")
-    LZMA
+    LZMA,
 }
 
 /**
@@ -260,7 +273,7 @@ enum class CompressionAlgorithm {
 data class PatchConfig(
     val enabled: Boolean = false,
     val baseVersion: String? = null,
-    val algorithm: PatchAlgorithm = PatchAlgorithm.BINARY_DIFF
+    val algorithm: PatchAlgorithm = PatchAlgorithm.BINARY_DIFF,
 )
 
 /**
@@ -270,8 +283,9 @@ data class PatchConfig(
 enum class PatchAlgorithm {
     @SerialName("binary-diff")
     BINARY_DIFF,
+
     @SerialName("file-diff")
-    FILE_DIFF
+    FILE_DIFF,
 }
 
 /**
@@ -281,7 +295,7 @@ enum class PatchAlgorithm {
 data class DeployConfig(
     val targets: List<DeployTarget>? = null,
     val credentials: Map<String, String>? = null,
-    val fasttrack: FastTrackConfig? = null
+    val fasttrack: FastTrackConfig? = null,
 )
 
 /**
@@ -292,7 +306,7 @@ data class DeployTarget(
     val name: String,
     val type: DeployType,
     val url: String? = null,
-    val repository: String? = null
+    val repository: String? = null,
 )
 
 /**
@@ -302,10 +316,12 @@ data class DeployTarget(
 enum class DeployType {
     @SerialName("pypi")
     PYPI,
+
     @SerialName("fasttrack")
     FASTTRACK,
+
     @SerialName("custom")
-    CUSTOM
+    CUSTOM,
 }
 
 /**
@@ -316,7 +332,7 @@ data class FastTrackConfig(
     val enabled: Boolean = false,
     val endpoint: String? = null,
     val apiKey: String? = null,
-    val hotReload: Boolean = false
+    val hotReload: Boolean = false,
 )
 
 /**
@@ -326,7 +342,7 @@ data class FastTrackConfig(
 data class DependencyConfig(
     val resolver: DependencyResolver = DependencyResolver.UV,
     val sources: List<DependencySource>? = null,
-    val constraints: List<String>? = null
+    val constraints: List<String>? = null,
 )
 
 /**
@@ -336,8 +352,9 @@ data class DependencyConfig(
 enum class DependencyResolver {
     @SerialName("uv")
     UV,
+
     @SerialName("pip")
-    PIP
+    PIP,
 }
 
 /**
@@ -347,5 +364,5 @@ enum class DependencyResolver {
 data class DependencySource(
     val name: String,
     val url: String,
-    val priority: Int = 0
-) 
+    val priority: Int = 0,
+)
