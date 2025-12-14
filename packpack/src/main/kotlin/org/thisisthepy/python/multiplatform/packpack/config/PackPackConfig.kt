@@ -44,7 +44,7 @@ object PackPackConfig {
         // Try to parse pyproject.toml
         val pyprojectFile = File(projectRoot, PYPROJECT_FILE)
         try {
-            val parser = PyProjectParser()
+            val parser = PyprojectParser()
             val config =
                 parser.parseFromFile(
                     pyprojectFile,

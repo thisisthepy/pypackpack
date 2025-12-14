@@ -6,13 +6,13 @@ package org.thisisthepy.python.multiplatform.packpack.config
  */
 class ConfigValidator {
     /**
-     * Validate and apply defaults to a PyProjectConfig
+     * Validate and apply defaults to a PyprojectConfig
      *
      * @param config Configuration to validate and enhance
      * @return Enhanced configuration with defaults applied
      * @throws ConfigValidationException if validation fails
      */
-    fun validateAndApplyDefaults(config: PyProjectConfig): PyProjectConfig {
+    fun validateAndApplyDefaults(config: PyprojectConfig): PyprojectConfig {
         val validationResult = validate(config)
         if (!validationResult.isValid) {
             throw ConfigValidationException(validationResult.getErrorMessage())
@@ -22,12 +22,12 @@ class ConfigValidator {
     }
 
     /**
-     * Comprehensive validation of PyProjectConfig
+     * Comprehensive validation of PyprojectConfig
      *
      * @param config Configuration to validate
      * @return ValidationResult with detailed error information
      */
-    fun validate(config: PyProjectConfig): ValidationResult {
+    fun validate(config: PyprojectConfig): ValidationResult {
         val errors = mutableListOf<String>()
         val warnings = mutableListOf<String>()
 
@@ -53,7 +53,7 @@ class ConfigValidator {
      * @param config Original configuration
      * @return Configuration with defaults applied
      */
-    fun applyDefaults(config: PyProjectConfig): PyProjectConfig =
+    fun applyDefaults(config: PyprojectConfig): PyprojectConfig =
         config.copy(
             project = applyProjectDefaults(config.project),
             buildSystem = applyBuildSystemDefaults(config.buildSystem),

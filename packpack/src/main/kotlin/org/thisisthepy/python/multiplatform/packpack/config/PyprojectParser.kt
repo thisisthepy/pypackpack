@@ -18,7 +18,7 @@ import kotlin.io.path.writeText
  * Parser and manager for pyproject.toml configuration files
  * Uses ktoml library for TOML 1.0.0 compliant parsing and serialization
  */
-class PyProjectParser {
+class PyprojectParser {
     private val toml =
         Toml(
             inputConfig =
@@ -45,14 +45,14 @@ class PyProjectParser {
      * @param filePath Path to the pyproject.toml file
      * @param applyDefaults Whether to apply default values to the configuration
      * @param validateConfig Whether to validate the configuration
-     * @return Parsed PyProjectConfig object
+     * @return Parsed PyprojectConfig object
      * @throws PyProjectParseException if parsing fails
      */
     fun parseFromFile(
         filePath: Path,
         applyDefaults: Boolean = true,
         validateConfig: Boolean = true,
-    ): PyProjectConfig {
+    ): PyprojectConfig {
         if (!filePath.exists()) {
             throw PyProjectParseException("pyproject.toml file not found: $filePath")
         }
@@ -71,14 +71,14 @@ class PyProjectParser {
      * @param file File object pointing to pyproject.toml
      * @param applyDefaults Whether to apply default values to the configuration
      * @param validateConfig Whether to validate the configuration
-     * @return Parsed PyProjectConfig object
+     * @return Parsed PyprojectConfig object
      * @throws PyProjectParseException if parsing fails
      */
     fun parseFromFile(
         file: File,
         applyDefaults: Boolean = true,
         validateConfig: Boolean = true,
-    ): PyProjectConfig = parseFromFile(file.toPath(), applyDefaults, validateConfig)
+    ): PyprojectConfig = parseFromFile(file.toPath(), applyDefaults, validateConfig)
 
     /**
      * Parse pyproject.toml from a string
@@ -86,16 +86,16 @@ class PyProjectParser {
      * @param content TOML content as string
      * @param applyDefaults Whether to apply default values to the configuration
      * @param validateConfig Whether to validate the configuration
-     * @return Parsed PyProjectConfig object
+     * @return Parsed PyprojectConfig object
      * @throws PyProjectParseException if parsing fails
      */
     fun parseFromString(
         content: String,
         applyDefaults: Boolean = true,
         validateConfig: Boolean = true,
-    ): PyProjectConfig =
+    ): PyprojectConfig =
         try {
-            var config = toml.decodeFromString<PyProjectConfig>(content)
+            var config = toml.decodeFromString<PyprojectConfig>(content)
 
             if (applyDefaults) {
                 config = validator.applyDefaults(config)
@@ -118,14 +118,14 @@ class PyProjectParser {
         }
 
     /**
-     * Write PyProjectConfig to a file
+     * Write PyprojectConfig to a file
      *
      * @param config Configuration object to write
      * @param filePath Path where to write the pyproject.toml file
      * @throws PyProjectParseException if writing fails
      */
     fun writeToFile(
-        config: PyProjectConfig,
+        config: PyprojectConfig,
         filePath: Path,
     ) {
         try {
@@ -139,27 +139,27 @@ class PyProjectParser {
     }
 
     /**
-     * Write PyProjectConfig to a File object
+     * Write PyprojectConfig to a File object
      *
      * @param config Configuration object to write
      * @param file File object where to write
      * @throws PyProjectParseException if writing fails
      */
     fun writeToFile(
-        config: PyProjectConfig,
+        config: PyprojectConfig,
         file: File,
     ) {
         writeToFile(config, file.toPath())
     }
 
     /**
-     * Convert PyProjectConfig to TOML string
+     * Convert PyprojectConfig to TOML string
      *
      * @param config Configuration object to convert
      * @return TOML content as string
      * @throws PyProjectParseException if encoding fails
      */
-    fun writeToString(config: PyProjectConfig): String =
+    fun writeToString(config: PyprojectConfig): String =
         try {
             toml.encodeToString(normalizeForOutput(config))
         } catch (e: TomlEncodingException) {
@@ -168,7 +168,7 @@ class PyProjectParser {
             throw PyProjectParseException("Unexpected error during TOML encoding: ${e.message}", e)
         }
 
-    private fun normalizeForOutput(config: PyProjectConfig): PyProjectConfig {
+    private fun normalizeForOutput(config: PyprojectConfig): PyprojectConfig {
         fun <V> Map<String, V>.sortedKeys(): Map<String, V> = toSortedMap()
 
         fun normalizeProject(project: ProjectConfig): ProjectConfig =
@@ -206,21 +206,21 @@ class PyProjectParser {
     }
 
     /**
-     * Validate a PyProjectConfig object
+     * Validate a PyprojectConfig object
      *
      * @param config Configuration to validate
      * @return ValidationResult containing validation status and any errors
      */
-    fun validate(config: PyProjectConfig): ValidationResult = validator.validate(config)
+    fun validate(config: PyprojectConfig): ValidationResult = validator.validate(config)
 
     /**
-     * Validate and apply defaults to a PyProjectConfig
+     * Validate and apply defaults to a PyprojectConfig
      *
      * @param config Configuration to validate and enhance
      * @return Enhanced configuration with defaults applied
      * @throws PyProjectParseException if validation fails
      */
-    fun validateAndApplyDefaults(config: PyProjectConfig): PyProjectConfig =
+    fun validateAndApplyDefaults(config: PyprojectConfig): PyprojectConfig =
         try {
             validator.validateAndApplyDefaults(config)
         } catch (e: ConfigValidationException) {
@@ -244,7 +244,7 @@ class PyProjectParser {
     }
 
     /**
-     * Create a default PyProjectConfig for a new project
+     * Create a default PyprojectConfig for a new project
      *
      * @param projectName Name of the project
      * @param pythonVersion Python version requirement (optional)
@@ -253,8 +253,8 @@ class PyProjectParser {
     fun createDefault(
         projectName: String,
         pythonVersion: String? = null,
-    ): PyProjectConfig =
-        PyProjectConfig(
+    ): PyprojectConfig =
+        PyprojectConfig(
             project =
                 ProjectConfig(
                     name = projectName,

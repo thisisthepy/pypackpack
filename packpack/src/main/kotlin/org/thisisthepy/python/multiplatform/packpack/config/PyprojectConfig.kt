@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  * Supports both standard PEP 518/517 sections and PyPackPack-specific extensions
  */
 @Serializable
-data class PyProjectConfig(
+data class PyprojectConfig(
     val project: ProjectConfig? = null,
     @SerialName("build-system")
     val buildSystem: BuildSystemConfig? = null,
