@@ -1,6 +1,6 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.cli.internal
 
-internal val knownBooleanFlags =
+val knownBooleanFlags =
     setOf(
         "dev",
         "editable",
@@ -17,13 +17,13 @@ internal val knownBooleanFlags =
         "raw-sources",
     )
 
-internal data class ParsedCommandArgs(
+data class ParsedCommandArgs(
     val dependencies: List<String> = emptyList(),
     val targets: List<String> = emptyList(),
     val extraArgs: Map<String, String> = emptyMap(),
 )
 
-internal fun addFlagToExtraArgs(
+fun addFlagToExtraArgs(
     args: Array<String>,
     index: Int,
     extraArgs: MutableMap<String, String>,
@@ -45,7 +45,7 @@ internal fun addFlagToExtraArgs(
     }
 }
 
-internal fun parseDependenciesAndExtraArgs(
+fun parseDependenciesAndExtraArgs(
     args: Array<String>,
     startIndex: Int,
 ): ParsedCommandArgs {
@@ -66,7 +66,7 @@ internal fun parseDependenciesAndExtraArgs(
     return ParsedCommandArgs(dependencies = dependencies, extraArgs = extraArgs)
 }
 
-internal fun parseExtraArgsOnly(
+fun parseExtraArgsOnly(
     args: Array<String>,
     startIndex: Int,
     onUnexpected: (String) -> Unit,
@@ -87,7 +87,7 @@ internal fun parseExtraArgsOnly(
     return extraArgs
 }
 
-internal fun parseTargetsExtraArgsAndMaybeDependencies(
+fun parseTargetsExtraArgsAndMaybeDependencies(
     args: Array<String>,
     startIndex: Int,
     collectDependencies: Boolean,

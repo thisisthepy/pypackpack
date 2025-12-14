@@ -1,9 +1,8 @@
-package org.thisisthepy.python.multiplatform.packpack.commands
+package org.thisisthepy.python.multiplatform.packpack.cli
 
-import org.thisisthepy.python.multiplatform.packpack.util.CliContext
-import org.thisisthepy.python.multiplatform.packpack.util.ErrorHandler
-import org.thisisthepy.python.multiplatform.packpack.util.parseTargetsExtraArgsAndMaybeDependencies
-import org.thisisthepy.python.multiplatform.packpack.util.runWithProgressBlocking
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.ErrorHandler
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.parseTargetsExtraArgsAndMaybeDependencies
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.runWithProgressBlocking
 
 /** Handle package command */
 fun handlePackage(args: Array<String>) {

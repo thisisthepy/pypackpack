@@ -1,12 +1,7 @@
-package org.thisisthepy.python.multiplatform.packpack.commands
+package org.thisisthepy.python.multiplatform.packpack.cli
 
-import org.thisisthepy.python.multiplatform.packpack.util.CliContext
-import org.thisisthepy.python.multiplatform.packpack.util.ErrorHandler
-import org.thisisthepy.python.multiplatform.packpack.util.parseDependenciesAndExtraArgs
-import org.thisisthepy.python.multiplatform.packpack.util.parseExtraArgsOnly
-import org.thisisthepy.python.multiplatform.packpack.util.runWithProgressBlocking
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.*
 
-/** Handle add dependency command */
 fun handleAddDependency(args: Array<String>) {
     if (args.size < 2) {
         ErrorHandler.missingArgument(
@@ -57,7 +52,6 @@ fun handleAddDependency(args: Array<String>) {
     }
 }
 
-/** Handle remove dependency command */
 fun handleRemoveDependency(args: Array<String>) {
     if (args.size < 2) {
         ErrorHandler.missingArgument(
@@ -110,7 +104,6 @@ fun handleRemoveDependency(args: Array<String>) {
     }
 }
 
-/** Handle sync dependency command */
 fun handleSyncDependency(args: Array<String>) {
     val extraArgs =
         parseExtraArgsOnly(args, startIndex = 1) { arg ->
@@ -138,7 +131,6 @@ fun handleSyncDependency(args: Array<String>) {
     }
 }
 
-/** Handle tree dependency command */
 fun handleTreeDependency(args: Array<String>) {
     val extraArgs =
         parseExtraArgsOnly(args, startIndex = 1) { arg ->

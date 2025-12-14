@@ -147,7 +147,7 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("pypackpack")
-            mainClass.set("org.thisisthepy.python.multiplatform.packpack.util.CommandLineKt")
+            mainClass.set("org.thisisthepy.python.multiplatform.packpack.cli.MainKt")
             javaLauncher.set(javaToolchains.launcherFor {
                 languageVersion.set(JavaLanguageVersion.of(21))
                 vendor.set(JvmVendorSpec.GRAAL_VM)

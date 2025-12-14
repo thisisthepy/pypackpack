@@ -1,16 +1,6 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.cli
 
-import org.thisisthepy.python.multiplatform.packpack.commands.handleAddDependency
-import org.thisisthepy.python.multiplatform.packpack.commands.handleInit
-import org.thisisthepy.python.multiplatform.packpack.commands.handlePackage
-import org.thisisthepy.python.multiplatform.packpack.commands.handlePackageCommand
-import org.thisisthepy.python.multiplatform.packpack.commands.handlePython
-import org.thisisthepy.python.multiplatform.packpack.commands.handleRemoveDependency
-import org.thisisthepy.python.multiplatform.packpack.commands.handleSyncDependency
-import org.thisisthepy.python.multiplatform.packpack.commands.handleTarget
-import org.thisisthepy.python.multiplatform.packpack.commands.handleTreeDependency
-import org.thisisthepy.python.multiplatform.packpack.commands.printHelp
-import org.thisisthepy.python.multiplatform.packpack.commands.printVersion
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.ErrorHandler
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface

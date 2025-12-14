@@ -1,10 +1,8 @@
-package org.thisisthepy.python.multiplatform.packpack.commands
+package org.thisisthepy.python.multiplatform.packpack.cli
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
-import org.thisisthepy.python.multiplatform.packpack.util.CliContext
-import org.thisisthepy.python.multiplatform.packpack.util.ErrorHandler
-import org.thisisthepy.python.multiplatform.packpack.util.runWithProgressBlocking
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.ErrorHandler
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.runWithProgressBlocking
 import java.io.File
 
 /** Print help information */

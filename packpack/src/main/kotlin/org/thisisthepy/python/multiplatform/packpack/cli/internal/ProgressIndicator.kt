@@ -1,4 +1,4 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.cli.internal
 
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean

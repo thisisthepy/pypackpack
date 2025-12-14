@@ -1,4 +1,4 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.cli.internal
 
 import java.io.File
 
@@ -214,7 +214,7 @@ object ErrorHandler {
         operation: String,
         details: String? = null,
     ) {
-        val suggestions =
+        val suggestions = 
             listOf(
                 "Check your internet connection",
                 "Verify that the package index is accessible",
@@ -263,7 +263,7 @@ object ErrorHandler {
      * Validate Python version format
      */
     fun validatePythonVersion(version: String): Boolean {
-        val pythonVersionRegex = Regex("""^\d+\.\d+(\.\d+)?$""")
+        val pythonVersionRegex = Regex("^\\d+\\.\\d+(\\.\\d+)?$")
         return pythonVersionRegex.matches(version)
     }
 
@@ -272,7 +272,7 @@ object ErrorHandler {
      */
     fun validatePackageName(name: String): Boolean {
         // Python package naming conventions
-        val packageNameRegex = Regex("""^[a-zA-Z][a-zA-Z0-9_]*$""")
+        val packageNameRegex = Regex("^[a-zA-Z][a-zA-Z0-9_]*$")
         return packageNameRegex.matches(name) && !name.startsWith("_")
     }
 
@@ -282,7 +282,7 @@ object ErrorHandler {
     private fun findSimilarCommands(
         input: String,
         commands: List<String>,
-    ): List<String> =
+    ): List<String> = 
         commands
             .map { it to levenshteinDistance(input.lowercase(), it.lowercase()) }
             .filter { it.second <= 2 } // Only suggest if distance is 2 or less
@@ -304,7 +304,7 @@ object ErrorHandler {
 
         for (i in 1..s1.length) {
             for (j in 1..s2.length) {
-                dp[i][j] =
+                dp[i][j] = 
                     if (s1[i - 1] == s2[j - 1]) {
                         dp[i - 1][j - 1]
                     } else {

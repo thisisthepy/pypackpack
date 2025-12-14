@@ -1,4 +1,4 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.cli.internal
 
 /**
  * Command execution result data class
