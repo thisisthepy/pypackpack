@@ -87,11 +87,19 @@ data class ToolConfig(
 @Serializable
 data class PyPackPackConfig(
     val version: String = "1.0",
+    /** Workspace/local packages managed by PyPackPack under [tool.pypackpack.packages] */
+    val packages: Map<String, PackageRefConfig>? = null,
     val targets: Map<String, TargetConfig>? = null,
     val build: BuildConfig? = null,
     val bundle: BundleConfig? = null,
     val deploy: DeployConfig? = null,
     val dependencies: DependencyConfig? = null,
+)
+
+/** Package reference configuration under [tool.pypackpack.packages.<name>] */
+@Serializable
+data class PackageRefConfig(
+    val path: String,
 )
 
 /**

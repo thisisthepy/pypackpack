@@ -1,13 +1,18 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
+import org.thisisthepy.python.multiplatform.packpack.config.PackageRefConfig
+import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
+import org.thisisthepy.python.multiplatform.packpack.config.PyPackPackConfig
+import org.thisisthepy.python.multiplatform.packpack.config.PyProjectConfig
+import org.thisisthepy.python.multiplatform.packpack.config.PyProjectParser
+import org.thisisthepy.python.multiplatform.packpack.config.ToolConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
 import org.thisisthepy.python.multiplatform.packpack.util.TargetPlatforms
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /**
  * Cross-platform environment management Handles dependencies for specific package and target
@@ -129,39 +134,77 @@ class CrossEnv {
         }
 
         // Create package pyproject.toml
-        val pyprojectContent =
-            """
-            [project]
-            name = "$packageName"
-            version = "0.1.0"
-            description = "A Python package managed by PyPackPack"
-            readme = "../README.md"
-            requires-python = ">=${PackPackConfig.defaultPythonVersion}"
-            
-            """.trimIndent()
-        File(packageDir, pyprojectFile).writeText(pyprojectContent)
+        val parser = PyProjectParser()
+        val packagePyprojectFile = File(packageDir, pyprojectFile)
+        val packageConfig =
+            PyProjectConfig(
+                project =
+                    ProjectConfig(
+                        name = packageName,
+                        version = "0.1.0",
+                        description = "A Python package managed by PyPackPack",
+                        readme = "../README.md",
+                        requiresPython = ">=${PackPackConfig.defaultPythonVersion}",
+                    ),
+            )
+        try {
+            parser.writeToFile(packageConfig, packagePyprojectFile)
+        } catch (e: Exception) {
+            println("Failed to create package pyproject.toml: ${e.message}")
+            return false
+        }
 
         // Update root pyproject.toml to include the new package
         val rootPyprojectFile = File(projectRoot, pyprojectFile)
         if (rootPyprojectFile.exists()) {
-            val rootPyproject = rootPyprojectFile.readText()
-            val updatedContent =
-                if (rootPyproject.contains("[tool.pypackpack.packages]")) {
-                    // Add package to existing section
-                    rootPyproject.replace(
-                        "[tool.pypackpack.packages]",
-                        "[tool.pypackpack.packages]\n\"$packageName\" = { path = \"./$packageName\" }",
+            try {
+                val config =
+                    parser.parseFromFile(
+                        rootPyprojectFile,
+                        applyDefaults = false,
+                        validateConfig = false,
                     )
-                } else {
-                    // Add new section
-                    """
-                    $rootPyproject
-                    
-                    [tool.pypackpack.packages]
-                    "$packageName" = { path = "./$packageName" }
-                    """.trimIndent()
-                }
-            rootPyprojectFile.writeText(updatedContent)
+
+                val tool = config.tool ?: ToolConfig()
+                val pypackpack = tool.pypackpack ?: PyPackPackConfig()
+                val packages = (pypackpack.packages ?: emptyMap())
+                val updatedPackages =
+                    if (packages.containsKey(packageName)) {
+                        packages
+                    } else {
+                        packages +
+                            (
+                                packageName to
+                                    PackageRefConfig(
+                                        path = "./$packageName",
+                                    )
+                            )
+                    }
+
+                val updatedConfig =
+                    config.copy(
+                        tool = tool.copy(pypackpack = pypackpack.copy(packages = updatedPackages)),
+                    )
+                parser.writeToFile(updatedConfig, rootPyprojectFile)
+            } catch (e: Exception) {
+                // Fall back to simple text update for compatibility with non-standard pyproject.toml
+                val rootPyproject = rootPyprojectFile.readText()
+                val updatedContent =
+                    if (rootPyproject.contains("[tool.pypackpack.packages]")) {
+                        rootPyproject.replace(
+                            "[tool.pypackpack.packages]",
+                            "[tool.pypackpack.packages]\n\"$packageName\" = { path = \"./$packageName\" }",
+                        )
+                    } else {
+                        """
+                        $rootPyproject
+                        
+                        [tool.pypackpack.packages]
+                        "$packageName" = { path = "./$packageName" }
+                        """.trimIndent()
+                    }
+                rootPyprojectFile.writeText(updatedContent)
+            }
         }
 
         // Create host platform virtual environment
@@ -216,10 +259,37 @@ class CrossEnv {
         // Update root pyproject.toml to remove the package
         val rootPyprojectFile = File(projectRoot, pyprojectFile)
         if (rootPyprojectFile.exists()) {
-            val rootPyproject = rootPyprojectFile.readText()
-            val packageEntry = "\"$packageName\" = { path = \"./$packageName\" }"
-            val updatedContent = rootPyproject.replace(packageEntry, "").replace("\n\n\n", "\n\n")
-            rootPyprojectFile.writeText(updatedContent)
+            val parser = PyProjectParser()
+            try {
+                val config =
+                    parser.parseFromFile(
+                        rootPyprojectFile,
+                        applyDefaults = false,
+                        validateConfig = false,
+                    )
+
+                val tool = config.tool
+                val pypackpack = tool?.pypackpack
+                val existingPackages = pypackpack?.packages
+
+                if (existingPackages != null && existingPackages.containsKey(packageName)) {
+                    val updatedPackages = existingPackages - packageName
+                    val updatedPyPackPack =
+                        pypackpack.copy(
+                            packages = updatedPackages.takeIf { it.isNotEmpty() },
+                        )
+                    val updatedConfig = config.copy(tool = tool.copy(pypackpack = updatedPyPackPack))
+                    parser.writeToFile(updatedConfig, rootPyprojectFile)
+                } else {
+                    // Nothing to remove (either missing tool section or not a known package entry)
+                }
+            } catch (e: Exception) {
+                // Fall back to simple text update for compatibility with non-standard pyproject.toml
+                val rootPyproject = rootPyprojectFile.readText()
+                val packageEntry = "\"$packageName\" = { path = \"./$packageName\" }"
+                val updatedContent = rootPyproject.replace(packageEntry, "").replace("\n\n\n", "\n\n")
+                rootPyprojectFile.writeText(updatedContent)
+            }
         }
 
         println("Removed package: $packageName")

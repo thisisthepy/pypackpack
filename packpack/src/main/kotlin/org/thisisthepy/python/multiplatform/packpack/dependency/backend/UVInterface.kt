@@ -1,10 +1,9 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external.UV
-import org.thisisthepy.python.multiplatform.packpack.util.CommandResult
 import java.io.File
-import java.util.*
 
 /** UV implementation of backend interface */
 class UVInterface : BaseInterface {

@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.util.CommandResult
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.util.Downloader
 
 /**

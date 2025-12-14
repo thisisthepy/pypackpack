@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
