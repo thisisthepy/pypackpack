@@ -4,8 +4,8 @@ import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyProjectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyProjectParser
+import org.thisisthepy.python.multiplatform.packpack.config.PyprojectConfig
+import org.thisisthepy.python.multiplatform.packpack.config.PyprojectParser
 import org.thisisthepy.python.multiplatform.packpack.config.ToolConfig
 import org.thisisthepy.python.multiplatform.packpack.config.UVConfig
 import org.thisisthepy.python.multiplatform.packpack.config.UVWorkspaceConfig
@@ -134,10 +134,10 @@ class CrossEnv {
         }
 
         // Create package pyproject.toml
-        val parser = PyProjectParser()
+        val parser = PyprojectParser()
         val packagePyprojectFile = File(packageDir, pyprojectFile)
         val packageConfig =
-            PyProjectConfig(
+            PyprojectConfig(
                 project =
                     ProjectConfig(
                         name = packageName,
@@ -239,7 +239,7 @@ class CrossEnv {
         // Update root pyproject.toml to remove the package
         val rootPyprojectFile = File(projectRoot, pyprojectFile)
         if (rootPyprojectFile.exists()) {
-            val parser = PyProjectParser()
+            val parser = PyprojectParser()
             try {
                 val config =
                     parser.parseFromFile(
@@ -287,19 +287,6 @@ class CrossEnv {
 
         println("Removed package: $packageName")
         return true
-    }
-
-    /**
-     * Detect host platform
-     * @return Platform identifier
-     */
-    private fun detectHostPlatform(): String {
-        val os = System.getProperty("os.name").lowercase()
-        val arch = System.getProperty("os.arch").lowercase()
-
-        println("Detected OS: $os, Architecture: $arch")
-
-        return Platforms.detectHostTarget(osName = os, osArch = arch)
     }
 
     /**
@@ -352,60 +339,7 @@ class CrossEnv {
             File(platformDir, "__init__.py").writeText("# Platform-specific code for $platform\n")
         }
 
-        // Create virtual environments for each platform
-        val crossenvDir = File(packageDir, "build/crossenv")
-        if (!crossenvDir.exists() && !crossenvDir.mkdirs()) {
-            println("Failed to create crossenv directory")
-            return false
-        }
-
-        var success = true
-        for (platform in normalizedTargets) {
-            val venvDir = File(crossenvDir, platform)
-            if (!venvDir.exists()) {
-                runBlocking {
-                    val result = backend.createVirtualEnvironment(venvDir.absolutePath, null, null)
-                    if (!result.success) {
-                        println(
-                            "Failed to create virtual environment for $platform: ${result.error}",
-                        )
-                        success = false
-                    }
-                }
-            }
-        }
-
-        // Update package pyproject.toml
-        val pyprojectContent = packagePyproject.readText()
-        val updatedContent =
-            if (pyprojectContent.contains("[tool.pypackpack.targets]")) {
-                // Add targets to existing section
-                var content = pyprojectContent
-                for (platform in normalizedTargets) {
-                    if (!content.contains("\"$platform\"")) {
-                        content =
-                            content.replace(
-                                "[tool.pypackpack.targets]",
-                                "[tool.pypackpack.targets]\n\"$platform\" = true",
-                            )
-                    }
-                }
-                content
-            } else {
-                // Add new section
-                """
-                $pyprojectContent
-                
-                [tool.pypackpack.targets]
-                ${normalizedTargets.joinToString("\n") { "\"$it\" = true" }}
-                """.trimIndent()
-            }
-        packagePyproject.writeText(updatedContent)
-
-        println(
-            "Added target platforms to package $packageName: ${normalizedTargets.joinToString(", ")}",
-        )
-        return success
+        return true
     }
 
     /**
@@ -445,18 +379,6 @@ class CrossEnv {
             return false
         }
 
-        // Remove virtual environments for each platform
-        val crossenvDir = File(packageDir, "build/crossenv")
-        val venvDirsToRemove = (targets + normalizedTargets).distinct()
-        for (platform in venvDirsToRemove) {
-            val venvDir = File(crossenvDir, platform)
-            if (venvDir.exists() && venvDir.isDirectory) {
-                if (!venvDir.deleteRecursively()) {
-                    println("Warning: Failed to delete virtual environment for $platform")
-                }
-            }
-        }
-
         // Remove source directories for each platform (if empty)
         val srcDir = File(packageDir, "src")
         for (platform in normalizedTargets) {
@@ -474,18 +396,6 @@ class CrossEnv {
             }
         }
 
-        // Update package pyproject.toml
-        val pyprojectContent = packagePyproject.readText()
-        var updatedContent = pyprojectContent
-        val targetsToRemove = (targets + normalizedTargets).distinct()
-        for (platform in targetsToRemove) {
-            updatedContent = updatedContent.replace("\"$platform\" = true\n", "")
-        }
-        packagePyproject.writeText(updatedContent)
-
-        println(
-            "Removed target platforms from package $packageName: ${normalizedTargets.joinToString(", ")}",
-        )
         return true
     }
 
@@ -523,33 +433,16 @@ class CrossEnv {
             return false
         }
 
-        // Update dependencies in pyproject.toml
-        var pyprojectContent = packagePyproject.readText()
-        for (dependency in dependencies) {
-            if (!pyprojectContent.contains("\"$dependency\"")) {
-                pyprojectContent =
-                    if (pyprojectContent.contains("[tool.pypackpack.dependencies]")) {
-                        // Add to existing section
-                        pyprojectContent.replace(
-                            "[tool.pypackpack.dependencies]",
-                            "[tool.pypackpack.dependencies]\n\"$dependency\" = \"*\"",
-                        )
-                    } else {
-                        // Add new section
-                        """
-                        $pyprojectContent
-                        
-                        [tool.pypackpack.dependencies]
-                        "$dependency" = "*"
-                        """.trimIndent()
-                    }
+        return runBlocking {
+            val result = backend.addDependencies(packageName, dependencies, extraArgs)
+            if (result.success) {
+                println("Added dependencies to package $packageName: ${dependencies.joinToString(", ")}")
+                true
+            } else {
+                println("Failed to add dependencies to package $packageName: ${result.error}")
+                false
             }
         }
-        packagePyproject.writeText(pyprojectContent)
-        println("Added dependencies to package $packageName: ${dependencies.joinToString(", ")}")
-        println("Note: Dependencies will be installed when target environments are synchronized.")
-
-        return true
     }
 
     /**
@@ -586,24 +479,15 @@ class CrossEnv {
             return false
         }
 
-        // Update dependencies in pyproject.toml
-        var pyprojectContent = packagePyproject.readText()
-        var changed = false
-        for (dependency in dependencies) {
-            if (pyprojectContent.contains("\"$dependency\"")) {
-                pyprojectContent = pyprojectContent.replace("\"$dependency\" = \"*\"\n", "")
-                changed = true
+        return runBlocking {
+            val result = backend.removeDependencies(packageName, dependencies, extraArgs)
+            if (result.success) {
+                println("Removed dependencies from package $packageName: ${dependencies.joinToString(", ")}")
+                true
+            } else {
+                println("Failed to remove dependencies from package $packageName: ${result.error}")
+                false
             }
-        }
-
-        if (changed) {
-            packagePyproject.writeText(pyprojectContent)
-            println("Removed dependencies from package $packageName: ${dependencies.joinToString(", ")}")
-            println("Note: Dependencies will be removed when target environments are synchronized.")
-            return true
-        } else {
-            println("Dependencies not found in package $packageName")
-            return false
         }
     }
 

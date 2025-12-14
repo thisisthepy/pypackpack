@@ -20,7 +20,7 @@ interface BaseInterface {
 
     /** Init Project */
     fun initProject(
-        projectName: String,
+        projectName: String?,
         pythonVersion: String,
     ): Boolean
 

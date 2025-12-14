@@ -1,12 +1,12 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
-import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
 import org.thisisthepy.python.multiplatform.packpack.config.PyPackPackConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyProjectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyProjectParser
+import org.thisisthepy.python.multiplatform.packpack.config.PyprojectConfig
+import org.thisisthepy.python.multiplatform.packpack.config.PyprojectParser
 import org.thisisthepy.python.multiplatform.packpack.config.ToolConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
@@ -60,20 +60,23 @@ class DefaultInterface : BaseInterface {
 
     /** Init Project */
     override fun initProject(
-        projectName: String,
+        projectName: String?,
         pythonVersion: String,
     ): Boolean {
-        val projectDir =
-            if (projectName.isNotEmpty()) {
-                val dir = File(projectName)
-                if (!dir.exists() && !dir.mkdirs()) {
-                    println("Failed to create project directory: ${dir.absolutePath}")
-                    return false
-                }
-                dir
-            } else {
-                File(System.getProperty("user.dir"))
+        val projectDir: File
+        val actualProjectName: String
+
+        if (projectName == null) {
+            projectDir = File(System.getProperty("user.dir"))
+            actualProjectName = projectDir.name
+        } else {
+            projectDir = File(projectName)
+            actualProjectName = projectName
+            if (!projectDir.exists() && !projectDir.mkdirs()) {
+                println("Failed to create project directory: ${projectDir.absolutePath}")
+                return false
             }
+        }
 
         // Check if project already exists
         val pyprojectTomlFile = File(projectDir, "pyproject.toml")
@@ -82,14 +85,14 @@ class DefaultInterface : BaseInterface {
             return false
         }
 
-        val parser = PyProjectParser()
+        val parser = PyprojectParser()
 
         // Create pyproject.toml
         val config =
-            PyProjectConfig(
+            PyprojectConfig(
                 project =
                     ProjectConfig(
-                        name = projectName,
+                        name = actualProjectName,
                         version = "0.1.0",
                         description = "A Python multi-platform project",
                         readme = "README.md",
@@ -116,7 +119,7 @@ class DefaultInterface : BaseInterface {
         // Create README.md if it doesn't exist
         val readmeFile = File(projectDir, "README.md")
         if (!readmeFile.exists()) {
-            readmeFile.writeText("# $projectName\n\nA Python multi-platform project\n")
+            readmeFile.writeText("# $actualProjectName\n\nA Python multi-platform project\n")
         }
 
         // Create .gitignore if it doesn't exist

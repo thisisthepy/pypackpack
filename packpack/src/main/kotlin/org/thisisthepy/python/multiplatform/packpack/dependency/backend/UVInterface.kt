@@ -73,46 +73,7 @@ class UVInterface : BaseInterface {
 
     /** Add dependencies */
     override suspend fun addDependencies(
-        venvPath: String,
-        dependencies: List<String>,
-        extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
-
-        val venvDir = File(venvPath)
-        val projectRoot = venvDir.parentFile
-        val pyprojectFile = File(projectRoot, "pyproject.toml")
-
-        if (pyprojectFile.exists()) {
-            // Use 'uv add' for project management
-            val command = mutableListOf("add")
-            command.addAll(dependencies)
-
-            // Add extra arguments
-            extraArgs?.forEach { (key, value) ->
-                command.add("--$key")
-                if (value.isNotEmpty()) {
-                    command.add(value)
-                }
-            }
-
-            // Execute in project root
-            val (exitCode, output) = uv.executeCommand(command, projectRoot)
-            return if (exitCode == 0) {
-                CommandResult(true, output, "")
-            } else {
-                CommandResult(false, "", output)
-            }
-        } else {
-            return CommandResult(false, "", "pyproject.toml not found in ${projectRoot.path}.")
-        }
-    }
-
-    /** Uninstall dependencies */
-    override suspend fun removeDependencies(
-        venvPath: String,
+        packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>?,
     ): CommandResult {
@@ -126,6 +87,74 @@ class UVInterface : BaseInterface {
                     return CommandResult(false, "", "Project root not found. Please initialize a project first.")
                 }
 
+        val targetDir =
+            if (packageName.isNullOrEmpty()) {
+                projectRoot
+            } else {
+                File(projectRoot, packageName)
+            }
+
+        if (!targetDir.exists()) {
+            return CommandResult(false, "", "Target directory not found: ${targetDir.path}")
+        }
+
+        val pyprojectFile = File(projectRoot, "pyproject.toml")
+
+        if (pyprojectFile.exists()) {
+            val command = mutableListOf("add")
+            command.addAll(dependencies)
+
+            // Add extra arguments
+            extraArgs?.forEach { (key, value) ->
+                command.add("--$key")
+                if (value.isNotEmpty()) {
+                    command.add(value)
+                }
+            }
+
+            if (!packageName.isNullOrEmpty()) {
+                // To prevent UV from creating a virtual environment, you must add the --no-sync option.
+                command.add("--no-sync")
+            }
+
+            val (exitCode, output) = uv.executeCommand(command, targetDir)
+            return if (exitCode == 0) {
+                CommandResult(true, output, "")
+            } else {
+                CommandResult(false, "", output)
+            }
+        } else {
+            return CommandResult(false, "", "pyproject.toml not found in ${projectRoot.path}.")
+        }
+    }
+
+    /** Uninstall dependencies */
+    override suspend fun removeDependencies(
+        packageName: String?,
+        dependencies: List<String>,
+        extraArgs: Map<String, String>?,
+    ): CommandResult {
+        if (!isToolInstalled() && !installTool().success) {
+            return CommandResult(false, "", "UV is not installed")
+        }
+
+        val projectRoot =
+            findProjectRoot()
+                ?: run {
+                    return CommandResult(false, "", "Project root not found. Please initialize a project first.")
+                }
+
+        val targetDir =
+            if (packageName.isNullOrEmpty()) {
+                projectRoot
+            } else {
+                File(projectRoot, packageName)
+            }
+
+        if (!targetDir.exists()) {
+            return CommandResult(false, "", "Target directory not found: ${targetDir.path}")
+        }
+
         val command = mutableListOf("remove")
         command.addAll(dependencies)
 
@@ -137,8 +166,13 @@ class UVInterface : BaseInterface {
             }
         }
 
-        // Execute in project root
-        val (exitCode, output) = uv.executeCommand(command, projectRoot)
+        if (!packageName.isNullOrEmpty()) {
+            // To prevent UV from creating a virtual environment, you must add the --no-sync option.
+            command.add("--no-sync")
+        }
+
+        // Execute in targetDir
+        val (exitCode, output) = uv.executeCommand(command, targetDir)
         return if (exitCode == 0) {
             CommandResult(true, output, "")
         } else {
@@ -310,21 +344,6 @@ class UVInterface : BaseInterface {
             CommandResult(false, "", output)
         }
     }
-
-    /** Convert platform name to UV environment marker */
-    private fun getPlatformMarker(platform: String): String =
-        when {
-            platform.startsWith("linux") -> "linux"
-
-            platform.startsWith("windows") -> "win32"
-
-            platform.startsWith("macos") -> "darwin"
-
-            platform.startsWith("android") -> "linux"
-
-            // Android uses Linux kernel
-            else -> platform
-        }
 
     /** Override executeCommand to use UV class */
     override suspend fun executeCommand(command: List<String>): CommandResult {

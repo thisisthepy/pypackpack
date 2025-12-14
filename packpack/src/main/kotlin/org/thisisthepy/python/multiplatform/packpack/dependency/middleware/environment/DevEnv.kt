@@ -53,25 +53,25 @@ class DevEnv {
                     return false
                 }
 
-        val venvDir = File(projectRoot, venvPath)
-        if (!venvDir.exists()) {
-            println("Virtual environment not found. Creating...")
-            runBlocking {
-                val result =
-                    backend.createVirtualEnvironment(
-                        venvDir.absolutePath,
-                        PackPackConfig.defaultPythonVersion,
-                    )
-                if (!result.success) {
-                    println("Failed to create virtual environment: ${result.error}")
-                    return@runBlocking false
-                }
-            }
-            if (!venvDir.exists()) return false
-        }
+        // val venvDir = File(projectRoot, venvPath)
+        // if (!venvDir.exists()) {
+        //     println("Virtual environment not found. Creating...")
+        //     runBlocking {
+        //         val result =
+        //             backend.createVirtualEnvironment(
+        //                 venvDir.absolutePath,
+        //                 PackPackConfig.defaultPythonVersion,
+        //             )
+        //         if (!result.success) {
+        //             println("Failed to create virtual environment: ${result.error}")
+        //             return@runBlocking false
+        //         }
+        //     }
+        //     if (!venvDir.exists()) return false
+        // }
 
         return runBlocking {
-            val result = backend.addDependencies(venvDir.absolutePath, dependencies, extraArgs)
+            val result = backend.addDependencies(null, dependencies, extraArgs)
             if (result.success) {
                 println("Added dependencies: ${dependencies.joinToString(", ")}")
                 true
@@ -99,14 +99,14 @@ class DevEnv {
                     return false
                 }
 
-        val venvDir = File(projectRoot, venvPath)
-        if (!venvDir.exists()) {
-            println("Virtual environment not found. Cannot remove dependencies.")
-            return false
-        }
+        // val venvDir = File(projectRoot, venvPath)
+        // if (!venvDir.exists()) {
+        //     println("Virtual environment not found. Cannot remove dependencies.")
+        //     return false
+        // }
 
         return runBlocking {
-            val result = backend.removeDependencies(venvDir.absolutePath, dependencies, extraArgs)
+            val result = backend.removeDependencies(null, dependencies, extraArgs)
             if (result.success) {
                 println("Removed dependencies: ${dependencies.joinToString(", ")}")
                 true

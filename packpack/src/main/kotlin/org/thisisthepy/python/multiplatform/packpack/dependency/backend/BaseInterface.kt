@@ -42,13 +42,12 @@ interface BaseInterface {
 
     /**
      * Add dependencies
-     * @param venvPath Virtual environment path
      * @param dependencies List of dependencies to add
      * @param extraArgs Extra arguments (optional)
      * @return Result of dependency addition
      */
     suspend fun addDependencies(
-        venvPath: String,
+        packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>? = null,
     ): CommandResult
@@ -61,7 +60,7 @@ interface BaseInterface {
      * @return Result of dependency removal
      */
     suspend fun removeDependencies(
-        venvPath: String,
+        packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>? = null,
     ): CommandResult

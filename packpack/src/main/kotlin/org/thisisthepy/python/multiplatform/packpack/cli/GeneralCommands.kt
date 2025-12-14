@@ -87,7 +87,7 @@ fun handleInit(args: Array<String>) {
 
     val result =
         runWithProgressBlocking("Initializing project...") { _ ->
-            CliContext.middleware.initProject(projectName ?: "", pythonVersion ?: "3.13")
+            CliContext.middleware.initProject(projectName, pythonVersion ?: "3.13")
         }
 
     if (!result) {
@@ -102,10 +102,6 @@ fun handleInit(args: Array<String>) {
                 ),
         )
     } else {
-        val projectDisplayName = projectName ?: "current directory"
-        val versionDisplayName = pythonVersion ?: "default Python version"
-        ErrorHandler.showSuccess(
-            "Successfully initialized project '$projectDisplayName' with $versionDisplayName",
-        )
+        ErrorHandler.showSuccess("Successfully initialized project.")
     }
 }
