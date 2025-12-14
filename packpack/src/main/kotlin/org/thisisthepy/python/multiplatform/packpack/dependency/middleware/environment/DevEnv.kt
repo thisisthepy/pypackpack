@@ -207,6 +207,7 @@ class DevEnv {
     fun listPythonVersions(): Boolean =
         runBlocking {
             val result = backend.listPythonVersions()
+
             if (result.success) {
                 println("Available Python versions:")
                 println(result.output)
@@ -225,6 +226,7 @@ class DevEnv {
     fun findPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
             val result = backend.findPythonVersion(pythonVersion)
+
             if (result.success) {
                 println("Found Python version:")
                 println(result.output)
@@ -243,6 +245,7 @@ class DevEnv {
     fun installPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
             val result = backend.installPythonVersion(pythonVersion)
+
             if (result.success) {
                 println("Installed Python version $pythonVersion")
                 true
@@ -260,6 +263,7 @@ class DevEnv {
     fun uninstallPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
             val result = backend.uninstallPythonVersion(pythonVersion)
+
             if (result.success) {
                 println("Uninstalled Python version $pythonVersion")
                 true
@@ -283,6 +287,7 @@ class DevEnv {
                 }
 
         val venvDir = File(projectRoot, venvPath)
+
         if (venvDir.exists()) {
             println("Removing existing virtual environment...")
             if (!venvDir.deleteRecursively()) {
@@ -294,15 +299,9 @@ class DevEnv {
         return runBlocking {
             val result = backend.createVirtualEnvironment(venvDir.absolutePath, pythonVersion)
             if (result.success) {
+                syncDependenciesInVenv(venvDir, null)
+
                 println("Changed Python version to $pythonVersion")
-
-                // Sync dependencies if lock file exists
-                val lockFileInProject = File(projectRoot, lockFile)
-                if (lockFileInProject.exists()) {
-                    println("Synchronizing dependencies...")
-                    syncDependenciesInVenv(venvDir, null)
-                }
-
                 true
             } else {
                 println("Failed to change Python version to $pythonVersion: ${result.error}")

@@ -4,7 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.thisisthepy.python.multiplatform.packpack.util.DownloadSpec
 import org.thisisthepy.python.multiplatform.packpack.util.Downloader
-import org.thisisthepy.python.multiplatform.packpack.util.TargetPlatforms
+import org.thisisthepy.python.multiplatform.packpack.util.Platforms
 import java.io.File
 import java.net.URL
 import java.nio.file.Files
@@ -31,7 +31,7 @@ class UV {
                 "aarch64-pc-windows-msvc" to "uv-aarch64-pc-windows-msvc.zip",
             )
 
-        private fun getCurrentPlatformTarget(): String = TargetPlatforms.detectHostTarget()
+        private fun getCurrentPlatformTarget(): String = Platforms.detectHostTarget()
 
         private fun getUvInstallDir(): File {
             val userHome = System.getProperty("user.home")

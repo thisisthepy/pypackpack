@@ -3,27 +3,35 @@ package org.thisisthepy.python.multiplatform.packpack.util
 /**
  * Central registry for supported target platforms.
  *
- * Notes:
- * - `DISPLAY_TARGETS` defines the order shown by `pypackpack target list`.
- * - `normalizeOrNull()` maps aliases/legacy values to canonical target strings.
+ * Distinguishes between:
+ * - **Target**: A specific build target triple (e.g., `x86_64-pc-windows-msvc`).
+ * - **Platform Family**: The general OS family (e.g., `windows`, `linux`).
  */
-object TargetPlatforms {
-    /** Targets shown to users (in order). */
-    val DISPLAY_TARGETS: List<String> =
+object Platforms {
+    /**
+     * List of all supported targets and aliases for display purposes.
+     * Used by `pypackpack target list`.
+     */
+    val SUPPORTED_TARGETS: List<String> =
         listOf(
+            // Aliases
             "windows",
             "linux",
             "macos",
+            // Windows
             "x86_64-pc-windows-msvc",
             "aarch64-pc-windows-msvc",
             "i686-pc-windows-msvc",
+            // Linux
             "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
             "aarch64-unknown-linux-gnu",
-            "aarch64-unknown-linux-musl",
             "x86_64-unknown-linux-musl",
+            "aarch64-unknown-linux-musl",
             "riscv64-unknown-linux",
+            // macOS
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+            // Manylinux
             "x86_64-manylinux2014",
             "x86_64-manylinux_2_17",
             "x86_64-manylinux_2_28",
@@ -50,22 +58,25 @@ object TargetPlatforms {
             "aarch64-manylinux_2_38",
             "aarch64-manylinux_2_39",
             "aarch64-manylinux_2_40",
+            // Android
             "aarch64-linux-android",
             "x86_64-linux-android",
+            // Wasm
             "wasm32-pyodide2024",
+            // iOS
             "arm64-apple-ios",
             "arm64-apple-ios-simulator",
             "x86_64-apple-ios-simulator",
         )
 
-    /** Canonical target values we actually store/use internally. */
-    private val CANONICAL_TARGETS: Set<String> =
-        DISPLAY_TARGETS
+    /** Canonical target triples. */
+    private val VALID_TARGETS: Set<String> =
+        SUPPORTED_TARGETS
             .filterNot { it == "windows" || it == "linux" || it == "macos" }
             .toSet()
 
-    /** Backward-compatible synonyms; normalized to canonical entries. */
-    private val ALIASES_TO_CANONICAL: Map<String, String> =
+    /** Mapping from aliases/legacy names to canonical target triples. */
+    private val TARGET_ALIASES: Map<String, String> =
         mapOf(
             // Requested human-friendly aliases
             "windows" to "x86_64-pc-windows-msvc",
@@ -86,20 +97,20 @@ object TargetPlatforms {
         )
 
     /**
-     * Normalize a user-provided/legacy target to a canonical target string.
+     * Normalize a user-provided target string to a canonical target triple.
      * Returns null when the target is not supported.
      */
-    fun normalizeOrNull(target: String): String? {
-        val normalized = ALIASES_TO_CANONICAL[target] ?: target
-        return if (normalized in CANONICAL_TARGETS) normalized else null
+    fun normalizeTarget(target: String): String? {
+        val normalized = TARGET_ALIASES[target] ?: target
+        return if (normalized in VALID_TARGETS) normalized else null
     }
 
     /**
-     * Detect host target (canonical) from OS name and architecture.
+     * Detect the host machine's target triple.
      */
     fun detectHostTarget(
-        osName: String,
-        osArch: String,
+        osName: String = System.getProperty("os.name"),
+        osArch: String = System.getProperty("os.arch"),
     ): String {
         val os = osName.lowercase()
         val arch = osArch.lowercase()
@@ -140,23 +151,16 @@ object TargetPlatforms {
                 }
             }
 
-        return normalizeOrNull(rawTarget)
+        return normalizeTarget(rawTarget)
             ?: throw UnsupportedOperationException("Unsupported platform target: $rawTarget")
     }
 
-    /** Detect host target (canonical) from current JVM system properties. */
-    fun detectHostTarget(): String =
-        detectHostTarget(
-            osName = System.getProperty("os.name"),
-            osArch = System.getProperty("os.arch"),
-        )
-
     /**
-     * Convert a canonical target identifier to source directory name.
+     * Get the platform family directory name for a given target.
      * (Used for `package/src/<dir>` layout.)
      */
-    fun sourceDirNameForTarget(target: String): String {
-        val canonical = normalizeOrNull(target) ?: target
+    fun getPlatformFamily(target: String): String {
+        val canonical = normalizeTarget(target) ?: target
         return when {
             canonical.contains("windows") -> "windows"
             canonical.contains("apple-darwin") || canonical.contains("darwin") -> "macos"

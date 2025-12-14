@@ -1,7 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.cli
 
 import org.thisisthepy.python.multiplatform.packpack.cli.internal.ErrorHandler
-import org.thisisthepy.python.multiplatform.packpack.util.TargetPlatforms
+import org.thisisthepy.python.multiplatform.packpack.util.Platforms
 
 /** Handle target command */
 fun handleTarget(args: Array<String>) {
@@ -17,7 +17,7 @@ fun handleTarget(args: Array<String>) {
     when (val subcommand = args[1].lowercase()) {
         "list" -> {
             println("Possible values:")
-            TargetPlatforms.DISPLAY_TARGETS.forEach { target ->
+            Platforms.SUPPORTED_TARGETS.forEach { target ->
                 println("  - $target")
             }
         }
@@ -56,7 +56,7 @@ fun handleTarget(args: Array<String>) {
 
             val crossEnv = CliContext.middleware.getCrossEnv()
 
-            if (!crossEnv.addTargetPlatform(packageName, listOf(targetName))) {
+            if (!crossEnv.addTarget(packageName, listOf(targetName))) {
                 ErrorHandler.operationFailed(
                     operation = "add target '$targetName' to package '$packageName'",
                     suggestions =
@@ -107,7 +107,7 @@ fun handleTarget(args: Array<String>) {
 
             val crossEnv = CliContext.middleware.getCrossEnv()
 
-            if (!crossEnv.removeTargetPlatform(packageName, listOf(targetName))) {
+            if (!crossEnv.removeTarget(packageName, listOf(targetName))) {
                 ErrorHandler.operationFailed(
                     operation = "remove target '$targetName' from package '$packageName'",
                     suggestions =
