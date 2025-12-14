@@ -168,9 +168,8 @@ class CrossEnv {
                 val uv = tool.uv ?: UVConfig()
                 val workspace = uv.workspace ?: UVWorkspaceConfig()
                 val members = (workspace.members ?: emptyList()).toMutableList()
-                val memberEntry = "$packageName/*"
-                if (!members.contains(memberEntry)) {
-                    members.add(memberEntry)
+                if (!members.contains(packageName)) {
+                    members.add(packageName)
                 }
                 val updatedUV = uv.copy(workspace = workspace.copy(members = members))
                 val updatedConfig =
@@ -256,12 +255,11 @@ class CrossEnv {
                     uv?.let { uvConfig ->
                         val ws = uvConfig.workspace
                         val members = ws?.members
-                        val memberEntry = "$packageName/*"
-                        if (members != null && members.contains(memberEntry)) {
+                        if (members != null && members.contains(packageName)) {
                             uvConfig.copy(
                                 workspace =
                                     ws.copy(
-                                        members = (members - memberEntry).takeIf { it.isNotEmpty() },
+                                        members = (members - packageName).takeIf { it.isNotEmpty() },
                                     ),
                             )
                         } else {
