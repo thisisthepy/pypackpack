@@ -74,6 +74,7 @@ data class BuildSystemConfig(
 @Serializable
 data class ToolConfig(
     val pypackpack: PyPackPackConfig? = null,
+    val uv: UVConfig? = null,
     val setuptools: Map<String, String>? = null,
     val wheel: Map<String, String>? = null,
     val poetry: Map<String, String>? = null,
@@ -87,8 +88,6 @@ data class ToolConfig(
 @Serializable
 data class PyPackPackConfig(
     val version: String = "1.0",
-    /** Workspace/local packages managed by PyPackPack under [tool.pypackpack.packages] */
-    val packages: Map<String, PackageRefConfig>? = null,
     val targets: Map<String, TargetConfig>? = null,
     val build: BuildConfig? = null,
     val bundle: BundleConfig? = null,
@@ -96,10 +95,20 @@ data class PyPackPackConfig(
     val dependencies: DependencyConfig? = null,
 )
 
-/** Package reference configuration under [tool.pypackpack.packages.<name>] */
+/**
+ * UV configuration under [tool.uv]
+ */
 @Serializable
-data class PackageRefConfig(
-    val path: String,
+data class UVConfig(
+    val workspace: UVWorkspaceConfig? = null,
+)
+
+/**
+ * UV workspace configuration under [tool.uv.workspace]
+ */
+@Serializable
+data class UVWorkspaceConfig(
+    val members: List<String>? = null,
 )
 
 /**

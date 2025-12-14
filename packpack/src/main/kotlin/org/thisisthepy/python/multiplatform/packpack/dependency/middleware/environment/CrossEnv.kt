@@ -3,12 +3,12 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PackageRefConfig
 import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyPackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.config.PyProjectConfig
 import org.thisisthepy.python.multiplatform.packpack.config.PyProjectParser
 import org.thisisthepy.python.multiplatform.packpack.config.ToolConfig
+import org.thisisthepy.python.multiplatform.packpack.config.UVConfig
+import org.thisisthepy.python.multiplatform.packpack.config.UVWorkspaceConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
 import org.thisisthepy.python.multiplatform.packpack.util.Platforms
@@ -164,21 +164,23 @@ class CrossEnv {
                         applyDefaults = false,
                         validateConfig = false,
                     )
-
                 val tool = config.tool ?: ToolConfig()
-                val pypackpack = tool.pypackpack ?: PyPackPackConfig()
-                val packages = (pypackpack.packages ?: emptyMap())
-                val updatedPackages =
-                    if (packages.containsKey(packageName)) {
-                        packages
-                    } else {
-                        packages + (packageName to PackageRefConfig(path = "./$packageName"))
-                    }
-
+                val uv = tool.uv ?: UVConfig()
+                val workspace = uv.workspace ?: UVWorkspaceConfig()
+                val members = (workspace.members ?: emptyList()).toMutableList()
+                val memberEntry = "$packageName/*"
+                if (!members.contains(memberEntry)) {
+                    members.add(memberEntry)
+                }
+                val updatedUV = uv.copy(workspace = workspace.copy(members = members))
                 val updatedConfig =
                     config.copy(
-                        tool = tool.copy(pypackpack = pypackpack.copy(packages = updatedPackages)),
+                        tool =
+                            tool.copy(
+                                uv = updatedUV,
+                            ),
                     )
+
                 parser.writeToFile(updatedConfig, rootPyprojectFile)
             } catch (e: Exception) {
                 println("Failed to update root pyproject.toml: ${e.message}")
@@ -246,22 +248,36 @@ class CrossEnv {
                         applyDefaults = false,
                         validateConfig = false,
                     )
+                val tool = config.tool ?: ToolConfig()
 
-                val tool = config.tool
-                val pypackpack = tool?.pypackpack
-                val existingPackages = pypackpack?.packages
+                // Update uv
+                val uv = tool.uv
+                val updatedUV =
+                    uv?.let { uvConfig ->
+                        val ws = uvConfig.workspace
+                        val members = ws?.members
+                        val memberEntry = "$packageName/*"
+                        if (members != null && members.contains(memberEntry)) {
+                            uvConfig.copy(
+                                workspace =
+                                    ws.copy(
+                                        members = (members - memberEntry).takeIf { it.isNotEmpty() },
+                                    ),
+                            )
+                        } else {
+                            uvConfig
+                        }
+                    }
 
-                if (existingPackages != null && existingPackages.containsKey(packageName)) {
-                    val updatedPackages = existingPackages - packageName
-                    val updatedPyPackPack =
-                        pypackpack.copy(
-                            packages = updatedPackages.takeIf { it.isNotEmpty() },
-                        )
-                    val updatedConfig = config.copy(tool = tool.copy(pypackpack = updatedPyPackPack))
-                    parser.writeToFile(updatedConfig, rootPyprojectFile)
-                } else {
-                    // Nothing to remove (either missing tool section or not a known package entry)
-                }
+                val updatedConfig =
+                    config.copy(
+                        tool =
+                            tool.copy(
+                                uv = updatedUV,
+                            ),
+                    )
+
+                parser.writeToFile(updatedConfig, rootPyprojectFile)
             } catch (e: Exception) {
                 // Fall back to simple text update for compatibility with non-standard pyproject.toml
                 val rootPyproject = rootPyprojectFile.readText()

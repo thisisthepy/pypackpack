@@ -185,7 +185,6 @@ class PyProjectParser {
 
         fun normalizePyPackPack(tool: PyPackPackConfig): PyPackPackConfig =
             tool.copy(
-                packages = tool.packages?.sortedKeys(),
                 targets = tool.targets?.toSortedMap()?.mapValues { (_, v) -> normalizeTarget(v) },
                 deploy = tool.deploy?.copy(credentials = tool.deploy.credentials?.sortedKeys()),
             )
