@@ -50,8 +50,20 @@
 - pypackpack
   - packpack
     - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack
+      - cli
+        - Main.kt                 # main entry point and CliContext
+        - DependencyCommands.kt   # handles 'add', 'remove', 'sync', 'tree' for dependencies
+        - GeneralCommands.kt      # handles 'help', 'version', 'init' commands
+        - PackageCommands.kt      # handles 'package' and package-specific commands
+        - PythonCommands.kt       # handles 'python' related commands
+        - TargetCommands.kt       # handles 'target' related commands
+        - internal
+          - ArgsParser.kt           # argument parsing utilities
+          - CommandResult.kt        # data class for command results
+          - ErrorHandler.kt         # centralized error handling
+          - ProgressIndicator.kt    # progress indication for CLI
       - util
-        - CommandLine.kt  # CLI endpoint (Main 함수)
+        - TargetPlatforms.kt
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader)
         - DownloadSpec.kt  # external tool download spec
       - dependency
@@ -155,14 +167,13 @@
         - ...
       - test  # test 코드
         - test_*.py
-    - pyproject.lock  # 환경 별 세부 패키지 설정
     - pyproject.toml  # 패키지 설정 (dependency 관리 등)
   - <package2>
     - ...
   - .gitignore
   - LICENSE
   - README.md
-  - pyproject.lock
+  - uv.lock
   - pyproject.toml
 ```
 
@@ -204,7 +215,7 @@ pypackpack init [<project name>] [<python version>]
 #### 프로젝트 파이썬 버전 변경 (DevEnv.kt)
 
 ```bash
-pypaackpack python use <python version>
+pypackpack python use <python version>
 ```
 
 - 지정된 파이썬 버전을 uv를 통해 다운로드 받고 .venv와 프로젝트 전체 빌드 내역 초기화(하위 패키지들의 build 폴더 삭제)
@@ -218,7 +229,7 @@ pypackpack python install <python version>
 pypackpack python uninstall <python version>
 ```
 
-- nv python ~~ 으로 명령어 포워딩
+- uv python ~~ 으로 명령어 포워딩
 
 ### 패키지 관리 기능
 
@@ -231,10 +242,17 @@ pypackpack package remove <package name>
 
 - 지정된 이름으로 새로운 패키지를 프로젝트 루트에 생성 (init, python, package, target, add, remove, sync, tree, build, bundle, deploy는 패키지 이름으로 사용 불가능 -- 검사 필요)
 - 새 패키지를 프로젝트 루트 pyproject.toml에 기록하고, 패키지 내부 pyproject.toml을 생성
-- - 프로젝트 루트 pyproject.toml에서 pip install git+<https://github.com/?/??.git['package> name'] 형태로 설치될 수 있도록 빌드 설정
-- 패키지 내부에 src 폴더를 생성하고, src 폴더에 main 폴더를 생성, main 폴더에 **init**.py 파일을 생성
-- 패키지 내부에 src 폴더 안에 test 폴더를 생성하고, 그 내부에 .gitkeep 파일을 생성
-- 패키지 내부에 build 폴더를 생성하고, build 폴더에 crossenv 폴더를 생성, crossenv 폴더에 현재 실행 중인 host platform에 맞는 venv를 생성
+- 프로젝트 루트 pyproject.toml에서
+
+  dependencies = [
+  "sub-package-name @ file:./sub_package", 표준 경로 의존성 형식 (file: 스키마 사용)
+  ]
+
+  을 기입하여 하위 패키지를 의존성으로 Editable 설치
+
+- src/main에 **init**.py 파일 생성
+- src/test에 .gitkeep 파일을 생성
+- build/crossenv/<host_platform> venv 생성
 
 ### 패키지 빌드 타겟 관리 기능
 
@@ -245,9 +263,8 @@ pypackpack target add <target name> [<package name>]
 pypackpack target remove <target name> [<package name>]
 ```
 
-- 해당 패키지에 대해 타겟을 venv를 생성하고, 타겟에 대한 소스 디렉토리 추가
-- 의존성 패키지를 새 타겟에 대해 다시 전부 설치 후 lock 파일 sync 진행
-- lock file 동기화는 각 플랫폼의 lock으로 부터 uv export를 진행 후 플랫폼별 pylock.toml을 생성하여 uv pip sync pylock.toml --python-platform <플랫폼 이름>을 각 플랫폼별 venv에 대상으로 진행
+- package_name이 비어있는 경우 pyproject.toml에 모든 패키지의 의존성 타겟 플랫폼 추가/제거
+- 타겟 플랫폼별 venv는 실제 빌드가 필요한 시점에 생성
 
 ### 의존성 관리 기능
 
@@ -257,9 +274,8 @@ pypackpack target remove <target name> [<package name>]
 pypackpack add <pypi name> [<etcs>]
 ```
 
-- 사용자의 요청에 따라 package root pyproject.toml에 의존성을 추가한 후 해당 의존성을 venv에 설치
-- uv를 통해 pip install을 실행하되, uv는 .venv 안에서 실행되어 uv.lock를 생성하고, uv 실행이 끝나면 그 파일을 복사하여 프로젝트 루트 pyproject.lock에 붙여넣기
-- - uv 실행 전에도 pyproject.lock을 .venv 안의 pyproject.lock에 붙여넣기
+- 지정된 패키지를 Dev 환경 venv에 설치
+- pyproject.toml 업데이트 후, uv lock을 사용하여 타겟 플랫폼별 Lock 파일 생성/갱신
 
 ```bash
 pypackpack remove <pypi name> [<etcs>]
@@ -270,6 +286,9 @@ pypackpack remove <pypi name> [<etcs>]
 ```bash
 pypackpack sync [<etcs>]
 ```
+
+- Dev 환경 Lock 파일을 기반으로 .venv를 준비.
+- Lock 파일을 기반으로 실제 패키지 파일 다운로드 및 타겟 venv에 설치
 
 ```bash
 pypackpack tree [<etcs>]
@@ -289,7 +308,7 @@ pypackpack mypackage add numpy --target windows linux --extra-index-url https://
 
 - 지정된 패키지에 의존성을 추가
 - target name에 인자가 들어오면 해당 타겟에 추가하고 인자가 비어있으면 모든 타겟에 추가
-- 패키지 내부 pyproject.toml에 의존성을 기록하고, 패키지 내부 build 폴더에 있는 crossenv 폴더에 해당 타겟의 venv에 의존성을 설치
+- pyproject.toml 업데이트 후, uv lock을 사용하여 타겟 플랫폼별 Lock 파일만 즉시 생성/갱신
 
 ```bash
 pypackpack <package name> remove <pypi name> [--target <target name>] [<etcs>]
@@ -299,6 +318,8 @@ pypackpack <package name> remove <pypi name> [--target <target name>] [<etcs>]
 ```bash
 pypackpack <package name> sync [--target <target name>] [<etcs>]
 ````
+
+- Lock 파일을 기반으로 실제 패키지 파일 다운로드 및 타겟 venv에 설치
 
 ````bash
 ```bash
