@@ -1,7 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
 import org.thisisthepy.python.multiplatform.packpack.config.PyPackPackConfig
@@ -139,18 +138,17 @@ class DefaultInterface : BaseInterface {
             return runBlocking {
                 val versionToUse = pythonVersion.ifEmpty { PackPackConfig.defaultPythonVersion }
 
-                val result = backend.createVirtualEnvironment(venvDir.absolutePath, versionToUse)
-                if (result.success) {
-                    println(
-                        "Created project with virtual environment in: ${projectDir.absolutePath}",
-                    )
-                    true
-                } else {
-                    println(
-                        "Created project but failed to create virtual environment: ${result.error}",
-                    )
-                    false
-                }
+                backend
+                    .createVirtualEnvironment(venvDir.absolutePath, versionToUse)
+                    .onSuccess {
+                        println(
+                            "Created project with virtual environment in: ${projectDir.absolutePath}",
+                        )
+                    }.onFailure { error ->
+                        println(
+                            "Created project but failed to create virtual environment: ${error.message}",
+                        )
+                    }.isSuccess
             }
         }
 

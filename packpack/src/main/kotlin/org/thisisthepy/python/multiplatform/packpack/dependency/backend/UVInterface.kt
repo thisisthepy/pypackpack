@@ -1,6 +1,5 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
-import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external.UV
 import java.io.File
@@ -14,6 +13,20 @@ class UVInterface : BaseInterface {
     override fun initialize() {
         // UV initialization is handled by the UV class
     }
+
+    /** Get backend tool version */
+    override suspend fun getVersion(): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
+            val (exitCode, output) = uv.executeCommand(listOf("--version"))
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
+        }
 
     /**
      * Find project root directory
@@ -34,16 +47,14 @@ class UVInterface : BaseInterface {
     override suspend fun isToolInstalled(): Boolean = uv.isInstalled()
 
     /** Install UV */
-    override suspend fun installTool(): CommandResult =
-        try {
+    override suspend fun installTool(): Result<String> =
+        runCatching {
             val success = uv.ensureInstalled()
             if (success) {
-                CommandResult(true, "UV installed successfully", "")
+                "UV installed successfully"
             } else {
-                CommandResult(false, "", "Failed to install UV")
+                throw Exception("Failed to install UV")
             }
-        } catch (e: Exception) {
-            CommandResult(false, "", "Failed to install UV: ${e.message}")
         }
 
     /** Create virtual environment */
@@ -51,56 +62,59 @@ class UVInterface : BaseInterface {
         path: String,
         pythonVersion: String?,
         extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
+    ): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
+
+            val command = mutableListOf("venv", path)
+
+            // Use provided version or default to 3.12
+            val versionToUse = pythonVersion ?: PackPackConfig.defaultPythonVersion
+            command.add("--python")
+            command.add(versionToUse)
+
+            val (exitCode, output) = uv.executeCommand(command)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
-
-        val command = mutableListOf("venv", path)
-
-        // Use provided version or default to 3.12
-        val versionToUse = pythonVersion ?: PackPackConfig.defaultPythonVersion
-        command.add("--python")
-        command.add(versionToUse)
-
-        val (exitCode, output) = uv.executeCommand(command)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
-        }
-    }
 
     /** Add dependencies */
     override suspend fun addDependencies(
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
-
-        val projectRoot =
-            findProjectRoot()
-                ?: run {
-                    return CommandResult(false, "", "Project root not found. Please initialize a project first.")
-                }
-
-        val targetDir =
-            if (packageName.isNullOrEmpty()) {
-                projectRoot
-            } else {
-                File(projectRoot, packageName)
+    ): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
             }
 
-        if (!targetDir.exists()) {
-            return CommandResult(false, "", "Target directory not found: ${targetDir.path}")
-        }
+            val projectRoot =
+                findProjectRoot()
+                    ?: throw Exception("Project root not found. Please initialize a project first.")
 
-        val pyprojectFile = File(projectRoot, "pyproject.toml")
+            val targetDir =
+                if (packageName.isNullOrEmpty()) {
+                    projectRoot
+                } else {
+                    File(projectRoot, packageName)
+                }
 
-        if (pyprojectFile.exists()) {
+            if (!targetDir.exists()) {
+                throw Exception("Target directory not found: ${targetDir.path}")
+            }
+
+            val pyprojectFile = File(projectRoot, "pyproject.toml")
+
+            if (!pyprojectFile.exists()) {
+                throw Exception("pyproject.toml not found in ${projectRoot.path}.")
+            }
+
             val command = mutableListOf("add")
             command.addAll(dependencies)
 
@@ -118,269 +132,244 @@ class UVInterface : BaseInterface {
             }
 
             val (exitCode, output) = uv.executeCommand(command, targetDir)
-            return if (exitCode == 0) {
-                CommandResult(true, output, "")
+            if (exitCode == 0) {
+                output
             } else {
-                CommandResult(false, "", output)
+                throw Exception(output)
             }
-        } else {
-            return CommandResult(false, "", "pyproject.toml not found in ${projectRoot.path}.")
         }
-    }
 
     /** Uninstall dependencies */
     override suspend fun removeDependencies(
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
+    ): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
 
-        val projectRoot =
-            findProjectRoot()
-                ?: run {
-                    return CommandResult(false, "", "Project root not found. Please initialize a project first.")
+            val projectRoot =
+                findProjectRoot()
+                    ?: throw Exception("Project root not found. Please initialize a project first.")
+
+            val targetDir =
+                if (packageName.isNullOrEmpty()) {
+                    projectRoot
+                } else {
+                    File(projectRoot, packageName)
                 }
 
-        val targetDir =
-            if (packageName.isNullOrEmpty()) {
-                projectRoot
+            if (!targetDir.exists()) {
+                throw Exception("Target directory not found: ${targetDir.path}")
+            }
+
+            val command = mutableListOf("remove")
+            command.addAll(dependencies)
+
+            // Add extra arguments
+            extraArgs?.forEach { (key, value) ->
+                command.add("--$key")
+                if (value.isNotEmpty()) {
+                    command.add(value)
+                }
+            }
+
+            if (!packageName.isNullOrEmpty()) {
+                // To prevent UV from creating a virtual environment, you must add the --no-sync option.
+                command.add("--no-sync")
+            }
+
+            // Execute in targetDir
+            val (exitCode, output) = uv.executeCommand(command, targetDir)
+            if (exitCode == 0) {
+                output
             } else {
-                File(projectRoot, packageName)
-            }
-
-        if (!targetDir.exists()) {
-            return CommandResult(false, "", "Target directory not found: ${targetDir.path}")
-        }
-
-        val command = mutableListOf("remove")
-        command.addAll(dependencies)
-
-        // Add extra arguments
-        extraArgs?.forEach { (key, value) ->
-            command.add("--$key")
-            if (value.isNotEmpty()) {
-                command.add(value)
+                throw Exception(output)
             }
         }
-
-        if (!packageName.isNullOrEmpty()) {
-            // To prevent UV from creating a virtual environment, you must add the --no-sync option.
-            command.add("--no-sync")
-        }
-
-        // Execute in targetDir
-        val (exitCode, output) = uv.executeCommand(command, targetDir)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
-        }
-    }
 
     /** Synchronize dependencies */
     override suspend fun syncDependencies(
         venvPath: String,
         extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
+    ): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
 
-        val venvDir = File(venvPath)
-        // Assuming venv is inside project root or we can derive project root
-        // For DevEnv: projectRoot/.venv -> projectRoot
-        // For CrossEnv: projectRoot/package/build/crossenv/platform -> package
-        // We need to find the directory containing pyproject.toml
+            val venvDir = File(venvPath)
+            // Assuming venv is inside project root or we can derive project root
+            // For DevEnv: projectRoot/.venv -> projectRoot
+            // For CrossEnv: projectRoot/package/build/crossenv/platform -> package
+            // We need to find the directory containing pyproject.toml
 
-        var projectRoot = venvDir.parentFile
-        while (projectRoot != null && !File(projectRoot, "pyproject.toml").exists()) {
-            projectRoot = projectRoot.parentFile
-        }
+            var projectRoot = venvDir.parentFile
+            while (projectRoot != null && !File(projectRoot, "pyproject.toml").exists()) {
+                projectRoot = projectRoot.parentFile
+            }
 
-        if (projectRoot == null) {
-            // Fallback to venv parent if pyproject.toml not found (might be error case)
-            projectRoot = venvDir.parentFile
-        }
+            if (projectRoot == null) {
+                // Fallback to venv parent if pyproject.toml not found (might be error case)
+                projectRoot = venvDir.parentFile
+            }
 
-        val command = mutableListOf("sync")
+            val command = mutableListOf("sync")
 
-        // Add extra arguments
-        extraArgs?.forEach { (key, value) ->
-            command.add("--$key")
-            if (value.isNotEmpty()) {
-                command.add(value)
+            // Add extra arguments
+            extraArgs?.forEach { (key, value) ->
+                command.add("--$key")
+                if (value.isNotEmpty()) {
+                    command.add(value)
+                }
+            }
+
+            // Execute uv sync in project root
+            val (exitCode, output) = uv.executeCommand(command, projectRoot)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
             }
         }
-
-        // Execute uv sync in project root
-        val (exitCode, output) = uv.executeCommand(command, projectRoot)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
-        }
-    }
 
     /** Show dependency tree */
     override suspend fun showDependencyTree(
         packageName: String?,
         extraArgs: Map<String, String>?,
-    ): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
-
-        val projectRoot =
-            findProjectRoot()
-                ?: return CommandResult(false, "", "Project root not found.")
-
-        val command = mutableListOf("tree")
-
-        // Add extra arguments
-        extraArgs?.forEach { (key, value) ->
-            command.add("--$key")
-            if (value.isNotEmpty()) {
-                command.add(value)
+    ): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
             }
-        }
 
-        // Execute in packageName directory if provided, otherwise in project root
-        val executionDir =
-            if (packageName != null) {
-                val packageDir = File(packageName)
-                packageDir
+            val projectRoot =
+                findProjectRoot()
+                    ?: throw Exception("Project root not found.")
+
+            val command = mutableListOf("tree")
+
+            // Add extra arguments
+            extraArgs?.forEach { (key, value) ->
+                command.add("--$key")
+                if (value.isNotEmpty()) {
+                    command.add(value)
+                }
+            }
+
+            // Execute in packageName directory if provided, otherwise in project root
+            val executionDir =
+                if (packageName != null) {
+                    val packageDir = File(packageName)
+                    packageDir
+                } else {
+                    projectRoot
+                }
+
+            val (exitCode, output) = uv.executeCommand(command, executionDir)
+            if (exitCode == 0) {
+                output
             } else {
-                projectRoot
+                throw Exception(output)
             }
-
-        val (exitCode, output) = uv.executeCommand(command, executionDir)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
         }
-    }
 
     /** Lock dependencies */
-    override suspend fun lockDependencies(projectRoot: String): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
+    override suspend fun lockDependencies(projectRoot: String): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
 
-        val command = mutableListOf("lock")
+            val command = mutableListOf("lock")
 
-        // Execute uv lock in project root
-        val (exitCode, output) = uv.executeCommand(command, File(projectRoot))
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
+            // Execute uv lock in project root
+            val (exitCode, output) = uv.executeCommand(command, File(projectRoot))
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
-    }
 
     /** List available Python versions */
-    override suspend fun listPythonVersions(): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
+    override suspend fun listPythonVersions(): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
 
-        val command = listOf("python", "list")
+            val command = listOf("python", "list")
 
-        val (exitCode, output) = uv.executeCommand(command)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
+            val (exitCode, output) = uv.executeCommand(command)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
-    }
 
     /** Find a specific Python version */
-    override suspend fun findPythonVersion(pythonVersion: String): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
+    override suspend fun findPythonVersion(pythonVersion: String): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
 
-        val command = listOf("python", "find", pythonVersion)
+            val command = listOf("python", "find", pythonVersion)
 
-        val (exitCode, output) = uv.executeCommand(command)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
+            val (exitCode, output) = uv.executeCommand(command)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
-    }
 
     /** Install a specific Python version */
-    override suspend fun installPythonVersion(pythonVersion: String): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
-        }
+    override suspend fun installPythonVersion(pythonVersion: String): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
 
-        val command = listOf("python", "install", pythonVersion)
+            val command = listOf("python", "install", pythonVersion)
 
-        val (exitCode, output) = uv.executeCommand(command)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
+            val (exitCode, output) = uv.executeCommand(command)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
-    }
 
     /** Uninstall a specific Python version */
-    override suspend fun uninstallPythonVersion(pythonVersion: String): CommandResult {
-        if (!isToolInstalled() && !installTool().success) {
-            return CommandResult(false, "", "UV is not installed")
+    override suspend fun uninstallPythonVersion(pythonVersion: String): Result<String> =
+        runCatching {
+            if (!isToolInstalled()) {
+                installTool().getOrThrow()
+            }
+
+            val command = listOf("python", "uninstall", pythonVersion)
+
+            val (exitCode, output) = uv.executeCommand(command)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
 
-        val command = listOf("python", "uninstall", pythonVersion)
-
-        val (exitCode, output) = uv.executeCommand(command)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
+    /** ExecuteCommand to use UV class */
+    suspend fun executeCommand(command: List<String>): Result<String> =
+        runCatching {
+            val (exitCode, output) = uv.executeCommand(command)
+            if (exitCode == 0) {
+                output
+            } else {
+                throw Exception(output)
+            }
         }
-    }
-
-    /** Override executeCommand to use UV class */
-    override suspend fun executeCommand(command: List<String>): CommandResult {
-        val (exitCode, output) = uv.executeCommand(command)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
-        }
-    }
-
-    /** Override executeInVenv to use UV class with virtual environment */
-    override suspend fun executeInVenv(
-        venvPath: String,
-        command: List<String>,
-    ): CommandResult {
-        // For UV, we can use the virtual environment directly by setting the working directory
-        // UV will automatically detect and use the virtual environment in the project directory
-        val venvDir = File(venvPath)
-        val (exitCode, output) = uv.executeCommand(command, venvDir)
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
-        }
-    }
-
-    /** Helper method to execute command in a specific directory */
-    private suspend fun executeCommandInDirectory(
-        command: List<String>,
-        directory: String,
-    ): CommandResult {
-        val (exitCode, output) = uv.executeCommand(command, File(directory))
-        return if (exitCode == 0) {
-            CommandResult(true, output, "")
-        } else {
-            CommandResult(false, "", output)
-        }
-    }
 }

@@ -1,7 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
 import org.thisisthepy.python.multiplatform.packpack.config.PyprojectConfig
@@ -192,16 +191,15 @@ class CrossEnv {
         val venvDir = File(crossenvDir, hostPlatform)
 
         return runBlocking {
-            val result = backend.createVirtualEnvironment(venvDir.absolutePath, null, null)
-            if (result.success) {
-                println(
-                    "Created package '$packageName' with host platform environment ($hostPlatform)",
-                )
-                true
-            } else {
-                println("Package created but failed to create virtual environment: ${result.error}")
-                false
-            }
+            backend
+                .createVirtualEnvironment(venvDir.absolutePath, null, null)
+                .onSuccess {
+                    println(
+                        "Created package '$packageName' with host platform environment ($hostPlatform)",
+                    )
+                }.onFailure { error ->
+                    println("Package created but failed to create virtual environment: ${error.message}")
+                }.isSuccess
         }
     }
 
@@ -434,14 +432,13 @@ class CrossEnv {
         }
 
         return runBlocking {
-            val result = backend.addDependencies(packageName, dependencies, extraArgs)
-            if (result.success) {
-                println("Added dependencies to package $packageName: ${dependencies.joinToString(", ")}")
-                true
-            } else {
-                println("Failed to add dependencies to package $packageName: ${result.error}")
-                false
-            }
+            backend
+                .addDependencies(packageName, dependencies, extraArgs)
+                .onSuccess {
+                    println("Added dependencies to package $packageName: ${dependencies.joinToString(", ")}")
+                }.onFailure { error ->
+                    println("Failed to add dependencies to package $packageName: ${error.message}")
+                }.isSuccess
         }
     }
 
@@ -480,14 +477,13 @@ class CrossEnv {
         }
 
         return runBlocking {
-            val result = backend.removeDependencies(packageName, dependencies, extraArgs)
-            if (result.success) {
-                println("Removed dependencies from package $packageName: ${dependencies.joinToString(", ")}")
-                true
-            } else {
-                println("Failed to remove dependencies from package $packageName: ${result.error}")
-                false
-            }
+            backend
+                .removeDependencies(packageName, dependencies, extraArgs)
+                .onSuccess {
+                    println("Removed dependencies from package $packageName: ${dependencies.joinToString(", ")}")
+                }.onFailure { error ->
+                    println("Failed to remove dependencies from package $packageName: ${error.message}")
+                }.isSuccess
         }
     }
 
@@ -557,12 +553,13 @@ class CrossEnv {
             if (!venvDir.exists()) {
                 println("Virtual environment for target $target does not exist. Creating...")
                 runBlocking {
-                    val result = backend.createVirtualEnvironment(venvDir.absolutePath, null, null)
-                    if (!result.success) {
-                        println("Failed to create virtual environment for $target: ${result.error}")
-                        success = false
-                        failFlag = true
-                    }
+                    backend
+                        .createVirtualEnvironment(venvDir.absolutePath, null, null)
+                        .onFailure { error ->
+                            println("Failed to create virtual environment for $target: ${error.message}")
+                            success = false
+                            failFlag = true
+                        }
                 }
             }
             if (failFlag) {
@@ -573,13 +570,14 @@ class CrossEnv {
                 val platform = mapOf("platform" to target)
                 val args = if (extraArgs != null) extraArgs + platform else platform
 
-                val result = backend.syncDependencies(venvDir.absolutePath, args)
-                if (result.success) {
-                    println("Synchronized dependencies for target $target")
-                } else {
-                    println("Failed to synchronize dependencies for target $target: ${result.error}")
-                    success = false
-                }
+                backend
+                    .syncDependencies(venvDir.absolutePath, args)
+                    .onSuccess {
+                        println("Synchronized dependencies for target $target")
+                    }.onFailure { error ->
+                        println("Failed to synchronize dependencies for target $target: ${error.message}")
+                        success = false
+                    }
             }
         }
 
@@ -666,13 +664,14 @@ class CrossEnv {
                         }
                     }.ifEmpty { null }
 
-                val result = backend.showDependencyTree(venvDir.absolutePath, args)
-                if (result.success) {
-                    println(result.output)
-                } else {
-                    println("Failed to show dependency tree for target $target: ${result.error}")
-                    success = false
-                }
+                backend
+                    .showDependencyTree(venvDir.absolutePath, args)
+                    .onSuccess { output ->
+                        println(output)
+                    }.onFailure { error ->
+                        println("Failed to show dependency tree for target $target: ${error.message}")
+                        success = false
+                    }
             }
         }
 

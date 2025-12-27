@@ -14,6 +14,7 @@ repositories {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.clikt)
     implementation("com.akuleshov7:ktoml-core:0.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
     testImplementation(kotlin("test"))
@@ -22,7 +23,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("org.thisisthepy.python.multiplatform.packpack.util.CommandLineKt")
+    mainClass.set("org.thisisthepy.python.multiplatform.packpack.cli.CommandKt")
 }
 
 kotlin {
@@ -147,7 +148,7 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("pypackpack")
-            mainClass.set("org.thisisthepy.python.multiplatform.packpack.cli.MainKt")
+            mainClass.set("org.thisisthepy.python.multiplatform.packpack.cli.CommandKt")
             javaLauncher.set(javaToolchains.launcherFor {
                 languageVersion.set(JavaLanguageVersion.of(21))
                 vendor.set(JvmVendorSpec.GRAAL_VM)

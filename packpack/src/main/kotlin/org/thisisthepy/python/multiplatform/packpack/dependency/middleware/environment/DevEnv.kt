@@ -1,7 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import java.io.File
@@ -53,32 +52,14 @@ class DevEnv {
                     return false
                 }
 
-        // val venvDir = File(projectRoot, venvPath)
-        // if (!venvDir.exists()) {
-        //     println("Virtual environment not found. Creating...")
-        //     runBlocking {
-        //         val result =
-        //             backend.createVirtualEnvironment(
-        //                 venvDir.absolutePath,
-        //                 PackPackConfig.defaultPythonVersion,
-        //             )
-        //         if (!result.success) {
-        //             println("Failed to create virtual environment: ${result.error}")
-        //             return@runBlocking false
-        //         }
-        //     }
-        //     if (!venvDir.exists()) return false
-        // }
-
         return runBlocking {
-            val result = backend.addDependencies(null, dependencies, extraArgs)
-            if (result.success) {
-                println("Added dependencies: ${dependencies.joinToString(", ")}")
-                true
-            } else {
-                println("Failed to add dependencies: ${result.error}")
-                false
-            }
+            backend
+                .addDependencies(null, dependencies, extraArgs)
+                .onSuccess {
+                    println("Added dependencies: ${dependencies.joinToString(", ")}")
+                }.onFailure { error ->
+                    println("Failed to add dependencies: ${error.message}")
+                }.isSuccess
         }
     }
 
@@ -99,21 +80,14 @@ class DevEnv {
                     return false
                 }
 
-        // val venvDir = File(projectRoot, venvPath)
-        // if (!venvDir.exists()) {
-        //     println("Virtual environment not found. Cannot remove dependencies.")
-        //     return false
-        // }
-
         return runBlocking {
-            val result = backend.removeDependencies(null, dependencies, extraArgs)
-            if (result.success) {
-                println("Removed dependencies: ${dependencies.joinToString(", ")}")
-                true
-            } else {
-                println("Failed to remove dependencies: ${result.error}")
-                false
-            }
+            backend
+                .removeDependencies(null, dependencies, extraArgs)
+                .onSuccess {
+                    println("Removed dependencies: ${dependencies.joinToString(", ")}")
+                }.onFailure { error ->
+                    println("Failed to remove dependencies: ${error.message}")
+                }.isSuccess
         }
     }
 
@@ -134,39 +108,32 @@ class DevEnv {
         if (!venvDir.exists()) {
             println("Virtual environment not found. Creating...")
             return runBlocking {
-                val result = backend.createVirtualEnvironment(venvDir.absolutePath, null)
-                if (result.success) {
-                    syncDependenciesInVenv(venvDir, extraArgs)
-                } else {
-                    println("Failed to create virtual environment: ${result.error}")
-                    false
-                }
+                backend
+                    .createVirtualEnvironment(venvDir.absolutePath, null)
+                    .onSuccess {
+                        backend
+                            .syncDependencies(venvDir.absolutePath, extraArgs)
+                            .onSuccess {
+                                println("Dependencies synchronized successfully")
+                            }.onFailure { error ->
+                                println("Failed to synchronize dependencies: ${error.message}")
+                            }
+                    }.onFailure { error ->
+                        println("Failed to create virtual environment: ${error.message}")
+                    }.isSuccess
             }
         }
 
-        return syncDependenciesInVenv(venvDir, extraArgs)
+        return runBlocking {
+            backend
+                .syncDependencies(venvDir.absolutePath, extraArgs)
+                .onSuccess {
+                    println("Dependencies synchronized successfully")
+                }.onFailure { error ->
+                    println("Failed to synchronize dependencies: ${error.message}")
+                }.isSuccess
+        }
     }
-
-    /**
-     * Synchronize dependencies in the virtual environment
-     * @param venvDir Virtual environment directory
-     * @param extraArgs Extra arguments (optional)
-     * @return Success status
-     */
-    private fun syncDependenciesInVenv(
-        venvDir: File,
-        extraArgs: Map<String, String>?,
-    ): Boolean =
-        runBlocking {
-            val result = backend.syncDependencies(venvDir.absolutePath, extraArgs)
-            if (result.success) {
-                println("Dependencies synchronized successfully")
-                true
-            } else {
-                println("Failed to synchronize dependencies: ${result.error}")
-                false
-            }
-        }
 
     /**
      * Show dependency tree in the development environment
@@ -188,15 +155,14 @@ class DevEnv {
         }
 
         return runBlocking {
-            val result = backend.showDependencyTree(packageName = null, extraArgs = extraArgs)
-            if (result.success) {
-                println("=== Dependencies for project ===")
-                println(result.output)
-                true
-            } else {
-                println("Failed to show dependency tree: ${result.error}")
-                false
-            }
+            backend
+                .showDependencyTree(packageName = null, extraArgs = extraArgs)
+                .onSuccess { output ->
+                    println("=== Dependencies for project ===")
+                    println(output)
+                }.onFailure { error ->
+                    println("Failed to show dependency tree: ${error.message}")
+                }.isSuccess
         }
     }
 
@@ -206,16 +172,14 @@ class DevEnv {
      */
     fun listPythonVersions(): Boolean =
         runBlocking {
-            val result = backend.listPythonVersions()
-
-            if (result.success) {
-                println("Available Python versions:")
-                println(result.output)
-                true
-            } else {
-                println("Failed to list Python versions: ${result.error}")
-                false
-            }
+            backend
+                .listPythonVersions()
+                .onSuccess { output ->
+                    println("Available Python versions:")
+                    println(output)
+                }.onFailure { error ->
+                    println("Failed to list Python versions: ${error.message}")
+                }.isSuccess
         }
 
     /**
@@ -225,16 +189,14 @@ class DevEnv {
      */
     fun findPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
-            val result = backend.findPythonVersion(pythonVersion)
-
-            if (result.success) {
-                println("Found Python version:")
-                println(result.output)
-                true
-            } else {
-                println("Failed to find Python version $pythonVersion: ${result.error}")
-                false
-            }
+            backend
+                .findPythonVersion(pythonVersion)
+                .onSuccess { output ->
+                    println("Found Python version:")
+                    println(output)
+                }.onFailure { error ->
+                    println("Failed to find Python version $pythonVersion: ${error.message}")
+                }.isSuccess
         }
 
     /**
@@ -244,15 +206,13 @@ class DevEnv {
      */
     fun installPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
-            val result = backend.installPythonVersion(pythonVersion)
-
-            if (result.success) {
-                println("Installed Python version $pythonVersion")
-                true
-            } else {
-                println("Failed to install Python version $pythonVersion: ${result.error}")
-                false
-            }
+            backend
+                .installPythonVersion(pythonVersion)
+                .onSuccess {
+                    println("Installed Python version $pythonVersion")
+                }.onFailure { error ->
+                    println("Failed to install Python version $pythonVersion: ${error.message}")
+                }.isSuccess
         }
 
     /**
@@ -262,15 +222,13 @@ class DevEnv {
      */
     fun uninstallPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
-            val result = backend.uninstallPythonVersion(pythonVersion)
-
-            if (result.success) {
-                println("Uninstalled Python version $pythonVersion")
-                true
-            } else {
-                println("Failed to uninstall Python version $pythonVersion: ${result.error}")
-                false
-            }
+            backend
+                .uninstallPythonVersion(pythonVersion)
+                .onSuccess {
+                    println("Uninstalled Python version $pythonVersion")
+                }.onFailure { error ->
+                    println("Failed to uninstall Python version $pythonVersion: ${error.message}")
+                }.isSuccess
         }
 
     /**
@@ -297,16 +255,20 @@ class DevEnv {
         }
 
         return runBlocking {
-            val result = backend.createVirtualEnvironment(venvDir.absolutePath, pythonVersion)
-            if (result.success) {
-                syncDependenciesInVenv(venvDir, null)
-
-                println("Changed Python version to $pythonVersion")
-                true
-            } else {
-                println("Failed to change Python version to $pythonVersion: ${result.error}")
-                false
-            }
+            backend
+                .createVirtualEnvironment(venvDir.absolutePath, pythonVersion)
+                .onSuccess {
+                    backend
+                        .syncDependencies(venvDir.absolutePath, null)
+                        .onSuccess {
+                            println("Changed Python version to $pythonVersion")
+                            println("Dependencies synchronized successfully")
+                        }.onFailure { error ->
+                            println("Failed to synchronize dependencies: ${error.message}")
+                        }
+                }.onFailure { error ->
+                    println("Failed to change Python version to $pythonVersion: ${error.message}")
+                }.isSuccess
         }
     }
 }

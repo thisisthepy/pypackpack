@@ -2,7 +2,6 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.cli.internal.CommandResult
 import org.thisisthepy.python.multiplatform.packpack.util.Downloader
 
 /**
@@ -16,6 +15,12 @@ interface BaseInterface {
     fun initialize()
 
     /**
+     * Get backend tool version
+     * @return Result containing version information
+     */
+    suspend fun getVersion(): Result<String>
+
+    /**
      * Check if dependency management tool is installed
      * @return True if installed, false otherwise
      */
@@ -25,7 +30,7 @@ interface BaseInterface {
      * Install dependency management tool
      * @return Result of installation
      */
-    suspend fun installTool(): CommandResult
+    suspend fun installTool(): Result<String>
 
     /**
      * Create virtual environment
@@ -38,7 +43,7 @@ interface BaseInterface {
         path: String,
         pythonVersion: String?,
         extraArgs: Map<String, String>? = null,
-    ): CommandResult
+    ): Result<String>
 
     /**
      * Add dependencies
@@ -50,7 +55,7 @@ interface BaseInterface {
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>? = null,
-    ): CommandResult
+    ): Result<String>
 
     /**
      * Remove dependencies
@@ -63,7 +68,7 @@ interface BaseInterface {
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>? = null,
-    ): CommandResult
+    ): Result<String>
 
     /**
      * Synchronize dependencies
@@ -74,7 +79,7 @@ interface BaseInterface {
     suspend fun syncDependencies(
         venvPath: String,
         extraArgs: Map<String, String>? = null,
-    ): CommandResult
+    ): Result<String>
 
     /**
      * Show dependency tree
@@ -85,93 +90,50 @@ interface BaseInterface {
     suspend fun showDependencyTree(
         packageName: String?,
         extraArgs: Map<String, String>? = null,
-    ): CommandResult
+    ): Result<String>
 
     /**
      * Lock dependencies (generate lock file)
      * @param projectRoot Project root directory
      * @return Result of lock operation
      */
-    suspend fun lockDependencies(projectRoot: String): CommandResult
+    suspend fun lockDependencies(projectRoot: String): Result<String>
 
     /**
      * List available Python versions
      * @return Result containing Python versions
      */
-    suspend fun listPythonVersions(): CommandResult
+    suspend fun listPythonVersions(): Result<String>
 
     /**
      * Find a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version search
      */
-    suspend fun findPythonVersion(pythonVersion: String): CommandResult
+    suspend fun findPythonVersion(pythonVersion: String): Result<String>
 
     /**
      * Install a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version installation
      */
-    suspend fun installPythonVersion(pythonVersion: String): CommandResult
+    suspend fun installPythonVersion(pythonVersion: String): Result<String>
 
     /**
      * Uninstall a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version uninstallation
      */
-    suspend fun uninstallPythonVersion(pythonVersion: String): CommandResult
-
-    /**
-     * Helper method to execute command in a virtual environment
-     * @param venvPath Virtual environment path
-     * @param command Command to execute
-     * @return Result of command execution
-     */
-    suspend fun executeInVenv(
-        venvPath: String,
-        command: List<String>,
-    ): CommandResult {
-        val activateScript =
-            if (isWindows()) {
-                "Scripts\\activate.bat"
-            } else {
-                "bin/activate"
-            }
-
-        return if (isWindows()) {
-            // Windows uses a different approach
-            val cmd =
-                mutableListOf(
-                    "cmd",
-                    "/c",
-                    "call",
-                    "$venvPath\\$activateScript",
-                    "&&",
-                )
-            cmd.addAll(command)
-
-            executeCommand(cmd)
-        } else {
-            // Unix-like systems
-            val cmd =
-                mutableListOf(
-                    "/bin/sh",
-                    "-c",
-                    "source $venvPath/$activateScript && ${command.joinToString(" ")}",
-                )
-
-            executeCommand(cmd)
-        }
-    }
+    suspend fun uninstallPythonVersion(pythonVersion: String): Result<String>
 
     /**
      * Helper method to execute command
      * @param command Command to execute
      * @return Result of command execution
      */
-    suspend fun executeCommand(command: List<String>): CommandResult =
+    private suspend fun executeCommand(command: List<String>): Result<String> =
         withContext(Dispatchers.IO) {
-            try {
+            runCatching {
                 val process =
                     ProcessBuilder(command)
                         .redirectErrorStream(true)
@@ -181,20 +143,12 @@ interface BaseInterface {
                 val exitCode = process.waitFor()
 
                 if (exitCode == 0) {
-                    CommandResult(true, output, "")
+                    output
                 } else {
-                    CommandResult(false, "", output)
+                    throw Exception(output)
                 }
-            } catch (e: Exception) {
-                CommandResult(false, "", e.message ?: "Unknown error")
             }
         }
-
-    /**
-     * Check if running on Windows
-     * @return True if on Windows, false otherwise
-     */
-    fun isWindows(): Boolean = System.getProperty("os.name").lowercase().contains("win")
 
     companion object {
         /**
