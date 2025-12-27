@@ -10,7 +10,6 @@ class DevEnv {
     private lateinit var backend: BaseInterface
     private val venvPath = ".venv"
     private val pyprojectFile = "pyproject.toml"
-    private val lockFile = "uv.lock"
 
     /**
      * Initialize development environment

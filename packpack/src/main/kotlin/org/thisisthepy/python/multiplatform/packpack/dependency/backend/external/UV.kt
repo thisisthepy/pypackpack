@@ -33,13 +33,13 @@ class UV {
 
         private fun getCurrentPlatformTarget(): String = Platforms.detectHostTarget()
 
-        private fun getUvInstallDir(): File {
+        private fun getUVInstallDir(): File {
             val userHome = System.getProperty("user.home")
             return File(userHome, ".pypackpack/uv")
         }
 
-        private fun getUvBinaryPath(): File {
-            val installDir = getUvInstallDir()
+        private fun getUVBinaryPath(): File {
+            val installDir = getUVInstallDir()
             val binaryName =
                 if (System.getProperty("os.name").lowercase().contains("windows")) {
                     "uv.exe"
@@ -77,17 +77,17 @@ class UV {
      * Check if UV is installed in PyPackPack's local directory
      */
     private fun isDownloadedInstalled(): Boolean {
-        val uvBinary = getUvBinaryPath()
+        val uvBinary = getUVBinaryPath()
         return uvBinary.exists() && uvBinary.canExecute()
     }
 
     /**
      * Get the path to UV binary (system or downloaded)
      */
-    suspend fun getUvPath(): String? =
+    suspend fun getUVPath(): String? =
         when {
             isSystemInstalled() -> "uv"
-            isDownloadedInstalled() -> getUvBinaryPath().absolutePath
+            isDownloadedInstalled() -> getUVBinaryPath().absolutePath
             else -> null
         }
 
@@ -121,7 +121,7 @@ class UV {
                     ?: throw UnsupportedOperationException("No UV binary available for platform: $platform")
 
             val downloadUrl = "$UV_BASE_URL/$UV_VERSION/$binaryName"
-            val installDir = getUvInstallDir()
+            val installDir = getUVInstallDir()
 
             // Create install directory
             installDir.mkdirs()
@@ -142,7 +142,7 @@ class UV {
                 extractUvBinary(tempFile, installDir, binaryName.endsWith(".zip"))
 
                 // Make binary executable on Unix systems
-                val uvBinary = getUvBinaryPath()
+                val uvBinary = getUVBinaryPath()
                 if (!System.getProperty("os.name").lowercase().contains("windows")) {
                     uvBinary.setExecutable(true)
                 }
@@ -220,7 +220,7 @@ class UV {
      */
     suspend fun getVersion(): String? =
         withContext(Dispatchers.IO) {
-            val uvPath = getUvPath() ?: return@withContext null
+            val uvPath = getUVPath() ?: return@withContext null
 
             try {
                 val process =
@@ -253,7 +253,7 @@ class UV {
         workingDir: File? = null,
     ): Pair<Int, String> =
         withContext(Dispatchers.IO) {
-            val uvPath = getUvPath() ?: throw IllegalStateException("UV is not installed")
+            val uvPath = getUVPath() ?: throw IllegalStateException("UV is not installed")
 
             val command = listOf(uvPath) + args
             val processBuilder =

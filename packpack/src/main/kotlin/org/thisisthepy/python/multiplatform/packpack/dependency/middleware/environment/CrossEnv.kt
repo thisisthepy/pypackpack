@@ -20,9 +20,7 @@ import java.io.File
 class CrossEnv {
     private lateinit var backend: BaseInterface
     private lateinit var devEnv: DevEnv
-    private val venvPath = ".venv"
     private val pyprojectFile = "pyproject.toml"
-    private val lockFile = "pyproject.lock"
     private val crossenvDir = "build/crossenv"
 
     /** Available target platforms */
