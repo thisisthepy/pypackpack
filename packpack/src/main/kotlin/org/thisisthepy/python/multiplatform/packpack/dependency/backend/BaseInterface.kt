@@ -5,6 +5,13 @@ import kotlinx.coroutines.withContext
 import org.thisisthepy.python.multiplatform.packpack.util.Downloader
 
 /**
+ * Backend type enum
+ */
+enum class BackendType {
+    UV,
+}
+
+/**
  * Base interface for dependency management backend
  * Factory pattern for creating backend instances
  */
@@ -42,6 +49,16 @@ interface BaseInterface {
     suspend fun createVirtualEnvironment(
         path: String,
         pythonVersion: String?,
+        extraArgs: Map<String, String>? = null,
+    ): Result<String>
+
+    /**
+     * Initialize a new project
+     * @param projectName Project name (optional)
+     * @param pythonVersion Python version (optional)
+     */
+    suspend fun initProject(
+        path: String?,
         extraArgs: Map<String, String>? = null,
     ): Result<String>
 
@@ -156,10 +173,9 @@ interface BaseInterface {
          * @param type Backend type
          * @return Backend instance
          */
-        fun create(type: String): BaseInterface =
-            when (type.lowercase()) {
-                "uv" -> UVInterface()
-                else -> UVInterface() // Default to UV
+        fun create(type: BackendType): BaseInterface =
+            when (type) {
+                BackendType.UV -> UVInterface()
             }
     }
 }

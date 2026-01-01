@@ -1,12 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
-import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyPackPackConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyprojectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyprojectParser
-import org.thisisthepy.python.multiplatform.packpack.config.ToolConfig
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendType
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
 import java.io.File
@@ -18,19 +13,12 @@ class DefaultInterface : BaseInterface {
     private lateinit var devEnv: DevEnv
     private lateinit var crossEnv: CrossEnv
 
-    var projectPythonVersion: String = PackPackConfig.defaultPythonVersion
-        private set
-
     /** Initialize middleware */
     override fun initialize() {
-        backend = BackendBaseInterface.create("uv")
-        backend.initialize()
-
-        devEnv = DevEnv()
-        devEnv.initialize(backend)
-
-        crossEnv = CrossEnv()
-        crossEnv.initialize(backend)
+        if (!::backend.isInitialized) {
+            backend = BackendBaseInterface.create(BackendType.UV)
+            backend.initialize()
+        }
     }
 
     /** Get backend interface */
@@ -44,7 +32,8 @@ class DefaultInterface : BaseInterface {
     /** Get development environment */
     override fun getDevEnv(): DevEnv {
         if (!::devEnv.isInitialized) {
-            initialize()
+            devEnv = DevEnv()
+            devEnv.initialize(backend)
         }
         return devEnv
     }
@@ -52,109 +41,20 @@ class DefaultInterface : BaseInterface {
     /** Get cross-platform environment */
     override fun getCrossEnv(): CrossEnv {
         if (!::crossEnv.isInitialized) {
-            initialize()
+            crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
         }
         return crossEnv
     }
 
     /** Init Project */
     override fun initProject(
-        projectName: String?,
-        pythonVersion: String,
-    ): Boolean {
-        val projectDir: File
-        val actualProjectName: String
-
-        if (projectName == null) {
-            projectDir = File(System.getProperty("user.dir"))
-            actualProjectName = projectDir.name
-        } else {
-            projectDir = File(projectName)
-            actualProjectName = projectName
-            if (!projectDir.exists() && !projectDir.mkdirs()) {
-                println("Failed to create project directory: ${projectDir.absolutePath}")
-                return false
-            }
+        path: String?,
+        extraArgs: Map<String, String>?,
+    ): Result<String> =
+        runBlocking {
+            backend.initProject(path, extraArgs)
         }
-
-        // Check if project already exists
-        val pyprojectTomlFile = File(projectDir, "pyproject.toml")
-        if (pyprojectTomlFile.exists()) {
-            println("Project already exists in: ${projectDir.absolutePath}")
-            return false
-        }
-
-        val parser = PyprojectParser()
-
-        // Create pyproject.toml
-        val config =
-            PyprojectConfig(
-                project =
-                    ProjectConfig(
-                        name = actualProjectName,
-                        version = "0.1.0",
-                        description = "A Python multi-platform project",
-                        readme = "README.md",
-                        requiresPython = ">=$pythonVersion",
-                        dependencies = emptyList(),
-                    ),
-                tool =
-                    ToolConfig(
-                        pypackpack =
-                            PyPackPackConfig(
-                                version = "1.0",
-                                targets = emptyMap(),
-                            ),
-                    ),
-            )
-
-        try {
-            parser.writeToFile(config, pyprojectTomlFile)
-        } catch (e: Exception) {
-            println("Failed to create pyproject.toml: ${e.message}")
-            return false
-        }
-
-        // Create README.md if it doesn't exist
-        val readmeFile = File(projectDir, "README.md")
-        if (!readmeFile.exists()) {
-            readmeFile.writeText("# $actualProjectName\n\nA Python multi-platform project\n")
-        }
-
-        // Create .gitignore if it doesn't exist
-        val gitignoreFile = File(projectDir, ".gitignore")
-        if (!gitignoreFile.exists()) {
-            gitignoreFile.writeText(
-                """
-                # Python
-                __pycache__/
-                """.trimIndent(),
-            )
-        }
-
-        // Create virtual environment
-        val venvDir = File(projectDir, ".venv")
-        if (!venvDir.exists()) {
-            return runBlocking {
-                val versionToUse = pythonVersion.ifEmpty { PackPackConfig.defaultPythonVersion }
-
-                backend
-                    .createVirtualEnvironment(venvDir.absolutePath, versionToUse)
-                    .onSuccess {
-                        println(
-                            "Created project with virtual environment in: ${projectDir.absolutePath}",
-                        )
-                    }.onFailure { error ->
-                        println(
-                            "Created project but failed to create virtual environment: ${error.message}",
-                        )
-                    }.isSuccess
-            }
-        }
-
-        println("Created project in: ${projectDir.absolutePath}")
-        return true
-    }
 
     /**
      * Add dependencies to a package
@@ -169,19 +69,14 @@ class DefaultInterface : BaseInterface {
         dependencies: List<String>,
         targets: List<String>?,
         extraArgs: Map<String, String>?,
-    ): Boolean {
-        if (!::backend.isInitialized) {
-            initialize()
-        }
-
-        return if (packageName == null) {
+    ): Boolean =
+        if (packageName == null) {
             // Add to development environment
             devEnv.addDependencies(dependencies, extraArgs)
         } else {
             // Add to cross-platform environment
             crossEnv.addDependencies(packageName, dependencies, targets, extraArgs)
         }
-    }
 
     /**
      * Remove dependencies from a package

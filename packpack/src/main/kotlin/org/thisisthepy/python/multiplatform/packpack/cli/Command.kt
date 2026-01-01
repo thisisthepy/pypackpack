@@ -1,12 +1,15 @@
 package org.thisisthepy.python.multiplatform.packpack.cli
 
 import com.github.ajalt.clikt.core.*
+import com.github.ajalt.clikt.output.HelpFormatter
 import com.github.ajalt.clikt.parameters.arguments.*
+import com.github.ajalt.clikt.parameters.groups.OptionGroup
+import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.*
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendType
 import org.thisisthepy.python.multiplatform.packpack.util.Platforms
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
 
@@ -41,8 +44,7 @@ class PyPackPackCommand : CliktCommand(name = "pypackpack") {
     }
 
     override fun run() {
-        PackPackConfig.initialize()
-        currentContext.obj = BaseInterface.create("cli").apply { initialize() }.getMiddleware()
+        currentContext.obj = BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
     }
 }
 
@@ -56,8 +58,10 @@ class VersionCommand : CliktCommand(name = "version") {
             "-v" to listOf("version"),
         )
 
+    val pypackpackVersion: String = "0.1.0"
+
     override fun run() {
-        echo("PyPackPack version 0.1.0")
+        echo("PyPackPack version $pypackpackVersion")
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
         val backend = middleware.getBackend()
 
@@ -77,6 +81,10 @@ class VersionCommand : CliktCommand(name = "version") {
     }
 }
 
+class PythonOptions : OptionGroup(name = "Python options") {
+    val pythonVersion by option("--python", help = "Python version to use", metavar = "<PYTHON>").default("")
+}
+
 class InitCommand : CliktCommand(name = "init") {
     override fun help(context: Context) =
         """
@@ -85,23 +93,38 @@ class InitCommand : CliktCommand(name = "init") {
         Creates a pyproject.toml file with basic project structure and configuration.
         """.trimIndent()
 
-    val projectName by argument(help = "The name of the project").optional()
-    val pythonVersion by argument(help = "Python version to use (default: 3.13)").default("3.13")
+    val path by argument(name = "PATH", help = "The path to use for the project/script").optional()
+
+    // Options
+    val projectName by option("--name", help = "Project name", metavar = "<NAME>").default("")
+    val `package` by option("--package", help = "Initialize as a package").flag()
+
+    // Python Options
+    val pythonOptions by PythonOptions()
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
         val term = currentContext.terminal
 
-        val success =
-            term.runWithProgress("Initializing project...") {
-                middleware.initProject(projectName, pythonVersion)
+        val extraArgs =
+            buildMap {
+                if (projectName.isNotEmpty()) put("name", projectName)
+                if (pythonOptions.pythonVersion.isNotEmpty()) put("python", pythonOptions.pythonVersion)
+                if (`package`) put("package", "")
             }
 
-        if (!success) {
-            throw PrintMessage("Failed to initialize project", statusCode = 1)
-        } else {
-            echo("Successfully initialized project.")
-        }
+        val result =
+            term.runWithProgress("Initializing project...") {
+                middleware.initProject(path, extraArgs)
+            }
+
+        result
+            .onSuccess {
+                echo("Successfully initialized project at ${path ?: System.getProperty("user.dir")}")
+                if (it.isNotEmpty()) echo(it)
+            }.onFailure {
+                throw PrintMessage("Failed to initialize project: ${it.message}", statusCode = 1)
+            }
     }
 }
 
@@ -581,8 +604,7 @@ class DynamicPackageCommand(
     override fun run() {
         val middleware =
             currentContext.findOrSetObject {
-                PackPackConfig.initialize()
-                BaseInterface.create("cli").apply { initialize() }.getMiddleware()
+                BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
             }
         val term = currentContext.terminal
 

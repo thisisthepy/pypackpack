@@ -216,36 +216,6 @@ class UV {
     }
 
     /**
-     * Get UV version information
-     */
-    suspend fun getVersion(): String? =
-        withContext(Dispatchers.IO) {
-            val uvPath = getUVPath() ?: return@withContext null
-
-            try {
-                val process =
-                    ProcessBuilder(uvPath, "--version")
-                        .redirectErrorStream(true)
-                        .start()
-
-                val output =
-                    process.inputStream
-                        .bufferedReader()
-                        .readText()
-                        .trim()
-                val exitCode = process.waitFor(5, TimeUnit.SECONDS)
-
-                if (exitCode && process.exitValue() == 0) {
-                    output
-                } else {
-                    null
-                }
-            } catch (e: Exception) {
-                null
-            }
-        }
-
-    /**
      * Execute UV command with given arguments
      */
     suspend fun executeCommand(

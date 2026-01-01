@@ -1,15 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
-import org.thisisthepy.python.multiplatform.packpack.config.ProjectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyprojectConfig
-import org.thisisthepy.python.multiplatform.packpack.config.PyprojectParser
-import org.thisisthepy.python.multiplatform.packpack.config.ToolConfig
-import org.thisisthepy.python.multiplatform.packpack.config.UVConfig
-import org.thisisthepy.python.multiplatform.packpack.config.UVWorkspaceConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
 import org.thisisthepy.python.multiplatform.packpack.util.Platforms
 import java.io.File
 
@@ -22,21 +14,6 @@ class CrossEnv {
     private lateinit var devEnv: DevEnv
     private val pyprojectFile = "pyproject.toml"
     private val crossenvDir = "build/crossenv"
-
-    /** Available target platforms */
-    private fun normalizeTargetsOrFail(targets: List<String>): Pair<List<String>, List<String>> {
-        val normalized = mutableListOf<String>()
-        val invalid = mutableListOf<String>()
-        for (target in targets) {
-            val canonical = Platforms.normalizeTarget(target)
-            if (canonical == null) {
-                invalid.add(target)
-            } else {
-                normalized.add(canonical)
-            }
-        }
-        return Pair(normalized.distinct(), invalid.distinct())
-    }
 
     /**
      * Initialize cross-platform environment
@@ -86,204 +63,15 @@ class CrossEnv {
             return false
         }
 
-        val projectRoot =
-            findProjectRoot()
-                ?: run {
-                    println("Project root not found. Please initialize a project first.")
-                    return false
-                }
-
-        val packageDir = File(projectRoot, packageName)
-        if (packageDir.exists()) {
-            println("Package already exists: ${packageDir.absolutePath}")
-            return false
-        }
-
-        // Create package directory
-        if (!packageDir.mkdirs()) {
-            println("Failed to create package directory: ${packageDir.absolutePath}")
-            return false
-        }
-
-        // Create src directory structure
-        val srcDir = File(packageDir, "src")
-        val mainDir = File(srcDir, "main")
-        val testDir = File(srcDir, "test")
-
-        if (!mainDir.mkdirs() || !testDir.mkdirs()) {
-            println("Failed to create source directories")
-            return false
-        }
-
-        // Create __init__.py in main
-        File(mainDir, "__init__.py").writeText("# Main package code\n")
-
-        // Create .gitkeep in test
-        File(testDir, ".gitkeep").createNewFile()
-
-        // Create build directory structure
-        val buildDir = File(packageDir, "build")
-        val crossenvDir = File(buildDir, "crossenv")
-
-        if (!crossenvDir.mkdirs()) {
-            println("Failed to create build directories")
-            return false
-        }
-
-        // Create package pyproject.toml
-        val parser = PyprojectParser()
-        val packagePyprojectFile = File(packageDir, pyprojectFile)
-        val packageConfig =
-            PyprojectConfig(
-                project =
-                    ProjectConfig(
-                        name = packageName,
-                        version = "0.1.0",
-                        description = "A Python package managed by PyPackPack",
-                        readme = "../README.md",
-                        requiresPython = ">=${PackPackConfig.defaultPythonVersion}",
-                    ),
-            )
-        try {
-            parser.writeToFile(packageConfig, packagePyprojectFile)
-        } catch (e: Exception) {
-            println("Failed to create package pyproject.toml: ${e.message}")
-            return false
-        }
-
-        // Update root pyproject.toml to include the new package
-        val rootPyprojectFile = File(projectRoot, pyprojectFile)
-        if (rootPyprojectFile.exists()) {
-            try {
-                val config =
-                    parser.parseFromFile(
-                        rootPyprojectFile,
-                        applyDefaults = false,
-                        validateConfig = false,
-                    )
-                val tool = config.tool ?: ToolConfig()
-                val uv = tool.uv ?: UVConfig()
-                val workspace = uv.workspace ?: UVWorkspaceConfig()
-                val members = (workspace.members ?: emptyList()).toMutableList()
-                if (!members.contains(packageName)) {
-                    members.add(packageName)
-                }
-                val updatedUV = uv.copy(workspace = workspace.copy(members = members))
-                val updatedConfig =
-                    config.copy(
-                        tool =
-                            tool.copy(
-                                uv = updatedUV,
-                            ),
-                    )
-
-                parser.writeToFile(updatedConfig, rootPyprojectFile)
-            } catch (e: Exception) {
-                println("Failed to update root pyproject.toml: ${e.message}")
-                return false
-            }
-        }
-
-        // Create host platform virtual environment
-        val hostPlatform = Platforms.detectHostTarget()
-        val venvDir = File(crossenvDir, hostPlatform)
-
-        return runBlocking {
-            backend
-                .createVirtualEnvironment(venvDir.absolutePath, null, null)
-                .onSuccess {
-                    println(
-                        "Created package '$packageName' with host platform environment ($hostPlatform)",
-                    )
-                }.onFailure { error ->
-                    println("Package created but failed to create virtual environment: ${error.message}")
-                }.isSuccess
-        }
-    }
+        return true
+    } // TODO: Implement addPackage
 
     /**
      * Remove a package from the project
      * @param packageName Package name
      * @return Success status
      */
-    fun removePackage(packageName: String): Boolean {
-        val projectRoot =
-            findProjectRoot()
-                ?: run {
-                    println("Project root not found. Please initialize a project first.")
-                    return false
-                }
-
-        val packageDir = File(projectRoot, packageName)
-        if (!packageDir.exists() || !packageDir.isDirectory) {
-            println("Package not found: $packageName")
-            return false
-        }
-
-        // Check if pyproject.toml exists to confirm it's a package
-        if (!File(packageDir, pyprojectFile).exists()) {
-            println("Not a valid package: $packageName")
-            return false
-        }
-
-        // Remove package directory
-        if (!packageDir.deleteRecursively()) {
-            println("Failed to delete package directory: ${packageDir.absolutePath}")
-            return false
-        }
-
-        // Update root pyproject.toml to remove the package
-        val rootPyprojectFile = File(projectRoot, pyprojectFile)
-        if (rootPyprojectFile.exists()) {
-            val parser = PyprojectParser()
-            try {
-                val config =
-                    parser.parseFromFile(
-                        rootPyprojectFile,
-                        applyDefaults = false,
-                        validateConfig = false,
-                    )
-                val tool = config.tool ?: ToolConfig()
-
-                // Update uv
-                val uv = tool.uv
-                val updatedUV =
-                    uv?.let { uvConfig ->
-                        val ws = uvConfig.workspace
-                        val members = ws?.members
-                        if (members != null && members.contains(packageName)) {
-                            uvConfig.copy(
-                                workspace =
-                                    ws.copy(
-                                        members = (members - packageName).takeIf { it.isNotEmpty() },
-                                    ),
-                            )
-                        } else {
-                            uvConfig
-                        }
-                    }
-
-                val updatedConfig =
-                    config.copy(
-                        tool =
-                            tool.copy(
-                                uv = updatedUV,
-                            ),
-                    )
-
-                parser.writeToFile(updatedConfig, rootPyprojectFile)
-            } catch (e: Exception) {
-                // Fall back to simple text update for compatibility with non-standard pyproject.toml
-                val rootPyproject = rootPyprojectFile.readText()
-                val packageEntry = "\"$packageName\" = { path = \"./$packageName\" }"
-                val updatedContent = rootPyproject.replace(packageEntry, "").replace("\n\n\n", "\n\n")
-                rootPyprojectFile.writeText(updatedContent)
-            }
-        }
-
-        println("Removed package: $packageName")
-        return true
-    }
+    fun removePackage(packageName: String): Boolean = true // TODO: Implement removePackage
 
     /**
      * Add target platform to a package
@@ -294,49 +82,7 @@ class CrossEnv {
     fun addTarget(
         packageName: String,
         targets: List<String>,
-    ): Boolean {
-        val projectRoot =
-            findProjectRoot()
-                ?: run {
-                    println("Project root not found. Please initialize a project first.")
-                    return false
-                }
-
-        val packageDir = File(projectRoot, packageName)
-        if (!packageDir.exists() || !packageDir.isDirectory) {
-            println("Package not found: $packageName")
-            return false
-        }
-
-        // Check if pyproject.toml exists to confirm it's a package
-        val packagePyproject = File(packageDir, pyprojectFile)
-        if (!packagePyproject.exists()) {
-            println("Not a valid package: $packageName")
-            return false
-        }
-
-        val (normalizedTargets, invalidPlatforms) = normalizeTargetsOrFail(targets)
-        if (invalidPlatforms.isNotEmpty()) {
-            println("Invalid target platforms: ${invalidPlatforms.joinToString(", ")}")
-            println("Available platforms: ${Platforms.SUPPORTED_TARGETS.joinToString(", ")}")
-            return false
-        }
-
-        // Create source directories for each platform
-        val srcDir = File(packageDir, "src")
-        for (platform in normalizedTargets) {
-            val platformDir = File(srcDir, Platforms.getPlatformFamily(platform))
-            if (!platformDir.exists() && !platformDir.mkdirs()) {
-                println("Failed to create source directory for platform: $platform")
-                return false
-            }
-
-            // Create empty __init__.py
-            File(platformDir, "__init__.py").writeText("# Platform-specific code for $platform\n")
-        }
-
-        return true
-    }
+    ): Boolean = true // TODO: Implement addTarget
 
     /**
      * Remove target platform from a package
@@ -348,52 +94,8 @@ class CrossEnv {
         packageName: String,
         targets: List<String>,
     ): Boolean {
-        val projectRoot =
-            findProjectRoot()
-                ?: run {
-                    println("Project root not found. Please initialize a project first.")
-                    return false
-                }
-
-        val packageDir = File(projectRoot, packageName)
-        if (!packageDir.exists() || !packageDir.isDirectory) {
-            println("Package not found: $packageName")
-            return false
-        }
-
-        // Check if pyproject.toml exists to confirm it's a package
-        val packagePyproject = File(packageDir, pyprojectFile)
-        if (!packagePyproject.exists()) {
-            println("Not a valid package: $packageName")
-            return false
-        }
-
-        val (normalizedTargets, invalidPlatforms) = normalizeTargetsOrFail(targets)
-        if (invalidPlatforms.isNotEmpty()) {
-            println("Invalid target platforms: ${invalidPlatforms.joinToString(", ")}")
-            println("Available platforms: ${Platforms.SUPPORTED_TARGETS.joinToString(", ")}")
-            return false
-        }
-
-        // Remove source directories for each platform (if empty)
-        val srcDir = File(packageDir, "src")
-        for (platform in normalizedTargets) {
-            val platformDir = File(srcDir, Platforms.getPlatformFamily(platform))
-            if (platformDir.exists() && platformDir.isDirectory) {
-                // Only delete if directory contains only __init__.py or is empty
-                val files = platformDir.listFiles() ?: emptyArray()
-                if (files.isEmpty() || (files.size == 1 && files[0].name == "__init__.py")) {
-                    if (!platformDir.deleteRecursively()) {
-                        println("Warning: Failed to delete source directory for $platform")
-                    }
-                } else {
-                    println("Warning: Source directory for $platform contains files. Not deleting.")
-                }
-            }
-        }
-
         return true
-    }
+    } //
 
     /**
      * Add dependencies to a package

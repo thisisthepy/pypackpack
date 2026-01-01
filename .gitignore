@@ -228,6 +228,7 @@ bin/
 
 ### VS Code ###
 .vscode/
+.github/skills
 
 ### Cursor ###
 .cursor/

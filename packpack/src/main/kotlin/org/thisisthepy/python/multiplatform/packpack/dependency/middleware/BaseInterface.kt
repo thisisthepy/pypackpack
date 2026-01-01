@@ -20,9 +20,9 @@ interface BaseInterface {
 
     /** Init Project */
     fun initProject(
-        projectName: String?,
-        pythonVersion: String,
-    ): Boolean
+        path: String?,
+        extraArgs: Map<String, String>?,
+    ): Result<String>
 
     /**
      * Add dependencies to a package

@@ -1,6 +1,5 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
-import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external.UV
 import java.io.File
 
@@ -57,31 +56,28 @@ class UVInterface : BaseInterface {
             }
         }
 
-    /** Create virtual environment */
     override suspend fun createVirtualEnvironment(
         path: String,
         pythonVersion: String?,
         extraArgs: Map<String, String>?,
-    ): Result<String> =
-        runCatching {
-            if (!isToolInstalled()) {
-                installTool().getOrThrow()
-            }
+    ): Result<String> = Result.success("Not implemented yet")
 
-            val command = mutableListOf("venv", path)
+    override suspend fun initProject(
+        path: String?,
+        extraArgs: Map<String, String>?,
+    ): Result<String> {
+        val command = mutableListOf("init")
+        path?.takeIf { it.isNotEmpty() }?.let { command.add(it) }
 
-            // Use provided version or default to 3.12
-            val versionToUse = pythonVersion ?: PackPackConfig.defaultPythonVersion
-            command.add("--python")
-            command.add(versionToUse)
-
-            val (exitCode, output) = uv.executeCommand(command)
-            if (exitCode == 0) {
-                output
-            } else {
-                throw Exception(output)
+        extraArgs?.forEach { (key, value) ->
+            command.add("--$key")
+            if (value.isNotEmpty()) {
+                command.add(value)
             }
         }
+
+        return executeCommand(command)
+    }
 
     /** Add dependencies */
     override suspend fun addDependencies(

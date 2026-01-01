@@ -1,7 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.config.PackPackConfig
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import java.io.File
 
@@ -104,24 +103,6 @@ class DevEnv {
                 }
 
         val venvDir = File(projectRoot, venvPath)
-        if (!venvDir.exists()) {
-            println("Virtual environment not found. Creating...")
-            return runBlocking {
-                backend
-                    .createVirtualEnvironment(venvDir.absolutePath, null)
-                    .onSuccess {
-                        backend
-                            .syncDependencies(venvDir.absolutePath, extraArgs)
-                            .onSuccess {
-                                println("Dependencies synchronized successfully")
-                            }.onFailure { error ->
-                                println("Failed to synchronize dependencies: ${error.message}")
-                            }
-                    }.onFailure { error ->
-                        println("Failed to create virtual environment: ${error.message}")
-                    }.isSuccess
-            }
-        }
 
         return runBlocking {
             backend

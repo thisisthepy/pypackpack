@@ -39,7 +39,7 @@ fun findSimilarCommands(
 /**
  * Calculate Levenshtein distance between two strings
  */
-fun levenshteinDistance(
+private fun levenshteinDistance(
     s1: String,
     s2: String,
 ): Int {
