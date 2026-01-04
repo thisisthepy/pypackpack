@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.util.Downloader
+import org.thisisthepy.python.multiplatform.packpack.utils.Downloader
 
 /**
  * Backend type enum
@@ -120,28 +120,28 @@ interface BaseInterface {
      * List available Python versions
      * @return Result containing Python versions
      */
-    suspend fun listPythonVersions(): Result<String>
+    suspend fun listPython(): Result<String>
 
     /**
      * Find a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version search
      */
-    suspend fun findPythonVersion(pythonVersion: String): Result<String>
+    suspend fun findPython(pythonVersion: String): Result<String>
 
     /**
      * Install a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version installation
      */
-    suspend fun installPythonVersion(pythonVersion: String): Result<String>
+    suspend fun installPython(pythonVersion: String): Result<String>
 
     /**
      * Uninstall a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version uninstallation
      */
-    suspend fun uninstallPythonVersion(pythonVersion: String): Result<String>
+    suspend fun uninstallPython(pythonVersion: String): Result<String>
 
     /**
      * Helper method to execute command

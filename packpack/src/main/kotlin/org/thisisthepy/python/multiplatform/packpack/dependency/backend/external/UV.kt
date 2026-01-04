@@ -2,9 +2,9 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend.externa
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.util.DownloadSpec
-import org.thisisthepy.python.multiplatform.packpack.util.Downloader
-import org.thisisthepy.python.multiplatform.packpack.util.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.DownloadSpec
+import org.thisisthepy.python.multiplatform.packpack.utils.Downloader
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 import java.net.URL
 import java.nio.file.Files

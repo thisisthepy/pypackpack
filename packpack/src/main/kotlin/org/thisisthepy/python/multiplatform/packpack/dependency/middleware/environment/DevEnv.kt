@@ -153,7 +153,7 @@ class DevEnv {
     fun listPythonVersions(): Boolean =
         runBlocking {
             backend
-                .listPythonVersions()
+                .listPython()
                 .onSuccess { output ->
                     println("Available Python versions:")
                     println(output)
@@ -170,7 +170,7 @@ class DevEnv {
     fun findPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
             backend
-                .findPythonVersion(pythonVersion)
+                .findPython(pythonVersion)
                 .onSuccess { output ->
                     println("Found Python version:")
                     println(output)
@@ -187,7 +187,7 @@ class DevEnv {
     fun installPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
             backend
-                .installPythonVersion(pythonVersion)
+                .installPython(pythonVersion)
                 .onSuccess {
                     println("Installed Python version $pythonVersion")
                 }.onFailure { error ->
@@ -203,7 +203,7 @@ class DevEnv {
     fun uninstallPythonVersion(pythonVersion: String): Boolean =
         runBlocking {
             backend
-                .uninstallPythonVersion(pythonVersion)
+                .uninstallPython(pythonVersion)
                 .onSuccess {
                     println("Uninstalled Python version $pythonVersion")
                 }.onFailure { error ->

@@ -1,4 +1,4 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.utils
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

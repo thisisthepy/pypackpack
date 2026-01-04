@@ -1,4 +1,4 @@
-package org.thisisthepy.python.multiplatform.packpack.util
+package org.thisisthepy.python.multiplatform.packpack.utils
 
 /**
  * Central registry for supported target platforms.
@@ -170,5 +170,22 @@ object Platforms {
             canonical.contains("apple-ios") || canonical.contains("ios") -> "ios"
             else -> canonical.split('-', '_').firstOrNull() ?: canonical
         }
+    }
+    
+    /**
+     * Sort platforms by SUPPORTED_TARGETS order.
+     * 
+     * Platforms are sorted according to their position in SUPPORTED_TARGETS.
+     * Platforms not found in SUPPORTED_TARGETS are placed at the end.
+     * 
+     * @param platforms Collection of platform names to sort
+     * @return Sorted list of platforms
+     */
+    fun sort(platforms: Collection<String>): List<String> {
+        val orderMap = SUPPORTED_TARGETS
+            .withIndex()
+            .associate { it.value to it.index }
+        
+        return platforms.sortedBy { orderMap[it] ?: Int.MAX_VALUE }
     }
 }

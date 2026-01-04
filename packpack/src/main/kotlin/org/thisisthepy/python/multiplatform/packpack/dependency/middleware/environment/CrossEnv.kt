@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
-import org.thisisthepy.python.multiplatform.packpack.util.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 
 /**
@@ -93,9 +93,7 @@ class CrossEnv {
     fun removeTarget(
         packageName: String,
         targets: List<String>,
-    ): Boolean {
-        return true
-    } //
+    ): Boolean = true //
 
     /**
      * Add dependencies to a package

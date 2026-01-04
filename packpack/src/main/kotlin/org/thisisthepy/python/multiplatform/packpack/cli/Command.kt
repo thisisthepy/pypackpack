@@ -4,13 +4,12 @@ import com.github.ajalt.clikt.core.*
 import com.github.ajalt.clikt.output.HelpFormatter
 import com.github.ajalt.clikt.parameters.arguments.*
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
-import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.*
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendType
-import org.thisisthepy.python.multiplatform.packpack.util.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
 
 class PyPackPackCommand : CliktCommand(name = "pypackpack") {
@@ -66,17 +65,13 @@ class VersionCommand : CliktCommand(name = "version") {
         val backend = middleware.getBackend()
 
         runBlocking {
-            if (backend.isToolInstalled()) {
-                backend
-                    .getVersion()
-                    .onSuccess { version ->
-                        echo("UV version: ${version.trim()}")
-                    }.onFailure {
-                        echo("UV is installed but version check failed", err = true)
-                    }
-            } else {
-                echo("UV is not installed", err = true)
-            }
+            backend
+                .getVersion()
+                .onSuccess { version ->
+                    echo("UV version: ${version.trim()}")
+                }.onFailure {
+                    echo("UV is installed but version check failed", err = true)
+                }
         }
     }
 }
@@ -100,7 +95,7 @@ class InitCommand : CliktCommand(name = "init") {
     val `package` by option("--package", help = "Initialize as a package").flag()
 
     // Python Options
-    val pythonOptions by PythonOptions()
+    val pythonOptions = PythonOptions()
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
@@ -391,97 +386,53 @@ class PackageCommand : CliktCommand(name = "package") {
 }
 
 class PackageAddCommand : BaseDependencyCommand(name = "add") {
-    override fun help(context: Context) =
-        """
-        Add a new package to the project, or add dependencies to an existing package.
-        
-        If no dependencies are specified, creates a new package.
-        If dependencies are specified, adds them to the package.
-        """.trimIndent()
+    override fun help(context: Context) = "Add a new package to the project."
 
     val packageName by argument(help = "Package name")
-    val dependencies by argument(help = "Dependencies to add to the package").multiple()
     val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
         val term = currentContext.terminal
 
-        if (dependencies.isEmpty()) {
-            // Add new package
-            if (!validatePackageName(packageName)) {
-                throw PrintMessage("Invalid package name format", statusCode = 1)
+        if (!validatePackageName(packageName)) {
+            throw PrintMessage("Invalid package name format", statusCode = 1)
+        }
+
+        val crossEnv = middleware.getCrossEnv()
+        val success =
+            term.runWithProgress("Adding package '$packageName'...") {
+                crossEnv.addPackage(packageName)
             }
 
-            val crossEnv = middleware.getCrossEnv()
-            val success =
-                term.runWithProgress("Adding package '$packageName'...") {
-                    crossEnv.addPackage(packageName)
-                }
-
-            if (!success) {
-                throw PrintMessage("Failed to add package '$packageName'", statusCode = 1)
-            } else {
-                echo("Successfully added package '$packageName'")
-            }
+        if (!success) {
+            throw PrintMessage("Failed to add package '$packageName'", statusCode = 1)
         } else {
-            // Add dependency to package
-            val success =
-                term.runWithProgress("Adding dependencies to package '$packageName'...") {
-                    middleware.addDependencies(packageName, dependencies, targets, getExtraArgs().ifEmpty { null })
-                }
-
-            if (!success) {
-                throw PrintMessage("Failed to add dependencies to package '$packageName'", statusCode = 1)
-            } else {
-                echo("Successfully added dependencies to package '$packageName'")
-            }
+            echo("Successfully added package '$packageName'")
         }
     }
 }
 
 class PackageRemoveCommand : BaseDependencyCommand(name = "remove") {
-    override fun help(context: Context) =
-        """
-        Remove a package from the project, or remove dependencies from a package.
-        
-        If no dependencies are specified, removes the entire package.
-        If dependencies are specified, removes them from the package.
-        """.trimIndent()
+    override fun help(context: Context) = "Remove a package from the project."
 
     val packageName by argument(help = "Package name")
-    val dependencies by argument(help = "Dependencies to remove from the package").multiple()
     val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
         val term = currentContext.terminal
 
-        if (dependencies.isEmpty()) {
-            // Remove package
-            val crossEnv = middleware.getCrossEnv()
-            val success =
-                term.runWithProgress("Removing package '$packageName'...") {
-                    crossEnv.removePackage(packageName)
-                }
-
-            if (!success) {
-                throw PrintMessage("Failed to remove package '$packageName'", statusCode = 1)
-            } else {
-                echo("Successfully removed package '$packageName'")
+        val crossEnv = middleware.getCrossEnv()
+        val success =
+            term.runWithProgress("Removing package '$packageName'...") {
+                crossEnv.removePackage(packageName)
             }
+
+        if (!success) {
+            throw PrintMessage("Failed to remove package '$packageName'", statusCode = 1)
         } else {
-            // Remove dependency from package
-            val success =
-                term.runWithProgress("Removing dependencies from package '$packageName'...") {
-                    middleware.removeDependencies(packageName, dependencies, targets, getExtraArgs().ifEmpty { null })
-                }
-
-            if (!success) {
-                throw PrintMessage("Failed to remove dependencies from package '$packageName'", statusCode = 1)
-            } else {
-                echo("Successfully removed dependencies from package '$packageName'")
-            }
+            echo("Successfully removed package '$packageName'")
         }
     }
 }
