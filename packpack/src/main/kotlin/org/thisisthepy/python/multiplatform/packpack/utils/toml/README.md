@@ -7,47 +7,9 @@ A flexible and type-safe TOML editing library for managing `[tool.ppp.*]` config
 - ✅ **Generic Core API** - Edit any key/value in TOML tables
 - ✅ **Type-Safe Values** - Sealed class hierarchy for TOML types
 - ✅ **Comment Preservation** - Keeps all comments (block, inline, and above keys)
-- ✅ **Extension Functions** - Domain-specific helpers (e.g., platform management)
-- ✅ **Auto-Sorting** - Platforms sorted by `SUPPORTED_TARGETS` order
 - ✅ **Validation** - Automatic validation against allowed values
 
 ## Quick Start
-
-### Dependency Platform Management (Recommended)
-
-For per-package `pyproject.toml` files:
-
-```kotlin
-import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
-import org.thisisthepy.python.multiplatform.packpack.utils.toml.updateDependencyPlatforms
-
-val tomlContent = """
-[project]
-name = "mypackage"
-version = "1.0.0"
-""".trimIndent()
-
-val editor = TomlEditor(tomlContent)
-
-// Manage platforms in [tool.ppp.dependencies] table
-editor.updateDependencyPlatforms {
-    addPlatforms("windows", "linux", "macos")
-    removePlatforms("macos")
-}
-
-val result = editor.toTomlString()
-```
-
-**Output:**
-
-```toml
-[project]
-name = "mypackage"
-version = "1.0.0"
-
-[tool.ppp.dependencies]
-platforms = ["windows", "linux"]
-```
 
 ### Core API (Generic Operations)
 
@@ -128,53 +90,7 @@ sealed class TomlValue {
 }
 ```
 
-### Platform Extensions
-
-#### Dependency Platform Management (Recommended)
-
-```kotlin
-fun TomlEditor.updateDependencyPlatforms(block: DependencyPlatformEditor.() -> Unit)
-
-class DependencyPlatformEditor {
-    fun addPlatforms(vararg platforms: String)      // Validates & auto-sorts
-    fun removePlatforms(vararg platforms: String)   // Validates platforms
-}
-```
-
-Manages platforms in `[tool.ppp.dependencies]` table for per-package `pyproject.toml` files.
-
-#### Legacy Package Platform Management
-
-```kotlin
-@Deprecated("Use updateDependencyPlatforms() instead")
-fun TomlEditor.updatePackagePlatforms(packageName: String, block: PackagePlatformEditor.() -> Unit)
-```
-
-For managing `[tool.ppp.<packageName>]` tables (deprecated).
-
 ## Advanced Usage
-
-### Comment Preservation
-
-All comments are preserved during editing:
-
-```kotlin
-val toml = """
-# Global config
-
-# Dependency configuration
-[tool.ppp.dependencies]
-# Supported platforms
-platforms = ["windows"]  # Inline comment
-""".trimIndent()
-
-val editor = TomlEditor(toml)
-editor.updateDependencyPlatforms {
-    addPlatforms("linux")
-}
-
-// All comments are preserved!
-```
 
 ### Custom Sorting
 
@@ -187,91 +103,18 @@ editor.setArray(
 )
 ```
 
-### Mix Core + Extension
-
-```kotlin
-editor.updateDependencyPlatforms {
-    addPlatforms("windows", "linux")
-}
-
-editor.setValue("tool.ppp.dependencies", "version", TomlValue.String("1.0.0"))
-editor.setArray("tool.ppp.dependencies", "tags", listOf("stable", "production"))
-```
-
-## Use Cases
-
-### 1. Per-Package Configuration
-
-```kotlin
-// package1/pyproject.toml
-val editor1 = TomlEditor(File("package1/pyproject.toml").readText())
-editor1.updateDependencyPlatforms {
-    addPlatforms("windows", "linux")
-}
-File("package1/pyproject.toml").writeText(editor1.toTomlString())
-
-// package2/pyproject.toml
-val editor2 = TomlEditor(File("package2/pyproject.toml").readText())
-editor2.updateDependencyPlatforms {
-    addPlatforms("macos", "wasm32-pyodide2024")
-}
-File("package2/pyproject.toml").writeText(editor2.toTomlString())
-```
-
-### 2. Batch Updates
-
-```kotlin
-val packageDirs = listOf("package1", "package2", "package3")
-
-packageDirs.forEach { dir ->
-    val file = File("$dir/pyproject.toml")
-    val editor = TomlEditor(file.readText())
-    editor.updateDependencyPlatforms {
-        addPlatforms("windows", "linux", "macos")
-    }
-    file.writeText(editor.toTomlString())
-}
-```
-
-### 3. Generic Configuration Management
-
-```kotlin
-val editor = TomlEditor(tomlContent)
-
-// Setup project config
-editor.createTable("tool.ppp.config")
-editor.setValue("tool.ppp.config", "name", TomlValue.String("myproject"))
-editor.setValue("tool.ppp.config", "version", TomlValue.String("0.1.0"))
-editor.setValue("tool.ppp.config", "debug", TomlValue.Boolean(false))
-editor.setArray("tool.ppp.config", "authors", listOf("John Doe", "Jane Smith"))
-```
-
 ## Architecture
 
 ```
 TomlEditor (Core Engine)
 ├── Generic TOML operations
-├── Comment preservation (Level 3)
-├── Type-safe via TomlValue
-└── Extensible via helpers
-
-PlatformExtensions (Domain Helper)
-├── Platform-specific validation
-├── Auto-sorting by SUPPORTED_TARGETS
-└── DSL-style API
-
-Future Extensions
-└── DependencyExtensions, ConfigExtensions, etc.
+├── Comment preservation
+└── Type-safe via TomlValue
 ```
 
 ## Error Handling
 
 ```kotlin
-// Invalid platform
-editor.updateDependencyPlatforms {
-    addPlatforms("invalid-platform")  // Throws IllegalArgumentException
-}
-
 // Table not found
 editor.setValue("nonexistent.table", "key", value)  // Throws IllegalArgumentException
 
@@ -280,9 +123,3 @@ if (!editor.hasTable("tool.ppp.dependencies")) {
     editor.createTable("tool.ppp.dependencies")
 }
 ```
-
-## Files
-
-- **`TomlEditor.kt`** - Core editing engine (~450 lines)
-- **`TomlValue.kt`** - Type definitions (~74 lines)
-- **`PlatformExtensions.kt`** - Platform helper (~120 lines)
