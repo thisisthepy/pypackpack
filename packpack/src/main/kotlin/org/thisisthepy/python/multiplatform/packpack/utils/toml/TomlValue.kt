@@ -1,6 +1,28 @@
 package org.thisisthepy.python.multiplatform.packpack.utils.toml
 
 /**
+ * Formatting style for TOML arrays.
+ */
+sealed class ArrayFormat {
+    /**
+     * Single-line array format.
+     * Example: `items = ["a", "b", "c"]`
+     */
+    object SingleLine : ArrayFormat()
+
+    /**
+     * Multi-line array format with custom indentation and style.
+     *
+     * @param indentation Indentation string for array items (e.g., "    ")
+     * @param trailingComma Whether to include trailing comma after last item
+     */
+    data class MultiLine(
+        val indentation: String,
+        val trailingComma: Boolean = false,
+    ) : ArrayFormat()
+}
+
+/**
  * Represents a value in TOML format.
  *
  * This sealed class hierarchy provides type-safe representation of TOML values,
@@ -58,9 +80,13 @@ sealed class TomlValue {
      *
      * Note: Currently only supports string arrays. Mixed-type arrays
      * are not supported as they are rarely used in practice.
+     *
+     * @param items List of string items in the array
+     * @param format Formatting style (single-line or multi-line)
      */
     data class Array(
         val items: List<kotlin.String>,
+        val format: ArrayFormat = ArrayFormat.SingleLine,
     ) : TomlValue() {
         override fun toString(): kotlin.String {
             val itemsStr = items.joinToString(", ") { "\"$it\"" }
