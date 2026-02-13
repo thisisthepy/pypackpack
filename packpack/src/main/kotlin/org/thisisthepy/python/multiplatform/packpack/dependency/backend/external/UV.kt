@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  */
 class UV {
     companion object {
-        private const val UV_VERSION = "0.9.17"
+        private const val UV_VERSION = "0.10.2"
         private const val UV_BASE_URL = "https://github.com/astral-sh/uv/releases/download"
 
         // Platform-specific UV binary information
