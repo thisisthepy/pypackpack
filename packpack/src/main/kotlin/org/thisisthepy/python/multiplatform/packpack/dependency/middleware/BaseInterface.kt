@@ -21,6 +21,7 @@ interface BaseInterface {
     /** Init Project */
     fun initProject(
         path: String?,
+        targets: List<String>? = emptyList(),
         extraArgs: Map<String, String>?,
     ): Result<String>
 
@@ -79,4 +80,50 @@ interface BaseInterface {
         targets: List<String>?,
         extraArgs: Map<String, String>?,
     ): Boolean
+
+    /**
+     * Add a new package to the workspace
+     * @param packageName Name of the package to create
+     * @param path Parent directory path (optional, defaults to current directory)
+     * @param extraArgs Extra arguments to pass to UV init (optional)
+     * @return Result containing success message or error
+     */
+    fun addPackage(
+        packageName: String,
+        path: String? = null,
+        extraArgs: Map<String, String>? = null,
+    ): Result<String>
+
+    /**
+     * Remove a package from the workspace
+     * @param packageName Name of the package to remove
+     * @param path Parent directory path (optional, defaults to current directory)
+     * @return Result containing success message or error
+     */
+    fun removePackage(
+        packageName: String,
+        path: String? = null,
+    ): Result<String>
+
+    /**
+     * Add target platforms to a package
+     * @param targets List of target platform identifiers to add
+     * @param path Package directory path (optional, defaults to current directory)
+     * @return Result containing success message or error
+     */
+    fun addTargets(
+        targets: List<String>,
+        path: String? = null,
+    ): Result<String>
+
+    /**
+     * Remove target platforms from a package
+     * @param targets List of target platform identifiers to remove
+     * @param path Package directory path (optional, defaults to current directory)
+     * @return Result containing success message or error
+     */
+    fun removeTargets(
+        targets: List<String>,
+        path: String? = null,
+    ): Result<String>
 }

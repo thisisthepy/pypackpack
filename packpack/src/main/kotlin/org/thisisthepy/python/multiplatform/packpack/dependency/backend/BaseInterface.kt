@@ -54,8 +54,9 @@ interface BaseInterface {
 
     /**
      * Initialize a new project
-     * @param projectName Project name (optional)
-     * @param pythonVersion Python version (optional)
+     * @param path Project path (optional)
+     * @param targets List of target platforms (optional)
+     * @param extraArgs Extra arguments (optional)
      */
     suspend fun initProject(
         path: String?,

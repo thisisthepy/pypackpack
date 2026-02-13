@@ -95,7 +95,7 @@ class InitCommand : CliktCommand(name = "init") {
     val `package` by option("--package", help = "Initialize as a package").flag()
 
     // Python Options
-    val pythonOptions = PythonOptions()
+    val pythonVersion by option("--python", help = "Python version to use", metavar = "<PYTHON>").default("")
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
@@ -104,13 +104,13 @@ class InitCommand : CliktCommand(name = "init") {
         val extraArgs =
             buildMap {
                 if (projectName.isNotEmpty()) put("name", projectName)
-                if (pythonOptions.pythonVersion.isNotEmpty()) put("python", pythonOptions.pythonVersion)
+                if (pythonVersion.isNotEmpty()) put("python", pythonVersion)
                 if (`package`) put("package", "")
             }
 
         val result =
             term.runWithProgress("Initializing project...") {
-                middleware.initProject(path, extraArgs)
+                middleware.initProject(path, null, extraArgs)
             }
 
         result
@@ -386,54 +386,50 @@ class PackageCommand : CliktCommand(name = "package") {
 }
 
 class PackageAddCommand : BaseDependencyCommand(name = "add") {
-    override fun help(context: Context) = "Add a new package to the project."
+    override fun help(context: Context) = "Add a new package to the workspace."
 
     val packageName by argument(help = "Package name")
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
+    val path by option("--path", help = "Workspace directory path").default("")
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
         val term = currentContext.terminal
 
-        if (!validatePackageName(packageName)) {
-            throw PrintMessage("Invalid package name format", statusCode = 1)
-        }
-
-        val crossEnv = middleware.getCrossEnv()
-        val success =
-            term.runWithProgress("Adding package '$packageName'...") {
-                crossEnv.addPackage(packageName)
+        val result =
+            term.runWithProgress("Creating package '$packageName'...") {
+                middleware.addPackage(packageName, path.ifEmpty { null }, getExtraArgs().ifEmpty { null })
             }
 
-        if (!success) {
-            throw PrintMessage("Failed to add package '$packageName'", statusCode = 1)
-        } else {
-            echo("Successfully added package '$packageName'")
-        }
+        result
+            .onSuccess {
+                echo(it)
+            }.onFailure {
+                throw PrintMessage("Failed to create package: ${it.message}", statusCode = 1)
+            }
     }
 }
 
 class PackageRemoveCommand : BaseDependencyCommand(name = "remove") {
-    override fun help(context: Context) = "Remove a package from the project."
+    override fun help(context: Context) = "Remove a package from the workspace."
 
     val packageName by argument(help = "Package name")
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
+    val path by option("--path", help = "Workspace directory path").default("")
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
         val term = currentContext.terminal
 
-        val crossEnv = middleware.getCrossEnv()
-        val success =
+        val result =
             term.runWithProgress("Removing package '$packageName'...") {
-                crossEnv.removePackage(packageName)
+                middleware.removePackage(packageName, path.ifEmpty { null })
             }
 
-        if (!success) {
-            throw PrintMessage("Failed to remove package '$packageName'", statusCode = 1)
-        } else {
-            echo("Successfully removed package '$packageName'")
-        }
+        result
+            .onSuccess {
+                echo(it)
+            }.onFailure {
+                throw PrintMessage("Failed to remove package: ${it.message}", statusCode = 1)
+            }
     }
 }
 
@@ -441,7 +437,7 @@ class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
     override fun help(context: Context) = "Synchronize dependencies for a specific package."
 
     val packageName by argument(help = "Package name")
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
+    val targets by option("--target", help = "Target platforms (comma-separated)").split(",").default(emptyList())
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
@@ -464,7 +460,7 @@ class PackageTreeCommand : BaseDependencyCommand(name = "tree") {
     override fun help(context: Context) = "Show the dependency tree for a specific package."
 
     val packageName by argument(help = "Package name")
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
+    val targets by option("--target", help = "Target platforms (comma-separated)").split(",").default(emptyList())
 
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
@@ -497,46 +493,50 @@ class TargetListCommand : CliktCommand(name = "list") {
 }
 
 class TargetAddCommand : CliktCommand(name = "add") {
-    override fun help(context: Context) = "Add a target platform to a package."
+    override fun help(context: Context) = "Add target platforms to a package."
 
-    val targetName by argument(help = "Target platform name")
-    val packageName by argument(help = "Package name")
+    val targets by argument(help = "Target platform names").multiple(required = true)
+    val path by option("--path", help = "Package directory path").default("")
 
     override fun run() {
-        if (!validatePackageName(packageName)) {
-            throw PrintMessage("Invalid package name format", statusCode = 1)
-        }
-
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
-        val crossEnv = middleware.getCrossEnv()
+        val term = currentContext.terminal
 
-        if (!crossEnv.addTarget(packageName, listOf(targetName))) {
-            throw PrintMessage("Failed to add target '$targetName' to package '$packageName'", statusCode = 1)
-        } else {
-            echo("Successfully added target '$targetName' to package '$packageName'")
-        }
+        val result =
+            term.runWithProgress("Adding targets: ${targets.joinToString(", ")}...") {
+                middleware.addTargets(targets, path.ifEmpty { null })
+            }
+
+        result
+            .onSuccess {
+                echo(it)
+            }.onFailure {
+                throw PrintMessage("Failed to add targets: ${it.message}", statusCode = 1)
+            }
     }
 }
 
 class TargetRemoveCommand : CliktCommand(name = "remove") {
-    override fun help(context: Context) = "Remove a target platform from a package."
+    override fun help(context: Context) = "Remove target platforms from a package."
 
-    val targetName by argument(help = "Target platform name")
-    val packageName by argument(help = "Package name")
+    val targets by argument(help = "Target platform names").multiple(required = true)
+    val path by option("--path", help = "Package directory path").default("")
 
     override fun run() {
-        if (!validatePackageName(packageName)) {
-            throw PrintMessage("Invalid package name format", statusCode = 1)
-        }
-
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
-        val crossEnv = middleware.getCrossEnv()
+        val term = currentContext.terminal
 
-        if (!crossEnv.removeTarget(packageName, listOf(targetName))) {
-            throw PrintMessage("Failed to remove target '$targetName' from package '$packageName'", statusCode = 1)
-        } else {
-            echo("Successfully removed target '$targetName' from package '$packageName'")
-        }
+        val result =
+            term.runWithProgress("Removing targets: ${targets.joinToString(", ")}...") {
+                middleware.removeTargets(targets, path.ifEmpty { null })
+            }
+
+        result
+            .onSuccess {
+                echo(it)
+            }.onFailure {
+                throw PrintMessage("Failed to remove targets: ${it.message}", statusCode = 1)
+            }
     }
 }
 
