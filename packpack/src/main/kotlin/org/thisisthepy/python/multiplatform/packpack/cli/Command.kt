@@ -231,10 +231,12 @@ class SyncCommand : BaseDependencyCommand(name = "sync") {
 class TreeCommand : BaseDependencyCommand(name = "tree") {
     override fun help(context: Context) = "Show the dependency tree for the development environment."
 
+    val targets by option("--target", help = "Target platforms (comma-separated)").split(",").default(emptyList())
+
     override fun run() {
         val middleware = currentContext.findObject<MiddlewareInterface>()!!
 
-        if (!middleware.showDependencyTree(null, null, getExtraArgs().ifEmpty { null })) {
+        if (!middleware.showDependencyTree(null, targets.ifEmpty { null }, getExtraArgs().ifEmpty { null })) {
             throw PrintMessage("Failed to show dependency tree", statusCode = 1)
         }
     }
