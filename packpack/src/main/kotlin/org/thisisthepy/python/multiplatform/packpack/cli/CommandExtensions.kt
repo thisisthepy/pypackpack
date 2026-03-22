@@ -1,7 +1,40 @@
 package org.thisisthepy.python.multiplatform.packpack.cli
 
+import com.github.ajalt.clikt.core.*
 import com.github.ajalt.mordant.rendering.TextColors.*
 import com.github.ajalt.mordant.terminal.Terminal
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
+
+internal fun CliktCommand.requireMiddleware(): MiddlewareInterface = currentContext.findObject<MiddlewareInterface>()!!
+
+internal fun CliktCommand.runBooleanCommand(
+    progressMessage: String,
+    failureMessage: String,
+    successMessage: String? = null,
+    action: () -> Boolean,
+) {
+    val success = currentContext.terminal.runWithProgress(progressMessage) { action() }
+    if (!success) {
+        throw PrintMessage(failureMessage, statusCode = 1)
+    }
+    if (successMessage != null) {
+        echo(successMessage)
+    }
+}
+
+internal fun CliktCommand.runResultCommand(
+    progressMessage: String,
+    failurePrefix: String,
+    onSuccess: (String) -> Unit = { echo(it) },
+    action: () -> Result<String>,
+) {
+    val result = currentContext.terminal.runWithProgress(progressMessage) { action() }
+    result
+        .onSuccess(onSuccess)
+        .onFailure {
+            throw PrintMessage("$failurePrefix: ${it.message}", statusCode = 1)
+        }
+}
 
 /**
  * Validate Python version format
