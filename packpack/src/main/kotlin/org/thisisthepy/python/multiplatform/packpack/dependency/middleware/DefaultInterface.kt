@@ -88,7 +88,39 @@ class DefaultInterface : BaseInterface {
         dependencies: List<String>,
         targets: List<String>?,
         extraArgs: Map<String, String>?,
-    ): Boolean = true
+    ): Boolean {
+        if (dependencies.isEmpty()) {
+            println("No dependencies specified")
+            return false
+        }
+        if (dependencies.any { it.contains(';') }) {
+            println("Dependency markers in package names are not allowed. Use --target instead.")
+            return false
+        }
+
+        return if (packageName.isNullOrBlank()) {
+            val mergedArgs = withWorkingDir(extraArgs, findProjectRoot())
+            getDevEnv().addDependencies(dependencies, mergedArgs.ifEmpty { null })
+        } else {
+            runCatching {
+                val workspaceRoot = resolveWorkspaceRoot(packageName)
+                val packageTargets = resolveCrossTargets(packageName, targets, workspaceRoot)
+                val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
+
+                for (target in packageTargets) {
+                    val marker = buildMarkerForTarget(target)
+                    val callArgs = workingArgs + mapOf("marker" to marker)
+                    val result =
+                        runBlocking {
+                            backend.addDependencies(packageName, dependencies, callArgs)
+                        }
+                    result.getOrThrow()
+                }
+            }.onFailure {
+                println("Failed to add dependencies for package '$packageName': ${it.message}")
+            }.isSuccess
+        }
+    }
 
     /**
      * Remove dependencies from a package
@@ -103,7 +135,58 @@ class DefaultInterface : BaseInterface {
         dependencies: List<String>,
         targets: List<String>?,
         extraArgs: Map<String, String>?,
-    ): Boolean = true
+    ): Boolean {
+        if (dependencies.isEmpty()) {
+            println("No dependencies specified")
+            return false
+        }
+        if (dependencies.any { it.contains(';') }) {
+            println("Dependency markers in package names are not allowed. Use --target instead.")
+            return false
+        }
+
+        return if (packageName.isNullOrBlank()) {
+            val mergedArgs = withWorkingDir(extraArgs, findProjectRoot())
+            getDevEnv().removeDependencies(dependencies, mergedArgs.ifEmpty { null })
+        } else {
+            runCatching {
+                val workspaceRoot = resolveWorkspaceRoot(packageName)
+                val packageTargets = resolveCrossTargets(packageName, targets, workspaceRoot)
+                val packageDir = File(workspaceRoot, packageName)
+                val packagePyproject = File(packageDir, "pyproject.toml")
+                require(packagePyproject.exists()) {
+                    "No pyproject.toml found for package '$packageName'"
+                }
+
+                val editor = TomlEditor(packagePyproject.readText())
+                val entries = editor.getArray("project", "dependencies")
+                val requested = dependencies.map { extractDependencyName(it) }.toSet()
+                val markers = packageTargets.map { buildMarkerForTarget(it) }.toSet()
+
+                val filtered =
+                    entries.filterNot { entry ->
+                        val depName = extractDependencyName(entry)
+                        val marker = extractDependencyMarker(entry)
+                        depName in requested && marker != null && marker in markers
+                    }
+
+                if (filtered.size == entries.size) {
+                    throw IllegalStateException("No matching target-scoped dependencies found to remove")
+                }
+
+                editor.setArray("project", "dependencies", filtered)
+                packagePyproject.writeText(editor.toTomlString())
+
+                val lockResult =
+                    runBlocking {
+                        backend.lockDependencies(workspaceRoot.absolutePath)
+                    }
+                lockResult.getOrThrow()
+            }.onFailure {
+                println("Failed to remove dependencies for package '$packageName': ${it.message}")
+            }.isSuccess
+        }
+    }
 
     /**
      * Synchronize dependencies for a package
@@ -116,7 +199,36 @@ class DefaultInterface : BaseInterface {
         packageName: String?,
         targets: List<String>?,
         extraArgs: Map<String, String>?,
-    ): Boolean = true
+    ): Boolean {
+        if (packageName.isNullOrBlank()) {
+            val mergedArgs = withWorkingDir(extraArgs, findProjectRoot())
+            return getDevEnv().syncDependencies(mergedArgs.ifEmpty { null })
+        }
+
+        return runCatching {
+            val workspaceRoot = resolveWorkspaceRoot(packageName)
+            val normalizedTargets = normalizeTreeTargets(targets)
+            val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
+
+            val syncArgs = workingArgs.filterKeys { it != "python-platform" }
+            val syncResult =
+                runBlocking {
+                    backend.syncDependencies("", syncArgs + mapOf("package" to packageName))
+                }
+            syncResult.getOrThrow()
+
+            for (target in normalizedTargets) {
+                val treeArgs = workingArgs + mapOf("package" to packageName, "python-platform" to target)
+                val treeResult =
+                    runBlocking {
+                        backend.showDependencyTree(packageName, treeArgs)
+                    }
+                treeResult.getOrThrow()
+            }
+        }.onFailure {
+            println("Failed to sync package '$packageName': ${it.message}")
+        }.isSuccess
+    }
 
     /**
      * Show dependency tree for a package
@@ -129,7 +241,26 @@ class DefaultInterface : BaseInterface {
         packageName: String?,
         targets: List<String>?,
         extraArgs: Map<String, String>?,
-    ): Boolean = true
+    ): Boolean {
+        val normalizedTargets = normalizeTreeTargets(targets)
+
+        return runCatching {
+            val baseDir = if (packageName.isNullOrBlank()) findProjectRoot() else resolveWorkspaceRoot(packageName)
+            val workingArgs = withWorkingDir(extraArgs, baseDir)
+
+            for (target in normalizedTargets) {
+                val callArgs = workingArgs + mapOf("python-platform" to target)
+                val result =
+                    runBlocking {
+                        backend.showDependencyTree(packageName, callArgs)
+                    }
+                println(result.getOrThrow())
+            }
+        }.onFailure {
+            val context = packageName?.let { " for package '$it'" } ?: ""
+            println("Failed to show dependency tree$context: ${it.message}")
+        }.isSuccess
+    }
 
     /** Add a new package to the workspace */
     override fun addPackage(
@@ -343,4 +474,129 @@ class DefaultInterface : BaseInterface {
             )
         }
     }
+
+    private fun findProjectRoot(): File? {
+        var dir = File(System.getProperty("user.dir"))
+        while (true) {
+            val pyproject = File(dir, "pyproject.toml")
+            if (pyproject.exists()) {
+                return dir
+            }
+
+            val parent = dir.parentFile ?: return null
+            dir = parent
+        }
+    }
+
+    private fun resolveWorkspaceRoot(packageName: String): File {
+        var dir = File(System.getProperty("user.dir"))
+        while (true) {
+            val pyproject = File(dir, "pyproject.toml")
+            val packageDir = File(dir, packageName)
+            if (pyproject.exists() && packageDir.exists() && packageDir.isDirectory) {
+                return dir
+            }
+
+            val parent = dir.parentFile
+            if (parent == null) {
+                throw IllegalStateException("Unable to resolve workspace root for package '$packageName'")
+            }
+            dir = parent
+        }
+    }
+
+    private fun resolveCrossTargets(
+        packageName: String,
+        targets: List<String>?,
+        workspaceRoot: File,
+    ): List<String> {
+        val targetInputs =
+            if (targets.isNullOrEmpty()) {
+                readPackageDefaultTargets(packageName, workspaceRoot)
+            } else {
+                targets
+            }
+
+        require(targetInputs.isNotEmpty()) {
+            "No targets provided and no default package platforms configured"
+        }
+
+        return targetInputs
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { target ->
+                Platforms.normalizeTarget(target)
+                    ?: throw IllegalArgumentException("Unsupported target: $target")
+            }.distinct()
+    }
+
+    private fun readPackageDefaultTargets(
+        packageName: String,
+        workspaceRoot: File,
+    ): List<String> {
+        val packagePyproject = File(File(workspaceRoot, packageName), "pyproject.toml")
+        if (!packagePyproject.exists()) {
+            return emptyList()
+        }
+
+        val editor = TomlEditor(packagePyproject.readText())
+        return editor.getArray("tool.ppp.dependencies", "platforms")
+    }
+
+    private fun normalizeTreeTargets(targets: List<String>?): List<String> {
+        if (targets.isNullOrEmpty()) {
+            return listOf(Platforms.detectHostTarget())
+        }
+
+        return targets
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { target ->
+                Platforms.normalizeTarget(target)
+                    ?: throw IllegalArgumentException("Unsupported target: $target")
+            }.distinct()
+    }
+
+    private fun withWorkingDir(
+        extraArgs: Map<String, String>?,
+        directory: File?,
+    ): Map<String, String> {
+        val base = extraArgs?.toMutableMap() ?: mutableMapOf()
+        directory?.let { base["__working_dir"] = it.absolutePath }
+        return base
+    }
+
+    private fun extractDependencyName(spec: String): String {
+        val requirement = spec.substringBefore(';').trim()
+        val match = Regex("^[A-Za-z0-9_.-]+")
+            .find(requirement)
+            ?: throw IllegalArgumentException("Invalid dependency spec: $spec")
+        return match.value.lowercase()
+    }
+
+    private fun extractDependencyMarker(spec: String): String? {
+        val index = spec.indexOf(';')
+        if (index == -1) {
+            return null
+        }
+
+        return spec.substring(index + 1).trim()
+    }
+
+    private fun buildMarkerForTarget(target: String): String {
+        val system = mapTargetToPlatformSystem(target)
+        val machine = target.substringBefore('-').replace("aarch64", "arm64")
+        return "platform_system == '$system' and platform_machine == '$machine'"
+    }
+
+    private fun mapTargetToPlatformSystem(target: String): String =
+        when {
+            target.contains("windows") -> "Windows"
+            target.contains("android") -> "Android"
+            target.contains("apple-ios") -> "iOS"
+            target.startsWith("wasm32") || target.contains("pyodide") || target.contains("emscripten") -> "Emscripten"
+            target.contains("apple-darwin") -> "Darwin"
+            target.contains("linux") || target.contains("manylinux") -> "Linux"
+            else -> throw IllegalArgumentException("Unsupported target for marker mapping: $target")
+        }
 }

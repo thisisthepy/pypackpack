@@ -7,6 +7,63 @@ import java.io.File
 class UVInterface : BaseInterface {
     private val uv = UV()
 
+    companion object {
+        private const val WORKING_DIR_KEY = "__working_dir"
+
+        private val ADD_ALLOWED_OPTIONS =
+            setOf(
+                "dev",
+                "editable",
+                "no-sync",
+                "upgrade",
+                "reinstall",
+                "refresh",
+                "raw-sources",
+                "quiet",
+                "verbose",
+                "frozen",
+                "locked",
+                "preview",
+                "package",
+                "marker",
+            )
+
+        private val REMOVE_ALLOWED_OPTIONS =
+            setOf(
+                "dev",
+                "no-sync",
+                "quiet",
+                "verbose",
+                "frozen",
+                "locked",
+                "preview",
+                "package",
+                "marker",
+            )
+
+        private val SYNC_ALLOWED_OPTIONS =
+            setOf(
+                "no-sync",
+                "quiet",
+                "verbose",
+                "frozen",
+                "locked",
+                "preview",
+                "package",
+            )
+
+        private val TREE_ALLOWED_OPTIONS =
+            setOf(
+                "quiet",
+                "verbose",
+                "frozen",
+                "locked",
+                "preview",
+                "package",
+                "python-platform",
+            )
+    }
+
     /** Initialize UV backend */
     override fun initialize() {
         // UV initialization is handled by the UV class
@@ -70,9 +127,17 @@ class UVInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Result<String> =
         runCatching {
+            require(dependencies.isNotEmpty()) { "No dependencies specified" }
+            val (options, workingDir) = normalizeExtraArgs(extraArgs, ADD_ALLOWED_OPTIONS)
             val command = mutableListOf("add")
+            if (!packageName.isNullOrBlank() && options["package"].isNullOrBlank()) {
+                command.add("--package")
+                command.add(packageName)
+            }
+            appendOptions(command, options)
+            command.addAll(dependencies)
 
-            return executeCommand(command)
+            return executeCommand(command, workingDir)
         }
 
     /** Uninstall dependencies */
@@ -82,9 +147,17 @@ class UVInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Result<String> =
         runCatching {
+            require(dependencies.isNotEmpty()) { "No dependencies specified" }
+            val (options, workingDir) = normalizeExtraArgs(extraArgs, REMOVE_ALLOWED_OPTIONS)
             val command = mutableListOf("remove")
+            if (!packageName.isNullOrBlank() && options["package"].isNullOrBlank()) {
+                command.add("--package")
+                command.add(packageName)
+            }
+            appendOptions(command, options)
+            command.addAll(dependencies)
 
-            return executeCommand(command)
+            return executeCommand(command, workingDir)
         }
 
     /** Synchronize dependencies */
@@ -93,9 +166,11 @@ class UVInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Result<String> =
         runCatching {
+            val (options, workingDir) = normalizeExtraArgs(extraArgs, SYNC_ALLOWED_OPTIONS)
             val command = mutableListOf("sync")
+            appendOptions(command, options)
 
-            return executeCommand(command)
+            return executeCommand(command, workingDir)
         }
 
     /** Show dependency tree */
@@ -104,17 +179,24 @@ class UVInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Result<String> =
         runCatching {
+            val (options, workingDir) = normalizeExtraArgs(extraArgs, TREE_ALLOWED_OPTIONS)
             val command = mutableListOf("tree")
+            if (!packageName.isNullOrBlank() && options["package"].isNullOrBlank()) {
+                command.add("--package")
+                command.add(packageName)
+            }
+            appendOptions(command, options)
 
-            return executeCommand(command)
+            return executeCommand(command, workingDir)
         }
 
     /** Lock dependencies */
     override suspend fun lockDependencies(projectRoot: String): Result<String> =
         runCatching {
             val command = mutableListOf("lock")
+            val workingDir = projectRoot.takeIf { it.isNotBlank() }?.let { File(it) }
 
-            return executeCommand(command)
+            return executeCommand(command, workingDir)
         }
 
     /** List available Python versions */
@@ -170,13 +252,50 @@ class UVInterface : BaseInterface {
         }
 
     /** ExecuteCommand to use UV class */
-    suspend fun executeCommand(command: List<String>): Result<String> =
+    suspend fun executeCommand(
+        command: List<String>,
+        workingDir: File? = null,
+    ): Result<String> =
         runCatching {
-            val (exitCode, output) = uv.executeCommand(command)
+            val (exitCode, output) = uv.executeCommand(command, workingDir)
             if (exitCode == 0) {
                 output
             } else {
                 throw Exception(output)
             }
         }
+
+    private fun normalizeExtraArgs(
+        extraArgs: Map<String, String>?,
+        allowedOptions: Set<String>,
+    ): Pair<Map<String, String>, File?> {
+        if (extraArgs.isNullOrEmpty()) {
+            return emptyMap<String, String>() to null
+        }
+
+        val workingDir =
+            extraArgs[WORKING_DIR_KEY]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { File(it) }
+
+        val options = extraArgs.filterKeys { it != WORKING_DIR_KEY }
+        val unsupported = options.keys.filter { it !in allowedOptions }
+        require(unsupported.isEmpty()) {
+            "Unsupported uv options: ${unsupported.joinToString(", ")}"
+        }
+
+        return options to workingDir
+    }
+
+    private fun appendOptions(
+        command: MutableList<String>,
+        options: Map<String, String>,
+    ) {
+        for ((key, value) in options) {
+            command.add("--$key")
+            if (value.isNotEmpty()) {
+                command.add(value)
+            }
+        }
+    }
 }
