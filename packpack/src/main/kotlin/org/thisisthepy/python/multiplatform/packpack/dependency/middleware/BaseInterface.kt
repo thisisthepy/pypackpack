@@ -1,22 +1,21 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface as BackendBaseInterface
-
 /** Base interface for middleware */
 interface BaseInterface {
     /** Initialize middleware */
     fun initialize()
 
-    /** Get backend interface */
-    fun getBackend(): BackendBaseInterface
+    fun getToolVersion(): Result<String>
 
-    /** Get development environment */
-    fun getDevEnv(): DevEnv
+    fun changePythonVersion(pythonVersion: String): Boolean
 
-    /** Get cross-platform environment */
-    fun getCrossEnv(): CrossEnv
+    fun listPythonVersions(): Boolean
+
+    fun findPythonVersion(pythonVersion: String): Boolean
+
+    fun installPythonVersion(pythonVersion: String): Boolean
+
+    fun uninstallPythonVersion(pythonVersion: String): Boolean
 
     /** Init Project */
     fun initProject(

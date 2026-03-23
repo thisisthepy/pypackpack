@@ -4,7 +4,6 @@ import com.github.ajalt.clikt.core.*
 import com.github.ajalt.clikt.parameters.arguments.*
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
 import com.github.ajalt.clikt.parameters.options.*
-import kotlinx.coroutines.runBlocking
 
 class VersionCommand : CliktCommand(name = "version") {
     override fun help(context: Context) = "Show version information"
@@ -20,17 +19,13 @@ class VersionCommand : CliktCommand(name = "version") {
 
     override fun run() {
         echo("PyPackPack version $pypackpackVersion")
-        val backend = requireMiddleware().getBackend()
-
-        runBlocking {
-            backend
-                .getVersion()
-                .onSuccess { version ->
-                    echo("UV version: ${version.trim()}")
-                }.onFailure {
-                    echo("UV is installed but version check failed", err = true)
-                }
-        }
+        requireMiddleware()
+            .getToolVersion()
+            .onSuccess { version ->
+                echo("UV version: ${version.trim()}")
+            }.onFailure {
+                echo("UV is installed but version check failed", err = true)
+            }
     }
 }
 

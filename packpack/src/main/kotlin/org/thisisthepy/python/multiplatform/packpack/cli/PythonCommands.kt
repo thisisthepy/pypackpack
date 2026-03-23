@@ -32,13 +32,13 @@ class PythonUseCommand : CliktCommand(name = "use") {
             throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
         }
 
-        val devEnv = requireMiddleware().getDevEnv()
+        val middleware = requireMiddleware()
         runBooleanCommand(
             progressMessage = "Changing Python version to $version...",
             failureMessage = "Failed to change Python version to $version",
             successMessage = "Changed Python version to $version",
         ) {
-            devEnv.changePythonVersion(version)
+            middleware.changePythonVersion(version)
         }
     }
 }
@@ -47,12 +47,12 @@ class PythonListCommand : CliktCommand(name = "list") {
     override fun help(context: Context) = "List all Python versions available via UV."
 
     override fun run() {
-        val devEnv = requireMiddleware().getDevEnv()
+        val middleware = requireMiddleware()
         runBooleanCommand(
             progressMessage = "Fetching available Python versions...",
             failureMessage = "Failed to list Python versions",
         ) {
-            devEnv.listPythonVersions()
+            middleware.listPythonVersions()
         }
     }
 }
@@ -67,8 +67,8 @@ class PythonFindCommand : CliktCommand(name = "find") {
             throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
         }
 
-        val devEnv = requireMiddleware().getDevEnv()
-        if (!devEnv.findPythonVersion(version)) {
+        val middleware = requireMiddleware()
+        if (!middleware.findPythonVersion(version)) {
             throw PrintMessage("Failed to find Python version $version", statusCode = 1)
         }
     }
@@ -84,13 +84,13 @@ class PythonInstallCommand : CliktCommand(name = "install") {
             throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
         }
 
-        val devEnv = requireMiddleware().getDevEnv()
+        val middleware = requireMiddleware()
         runBooleanCommand(
             progressMessage = "Installing Python $version...",
             failureMessage = "Failed to install Python version $version",
             successMessage = "Successfully installed Python $version",
         ) {
-            devEnv.installPythonVersion(version)
+            middleware.installPythonVersion(version)
         }
     }
 }
@@ -105,13 +105,13 @@ class PythonUninstallCommand : CliktCommand(name = "uninstall") {
             throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
         }
 
-        val devEnv = requireMiddleware().getDevEnv()
+        val middleware = requireMiddleware()
         runBooleanCommand(
             progressMessage = "Uninstalling Python $version...",
             failureMessage = "Failed to uninstall Python version $version",
             successMessage = "Successfully uninstalled Python $version",
         ) {
-            devEnv.uninstallPythonVersion(version)
+            middleware.uninstallPythonVersion(version)
         }
     }
 }
