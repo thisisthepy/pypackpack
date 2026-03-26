@@ -2,13 +2,13 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.internal.WorkspacePaths
 import java.io.File
 
 /** Development environment management Handles dev dependencies for the project root */
 class DevEnv {
     private lateinit var backend: BaseInterface
     private val venvPath = ".venv"
-    private val pyprojectFile = "pyproject.toml"
 
     /**
      * Initialize development environment
@@ -23,14 +23,7 @@ class DevEnv {
      * @return Project root directory or null if not found
      */
     private fun findProjectRoot(): File? {
-        var dir = File(System.getProperty("user.dir"))
-        while (dir.parentFile != null) {
-            if (File(dir, pyprojectFile).exists()) {
-                return dir
-            }
-            dir = dir.parentFile
-        }
-        return null
+        return WorkspacePaths.findProjectRoot()
     }
 
     /**
