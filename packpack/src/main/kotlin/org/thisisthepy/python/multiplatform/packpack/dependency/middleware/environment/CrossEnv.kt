@@ -3,6 +3,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.internal.WorkspacePaths
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
@@ -15,19 +16,137 @@ class CrossEnv {
         this.backend = backend
     }
 
-    fun addPackage(packageName: String): Result<String> = Result.success("Add package feature not yet implemented.")
+    fun addPackage(packageName: String): Result<String> =
+        runCatching {
+            require(packageName.isNotBlank()) { "Package name cannot be blank" }
 
-    fun removePackage(packageName: String): Result<String> = Result.success("Remove package feature not yet implemented.")
+            val workspaceRoot = findWorkspaceRoot()
+            val workspacePyproject = File(workspaceRoot, pyprojectFile)
+            require(workspacePyproject.exists()) {
+                "No pyproject.toml found in ${workspaceRoot.absolutePath}. Initialize a project first."
+            }
+
+            val packageDir = File(workspaceRoot, packageName)
+            require(!packageDir.exists()) {
+                "Package directory already exists: ${packageDir.absolutePath}"
+            }
+            require(packageDir.mkdirs()) {
+                "Failed to create package directory: ${packageDir.absolutePath}"
+            }
+
+            val relativePath = workspaceRoot.toPath().relativize(packageDir.toPath()).toString().replace('\\', '/')
+            val initArgs =
+                mapOf(
+                    "package" to "",
+                    "name" to packageDir.name,
+                    "no-workspace" to "",
+                    "__working_dir" to packageDir.absolutePath,
+                )
+            runBlocking {
+                backend.initProject(null, initArgs)
+            }.getOrThrow()
+
+            val editor = TomlEditor(workspacePyproject.readText())
+            val tablePath = "tool.uv.workspace"
+            if (!editor.hasTable(tablePath)) {
+                editor.createTable(tablePath)
+            }
+            editor.addToArray(tablePath = tablePath, key = "members", relativePath)
+            workspacePyproject.writeText(editor.toTomlString())
+
+            "Package '$packageName' created successfully at ${packageDir.absolutePath}"
+        }
+
+    fun removePackage(packageName: String): Result<String> =
+        runCatching {
+            require(packageName.isNotBlank()) { "Package name cannot be blank" }
+
+            val workspaceRoot = findWorkspaceRoot()
+            val workspacePyproject = File(workspaceRoot, pyprojectFile)
+            require(workspacePyproject.exists()) {
+                "No pyproject.toml found in ${workspaceRoot.absolutePath}"
+            }
+
+            val packageDir = File(workspaceRoot, packageName)
+            require(packageDir.exists()) {
+                "Package directory not found: ${packageDir.absolutePath}"
+            }
+
+            val deleted = packageDir.deleteRecursively()
+            require(deleted) {
+                "Failed to delete package directory: ${packageDir.absolutePath}"
+            }
+
+            val editor = TomlEditor(workspacePyproject.readText())
+            val tablePath = "tool.uv.workspace"
+            if (editor.hasTable(tablePath)) {
+                editor.removeFromArray(tablePath = tablePath, key = "members", packageName)
+                workspacePyproject.writeText(editor.toTomlString())
+            }
+
+            "Package '$packageName' removed successfully from ${workspaceRoot.absolutePath}"
+        }
 
     fun addTarget(
         packageName: String,
         targets: List<String>,
-    ): Result<String> = Result.success("Add target feature not yet implemented.")
+    ): Result<String> =
+        runCatching {
+            require(targets.isNotEmpty()) { "No targets specified" }
+
+            val workspaceRoot = findWorkspaceRoot()
+            val packagePyproject = packagePyprojectPath(workspaceRoot, packageName)
+            require(packagePyproject.exists()) {
+                "No pyproject.toml found in package '$packageName'"
+            }
+
+            val normalizedTargets = normalizeInputTargets(targets)
+
+            val editor = TomlEditor(packagePyproject.readText())
+            val tablePath = "tool.ppp.dependencies"
+            if (!editor.hasTable(tablePath)) {
+                editor.createTable(tablePath)
+            }
+
+            editor.addToArray(
+                tablePath = tablePath,
+                key = "platforms",
+                *normalizedTargets.toTypedArray(),
+                sorter = { Platforms.sort(it) },
+            )
+            packagePyproject.writeText(editor.toTomlString())
+
+            "Successfully added targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}" 
+        }
 
     fun removeTarget(
         packageName: String,
         targets: List<String>,
-    ): Result<String> = Result.success("Remove target feature not yet implemented.")
+    ): Result<String> =
+        runCatching {
+            require(targets.isNotEmpty()) { "No targets specified" }
+
+            val workspaceRoot = findWorkspaceRoot()
+            val packagePyproject = packagePyprojectPath(workspaceRoot, packageName)
+            require(packagePyproject.exists()) {
+                "No pyproject.toml found in package '$packageName'"
+            }
+
+            val normalizedTargets = normalizeInputTargets(targets)
+
+            val editor = TomlEditor(packagePyproject.readText())
+            val tablePath = "tool.ppp.dependencies"
+            if (editor.hasTable(tablePath)) {
+                editor.removeFromArray(
+                    tablePath = tablePath,
+                    key = "platforms",
+                    *normalizedTargets.toTypedArray(),
+                )
+                packagePyproject.writeText(editor.toTomlString())
+            }
+
+            "Successfully removed targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}" 
+        }
 
     fun addDependencies(
         packageName: String,
@@ -153,19 +272,26 @@ class CrossEnv {
         }
 
     private fun resolveWorkspaceRoot(packageName: String): File {
-        var dir = File(System.getProperty("user.dir"))
-        while (true) {
-            val pyproject = File(dir, pyprojectFile)
-            val packageDir = File(dir, packageName)
-            if (pyproject.exists() && packageDir.exists() && packageDir.isDirectory) {
-                return dir
-            }
-
-            val parent = dir.parentFile
-                ?: throw IllegalStateException("Unable to resolve workspace root for package '$packageName'")
-            dir = parent
-        }
+        return WorkspacePaths.resolveWorkspaceRootForPackage(packageName)
     }
+
+    private fun findWorkspaceRoot(): File {
+        return WorkspacePaths.requireProjectRoot()
+    }
+
+    private fun packagePyprojectPath(
+        workspaceRoot: File,
+        packageName: String,
+    ): File {
+        val packageDir = File(workspaceRoot, packageName)
+        require(packageDir.exists() && packageDir.isDirectory) {
+            "Package directory not found: ${packageDir.absolutePath}"
+        }
+        return File(packageDir, pyprojectFile)
+    }
+
+    private fun normalizeInputTargets(targets: List<String>): List<String> =
+        Platforms.normalizeTargetsOrThrow(targets)
 
     private fun resolveCrossTargets(
         packageName: String,
@@ -176,14 +302,7 @@ class CrossEnv {
         require(targetInputs.isNotEmpty()) {
             "No targets provided and no default package platforms configured"
         }
-        return targetInputs
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .map { target ->
-                Platforms.normalizeTarget(target)
-                    ?: throw IllegalArgumentException("Unsupported target: $target")
-            }
-            .distinct()
+        return Platforms.normalizeTargetsOrThrow(targetInputs)
     }
 
     private fun readPackageDefaultTargets(
@@ -200,18 +319,8 @@ class CrossEnv {
     }
 
     private fun normalizeTreeTargets(targets: List<String>?): List<String> {
-        if (targets.isNullOrEmpty()) {
-            return listOf(Platforms.detectHostTarget())
-        }
-
-        return targets
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .map { target ->
-                Platforms.normalizeTarget(target)
-                    ?: throw IllegalArgumentException("Unsupported target: $target")
-            }
-            .distinct()
+        val defaults = listOf(Platforms.detectHostTarget())
+        return Platforms.normalizeTargetsOrThrow(targets, defaultTargets = defaults)
     }
 
     private fun withWorkingDir(
@@ -239,4 +348,5 @@ class CrossEnv {
         }
         return spec.substring(index + 1).trim()
     }
+
 }

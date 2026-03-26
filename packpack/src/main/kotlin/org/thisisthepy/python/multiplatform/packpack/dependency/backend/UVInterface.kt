@@ -4,8 +4,9 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external
 import java.io.File
 
 /** UV implementation of backend interface */
-class UVInterface : BaseInterface {
-    private val uv = UV()
+open class UVInterface(
+    private val uv: UV = UV(),
+) : BaseInterface {
 
     companion object {
         private const val WORKING_DIR_KEY = "__working_dir"
@@ -62,6 +63,14 @@ class UVInterface : BaseInterface {
                 "package",
                 "python-platform",
             )
+
+        private val INIT_ALLOWED_OPTIONS =
+            setOf(
+                "name",
+                "package",
+                "python",
+                "no-workspace",
+            )
     }
 
     /** Initialize UV backend */
@@ -75,12 +84,7 @@ class UVInterface : BaseInterface {
             if (!isToolInstalled()) {
                 installTool().getOrThrow()
             }
-            val (exitCode, output) = uv.executeCommand(listOf("--version"))
-            if (exitCode == 0) {
-                output
-            } else {
-                throw Exception(output)
-            }
+            executeCommand(listOf("--version")).getOrThrow()
         }
 
     /** Check if UV is installed */
@@ -101,23 +105,40 @@ class UVInterface : BaseInterface {
         path: String,
         pythonVersion: String?,
         extraArgs: Map<String, String>?,
-    ): Result<String> = Result.success("Not implemented yet")
+    ): Result<String> =
+        runCatching {
+            require(path.isNotBlank()) { "Path cannot be blank" }
+            val allowedOptions = setOf("python")
+            val (options, workingDir) = normalizeExtraArgs(extraArgs, allowedOptions)
+            val command = mutableListOf("venv")
+
+            appendOptions(command, options)
+
+            if (!pythonVersion.isNullOrBlank() && options["python"].isNullOrBlank()) {
+                command.add("--python")
+                command.add(pythonVersion)
+            }
+
+            command.add(path)
+            executeCommand(command, workingDir).getOrThrow()
+        }
 
     override suspend fun initProject(
         path: String?,
         extraArgs: Map<String, String>?,
     ): Result<String> {
+        val (options, workingDir) = normalizeExtraArgs(extraArgs, INIT_ALLOWED_OPTIONS)
         val command = mutableListOf("init")
         path?.takeIf { it.isNotEmpty() }?.let { command.add(it) }
 
-        extraArgs?.forEach { (key, value) ->
+        options.forEach { (key, value) ->
             command.add("--$key")
             if (value.isNotEmpty()) {
                 command.add(value)
             }
         }
 
-        return executeCommand(command)
+        return executeCommand(command, workingDir)
     }
 
     /** Add dependencies */
@@ -201,58 +222,22 @@ class UVInterface : BaseInterface {
 
     /** List available Python versions */
     override suspend fun listPython(): Result<String> =
-        runCatching {
-            val command = listOf("python", "list")
-
-            val (exitCode, output) = uv.executeCommand(command)
-            if (exitCode == 0) {
-                output
-            } else {
-                throw Exception(output)
-            }
-        }
+        executeCommand(listOf("python", "list"))
 
     /** Find a specific Python version */
     override suspend fun findPython(pythonVersion: String): Result<String> =
-        runCatching {
-            val command = listOf("python", "find", pythonVersion)
-
-            val (exitCode, output) = uv.executeCommand(command)
-            if (exitCode == 0) {
-                output
-            } else {
-                throw Exception(output)
-            }
-        }
+        executeCommand(listOf("python", "find", pythonVersion))
 
     /** Install a specific Python version */
     override suspend fun installPython(pythonVersion: String): Result<String> =
-        runCatching {
-            val command = listOf("python", "install", pythonVersion)
-
-            val (exitCode, output) = uv.executeCommand(command)
-            if (exitCode == 0) {
-                output
-            } else {
-                throw Exception(output)
-            }
-        }
+        executeCommand(listOf("python", "install", pythonVersion))
 
     /** Uninstall a specific Python version */
     override suspend fun uninstallPython(pythonVersion: String): Result<String> =
-        runCatching {
-            val command = listOf("python", "uninstall", pythonVersion)
-
-            val (exitCode, output) = uv.executeCommand(command)
-            if (exitCode == 0) {
-                output
-            } else {
-                throw Exception(output)
-            }
-        }
+        executeCommand(listOf("python", "uninstall", pythonVersion))
 
     /** ExecuteCommand to use UV class */
-    suspend fun executeCommand(
+    open suspend fun executeCommand(
         command: List<String>,
         workingDir: File? = null,
     ): Result<String> =

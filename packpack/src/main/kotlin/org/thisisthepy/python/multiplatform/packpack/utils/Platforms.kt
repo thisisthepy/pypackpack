@@ -188,4 +188,93 @@ object Platforms {
         
         return platforms.sortedBy { orderMap[it] ?: Int.MAX_VALUE }
     }
+
+    fun suggestTargets(
+        input: String,
+        limit: Int = 3,
+    ): List<String> {
+        val query = input.trim().lowercase()
+        if (query.isEmpty()) {
+            return emptyList()
+        }
+
+        val familyMatches =
+            sort(
+                SUPPORTED_TARGETS.filter { target ->
+                    target.lowercase().contains(query) || getPlatformFamily(target).lowercase() == query
+                },
+            )
+        if (familyMatches.isNotEmpty()) {
+            return familyMatches.take(limit)
+        }
+
+        return SUPPORTED_TARGETS
+            .asSequence()
+            .map { it to levenshteinDistance(query, it.lowercase()) }
+            .filter { it.second <= maxOf(2, query.length / 2) }
+            .sortedBy { it.second }
+            .take(limit)
+            .map { it.first }
+            .toList()
+    }
+
+    fun unsupportedTargetMessage(
+        target: String,
+        label: String = "target",
+    ): String {
+        val suggestions = suggestTargets(target)
+        val suggestionText =
+            if (suggestions.isEmpty()) {
+                ""
+            } else {
+                " Did you mean: ${suggestions.joinToString(", ")}?"
+            }
+
+        return "Unsupported $label: $target.$suggestionText Must be one of $SUPPORTED_TARGETS"
+    }
+
+    fun normalizeTargetsOrThrow(
+        targets: List<String>,
+        label: String = "target",
+    ): List<String> =
+        targets
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { target ->
+                normalizeTarget(target)
+                    ?: throw IllegalArgumentException(unsupportedTargetMessage(target, label))
+            }
+            .distinct()
+
+    fun normalizeTargetsOrThrow(
+        targets: List<String>?,
+        defaultTargets: List<String>,
+        label: String = "target",
+    ): List<String> {
+        val source = if (targets.isNullOrEmpty()) defaultTargets else targets
+        return normalizeTargetsOrThrow(source, label)
+    }
+
+    private fun levenshteinDistance(
+        s1: String,
+        s2: String,
+    ): Int {
+        val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
+
+        for (i in 0..s1.length) dp[i][0] = i
+        for (j in 0..s2.length) dp[0][j] = j
+
+        for (i in 1..s1.length) {
+            for (j in 1..s2.length) {
+                dp[i][j] =
+                    if (s1[i - 1] == s2[j - 1]) {
+                        dp[i - 1][j - 1]
+                    } else {
+                        1 + minOf(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+                    }
+            }
+        }
+
+        return dp[s1.length][s2.length]
+    }
 }

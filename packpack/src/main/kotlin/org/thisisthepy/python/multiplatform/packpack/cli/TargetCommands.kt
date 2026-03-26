@@ -20,12 +20,45 @@ class TargetCommand : CliktCommand(name = "target") {
 }
 
 class TargetListCommand : CliktCommand(name = "list") {
+    private data class SectionRule(
+        val title: String,
+        val matcher: (String) -> Boolean,
+    )
+
+    private val sectionRules =
+        listOf(
+            SectionRule("Aliases") { it in setOf("windows", "linux", "macos") },
+            SectionRule("Windows") { it.contains("windows") && it != "windows" },
+            SectionRule("Linux") { (it.contains("unknown-linux") || it.contains("manylinux")) && it != "linux" },
+            SectionRule("macOS") { it.contains("apple-darwin") && it != "macos" },
+            SectionRule("Android") { it.contains("android") },
+            SectionRule("Wasm") { it.contains("wasm") || it.contains("pyodide") },
+            SectionRule("iOS") { it.contains("apple-ios") },
+        )
+
     override fun help(context: Context) = "List all supported target platforms."
 
     override fun run() {
-        echo("Possible values:")
-        Platforms.SUPPORTED_TARGETS.forEach { target ->
-            echo("  - $target")
+        echo("Supported target platforms")
+        echo()
+
+        targetSections().forEach { (header, targets) ->
+            if (targets.isEmpty()) {
+                return@forEach
+            }
+
+            echo("$header:")
+            targets.forEach { target ->
+                echo("  - $target")
+            }
+            echo()
+        }
+    }
+
+    private fun targetSections(): List<Pair<String, List<String>>> {
+        val targets = Platforms.SUPPORTED_TARGETS
+        return sectionRules.map { rule ->
+            rule.title to targets.filter(rule.matcher)
         }
     }
 }
