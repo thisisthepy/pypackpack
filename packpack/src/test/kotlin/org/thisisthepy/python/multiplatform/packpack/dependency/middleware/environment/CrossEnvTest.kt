@@ -1,14 +1,14 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
+import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
-import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 
 class CrossEnvTest {
     @Test
@@ -154,7 +154,9 @@ class CrossEnvTest {
         pyprojectContent: String,
         block: (File) -> Unit,
     ) {
-        val tempRoot = Files.createTempDirectory("crossenv-test").toFile()
+        val pppGradleTestDir = File("/workspace/ppp_gradle_test")
+        pppGradleTestDir.mkdirs()
+        val tempRoot = Files.createTempDirectory(pppGradleTestDir.toPath(), "crossenv-test").toFile()
         val oldUserDir = System.getProperty("user.dir")
         try {
             File(tempRoot, "pyproject.toml").writeText(pyprojectContent)
@@ -162,7 +164,6 @@ class CrossEnvTest {
             block(tempRoot)
         } finally {
             System.setProperty("user.dir", oldUserDir)
-            tempRoot.deleteRecursively()
         }
     }
 
@@ -185,7 +186,7 @@ class CrossEnvTest {
             path: String?,
             extraArgs: Map<String, String>?,
         ): Result<String> {
-            val workingDir = extraArgs?.get("__working_dir")
+            val workingDir = extraArgs?.get("directory") ?: extraArgs?.get("__working_dir")
             val packageDir =
                 when {
                     !path.isNullOrBlank() && !workingDir.isNullOrBlank() -> File(workingDir, path)
@@ -203,7 +204,12 @@ class CrossEnvTest {
             if (!rootEditor.hasTable(tablePath)) {
                 rootEditor.createTable(tablePath)
             }
-            val relativePath = workspaceRoot.toPath().relativize(packageDir.toPath()).toString().replace('\\', '/')
+            val relativePath =
+                workspaceRoot
+                    .toPath()
+                    .relativize(packageDir.toPath())
+                    .toString()
+                    .replace('\\', '/')
             rootEditor.addToArray(tablePath = tablePath, key = "members", relativePath)
             rootPyproject.writeText(rootEditor.toTomlString())
 

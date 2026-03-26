@@ -12,6 +12,13 @@ class CrossEnv {
     private lateinit var backend: BaseInterface
     private val pyprojectFile = "pyproject.toml"
 
+    private data class PackageSpec(
+        val input: String,
+        val name: String,
+        val relativePath: String,
+        val directory: File,
+    )
+
     fun initialize(backend: BaseInterface) {
         this.backend = backend
     }
@@ -34,25 +41,14 @@ class CrossEnv {
                 "Failed to create package directory: ${packageDir.absolutePath}"
             }
 
-            val relativePath = workspaceRoot.toPath().relativize(packageDir.toPath()).toString().replace('\\', '/')
-            val initArgs =
+            val extraArgs =
                 mapOf(
                     "package" to "",
-                    "name" to packageDir.name,
-                    "no-workspace" to "",
-                    "__working_dir" to packageDir.absolutePath,
+                    "directory" to packageDir.absolutePath,
                 )
             runBlocking {
-                backend.initProject(null, initArgs)
+                backend.initProject(null, extraArgs = extraArgs)
             }.getOrThrow()
-
-            val editor = TomlEditor(workspacePyproject.readText())
-            val tablePath = "tool.uv.workspace"
-            if (!editor.hasTable(tablePath)) {
-                editor.createTable(tablePath)
-            }
-            editor.addToArray(tablePath = tablePath, key = "members", relativePath)
-            workspacePyproject.writeText(editor.toTomlString())
 
             "Package '$packageName' created successfully at ${packageDir.absolutePath}"
         }
@@ -116,7 +112,7 @@ class CrossEnv {
             )
             packagePyproject.writeText(editor.toTomlString())
 
-            "Successfully added targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}" 
+            "Successfully added targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}"
         }
 
     fun removeTarget(
@@ -145,7 +141,7 @@ class CrossEnv {
                 packagePyproject.writeText(editor.toTomlString())
             }
 
-            "Successfully removed targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}" 
+            "Successfully removed targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}"
         }
 
     fun addDependencies(
@@ -172,7 +168,7 @@ class CrossEnv {
                 }.getOrThrow()
             }
 
-            "Added dependencies to package '$packageName' for targets: ${normalizedTargets.joinToString(", ")}" 
+            "Added dependencies to package '$packageName' for targets: ${normalizedTargets.joinToString(", ")}"
         }
 
     fun removeDependencies(
@@ -218,7 +214,7 @@ class CrossEnv {
                 backend.lockDependencies(workspaceRoot.absolutePath)
             }.getOrThrow()
 
-            "Removed dependencies from package '$packageName' for targets: ${normalizedTargets.joinToString(", ")}" 
+            "Removed dependencies from package '$packageName' for targets: ${normalizedTargets.joinToString(", ")}"
         }
 
     fun syncDependencies(
@@ -243,7 +239,7 @@ class CrossEnv {
                 }.getOrThrow()
             }
 
-            "Synchronized package '$packageName' for targets: ${normalizedTargets.joinToString(", ")}" 
+            "Synchronized package '$packageName' for targets: ${normalizedTargets.joinToString(", ")}"
         }
 
     fun showDependencyTree(
@@ -271,13 +267,9 @@ class CrossEnv {
             }
         }
 
-    private fun resolveWorkspaceRoot(packageName: String): File {
-        return WorkspacePaths.resolveWorkspaceRootForPackage(packageName)
-    }
+    private fun resolveWorkspaceRoot(packageName: String): File = WorkspacePaths.resolveWorkspaceRootForPackage(packageName)
 
-    private fun findWorkspaceRoot(): File {
-        return WorkspacePaths.requireProjectRoot()
-    }
+    private fun findWorkspaceRoot(): File = WorkspacePaths.requireProjectRoot()
 
     private fun packagePyprojectPath(
         workspaceRoot: File,
@@ -290,8 +282,7 @@ class CrossEnv {
         return File(packageDir, pyprojectFile)
     }
 
-    private fun normalizeInputTargets(targets: List<String>): List<String> =
-        Platforms.normalizeTargetsOrThrow(targets)
+    private fun normalizeInputTargets(targets: List<String>): List<String> = Platforms.normalizeTargetsOrThrow(targets)
 
     private fun resolveCrossTargets(
         packageName: String,
@@ -348,5 +339,4 @@ class CrossEnv {
         }
         return spec.substring(index + 1).trim()
     }
-
 }

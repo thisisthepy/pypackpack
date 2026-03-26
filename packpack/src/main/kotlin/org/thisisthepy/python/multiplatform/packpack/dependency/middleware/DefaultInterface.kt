@@ -258,7 +258,7 @@ class DefaultInterface : BaseInterface {
             uvExtraArgs["package"] = "" // --package flag (no value)
             uvExtraArgs["name"] = packageSpec.name
             uvExtraArgs["no-workspace"] = ""
-            uvExtraArgs["__working_dir"] = packageDir.absolutePath
+            uvExtraArgs["directory"] = packageDir.absolutePath
 
             // Merge user's extra args
             extraArgs?.forEach { (key, value) ->

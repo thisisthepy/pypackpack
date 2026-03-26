@@ -70,6 +70,7 @@ open class UVInterface(
                 "package",
                 "python",
                 "no-workspace",
+                "directory",
             )
     }
 
