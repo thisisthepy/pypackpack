@@ -203,10 +203,12 @@ pypackpack -v
 #### 프로젝트 생성 (DevEnv.kt)
 
 ```bash
-pypackpack init [<project name>] [<python version>]
+pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package]
 ```
 
-- 프로젝트 폴더를 하위에 새로 생성(project name 인자가 들어온 경우)하거나 현재 폴더 경로를 프로젝트 루트로(project name이 비어있는 경우) 설정
+- `path`가 주어지면 해당 경로에 프로젝트를 생성하고, 없으면 현재 폴더를 기준으로 초기화
+- `--python`으로 파이썬 버전을 지정할 수 있음
+- `--name`, `--package` 옵션은 uv init 규칙을 따름
 - pyproject.toml이 이미 있으면 ppp를 사용 중인지 확인하고, 만약 ppp를 사용중인 것이 아니라면 다른 패키징 도구를 사용중이라고 오류를 띄우고, 사용중이라면 이미 이니셜라이즈 되었다고 오류를 띄움
 - 프로젝트 루트에 기본적인 파일들을 생성 (pyproject.toml, LICENSE, README.md, .gitignore)
 - 시스템에 uv가 설치되어있는지 확인 후 만약 설치되어 있지 않다면 최신버전의 uv를 다운받을 수 있는 명령을 출력
@@ -236,37 +238,44 @@ pypackpack python uninstall <python version>
 #### 패키지 추가 (CrossEnv.kt)
 
 ```bash
-pypackpack package add <package name>
-pypackpack package remove <package name>
+pypackpack package add <package path> [--path <workspace root>]
+pypackpack package remove <package path> [--path <workspace root>]
 ```
 
+- `<package path>`는 워크스페이스 루트 기준 상대 경로를 허용 (예: `packages/core`)
+- 패키지 경로는 워크스페이스 바깥으로 벗어날 수 없음
+- 패키지 생성 시 해당 경로에 패키지 디렉토리와 패키지용 `pyproject.toml`을 생성
+- 워크스페이스 멤버 정보는 루트 `pyproject.toml`의 `[tool.uv.workspace].members`를 기준으로 관리
+
 - 지정된 이름으로 새로운 패키지를 프로젝트 루트에 생성 (init, python, package, target, add, remove, sync, tree, build, bundle, deploy는 패키지 이름으로 사용 불가능 -- 검사 필요)
-- 새 패키지를 프로젝트 루트 pyproject.toml에 기록하고, 패키지 내부 pyproject.toml을 생성
-- 프로젝트 루트 pyproject.toml에서
-
-  dependencies = [
-  "sub-package-name @ file:./sub_package", 표준 경로 의존성 형식 (file: 스키마 사용)
-  ]
-
-  을 기입하여 하위 패키지를 의존성으로 Editable 설치
-
-- src/main에 **init**.py 파일 생성
-- src/test에 .gitkeep 파일을 생성
-- build/crossenv/<host_platform> venv 생성
 
 ### 패키지 빌드 타겟 관리 기능
 
 #### 빌드 타겟 플랫폼 추가/제거 (CrossEnv.kt)
 
 ```bash
-pypackpack target add <target name> [<package name>]
-pypackpack target remove <target name> [<package name>]
+pypackpack target list
+pypackpack target add <target name>... [--path <package dir>]
+pypackpack target remove <target name>... [--path <package dir>]
 ```
 
-- package_name이 비어있는 경우 pyproject.toml에 모든 패키지의 의존성 타겟 플랫폼 추가/제거
+- `target list`는 지원 타겟을 별칭/플랫폼 패밀리 기준으로 가독성 있게 출력
+- `target add/remove`는 지정한 패키지 디렉토리(`--path`)의 `pyproject.toml`만 수정
+- 잘못된 타겟 입력 시 유사 타겟 제안을 함께 출력할 수 있음
 - 타겟 플랫폼별 venv는 실제 빌드가 필요한 시점에 생성
+- package_name이 비어있는 경우 pyproject.toml에 모든 패키지의 의존성 타겟 플랫폼 추가/제거
 
 ### 의존성 관리 기능
+
+#### 정책 메모
+
+> - `pypackpack add/remove`는 DevEnv 전용이며 `packageName` 없이 동작
+> - `pypackpack <package> add/remove/sync/tree`는 CrossEnv 전용이며 `packageName` 필수
+> - CrossEnv의 타겟 의존성은 `Platforms.kt` 기반으로 정규화한 뒤 PEP 508 marker로 `pyproject.toml`에 기록
+> - 의존성 문자열에 marker를 직접 포함하는 입력(예: `numpy; ...`)은 금지하고 `--target`만 허용
+> - `remove --target`은 패키지 전체 제거가 아니라 지정된 타겟 범위만 제거
+> - CLI의 `--target` 입력은 쉼표 구분 형식 사용(예: `--target windows,linux`)
+> - 타겟별 전용 venv를 `sync` 단계에서 즉시 생성/설치하지 않고, 실제 타겟 설치는 추후 `build/bundle/deploy` 단계에서 수행
 
 #### Dev 환경 의존성 관리 (DevEnv.kt)
 
@@ -275,7 +284,7 @@ pypackpack add <pypi name> [<etcs>]
 ```
 
 - 지정된 패키지를 Dev 환경 venv에 설치
-- pyproject.toml 업데이트 후, uv lock을 사용하여 타겟 플랫폼별 Lock 파일 생성/갱신
+- pyproject.toml 업데이트 및 lock 갱신
 
 ```bash
 pypackpack remove <pypi name> [<etcs>]
@@ -288,43 +297,45 @@ pypackpack sync [<etcs>]
 ```
 
 - Dev 환경 Lock 파일을 기반으로 .venv를 준비.
-- Lock 파일을 기반으로 실제 패키지 파일 다운로드 및 타겟 venv에 설치
+- 실제 동작은 Dev 환경 동기화(`uv sync`)를 기준으로 수행
 
 ```bash
-pypackpack tree [<etcs>]
+pypackpack tree [--target <target1,target2,...>] [<etcs>]
 ```
 
 #### 패키지별, 타켓 빌드 플랫폼 별 의존성 관리 (CrossEnv.kt)
 
 ```bash
-pypackpack <package name> add <pypi name> [--target <target name>] [<etcs>]
+pypackpack <package name> add <pypi name> [--target <target1,target2,...>] [<etcs>]
 ```
 
 ```bash
 # example
-pypackpack mypackage add numpy --target windows linux
-pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple
+pypackpack mypackage add numpy --target windows,linux
+pypackpack mypackage add numpy --target windows,linux --extra-index-url https://pypi.org/simple
 ```
 
 - 지정된 패키지에 의존성을 추가
-- target name에 인자가 들어오면 해당 타겟에 추가하고 인자가 비어있으면 모든 타겟에 추가
-- pyproject.toml 업데이트 후, uv lock을 사용하여 타겟 플랫폼별 Lock 파일만 즉시 생성/갱신
+- target name이 들어오면 해당 타겟 marker를 사용해 추가, 비어있으면 패키지 기본 platforms를 사용
+- pyproject.toml 업데이트 및 lock 갱신
 
 ```bash
-pypackpack <package name> remove <pypi name> [--target <target name>] [<etcs>]
+pypackpack <package name> remove <pypi name> [--target <target1,target2,...>] [<etcs>]
 ```
 
-````bash
 ```bash
-pypackpack <package name> sync [--target <target name>] [<etcs>]
-````
+pypackpack <package name> sync [--target <target1,target2,...>] [<etcs>]
+```
 
-- Lock 파일을 기반으로 실제 패키지 파일 다운로드 및 타겟 venv에 설치
+- `--target`이 있으면 해당 타겟(들), 없으면 host target 기준으로 검증
+- sync는 환경 동기화 + 타겟 검증으로 동작하며, 타겟별 실제 설치는 수행하지 않음
 
-````bash
 ```bash
-pypackpack <package name> tree [--target <target name>] [<etcs>]
-````
+pypackpack <package name> tree [--target <target1,target2,...>] [<etcs>]
+```
+
+- `--target`이 있으면 해당 타겟(들) 기준으로 `uv tree --python-platform <target>` 검사
+- `--target`이 없으면 host target 기준으로 검사
 
 ### 빌드, 번들링, 배포
 
