@@ -229,220 +229,25 @@ class DefaultInterface : BaseInterface {
         packageName: String,
         path: String?,
         extraArgs: Map<String, String>?,
-    ): Result<String> =
-        runCatching {
-            // Resolve parent directory (where workspace pyproject.toml is)
-            val parentDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
-            if (!parentDir.exists() || !parentDir.isDirectory) {
-                throw IllegalArgumentException("Invalid path: ${parentDir.absolutePath}")
-            }
-
-            // Check workspace pyproject.toml exists
-            val workspacePyprojectPath = File(parentDir, "pyproject.toml")
-            if (!workspacePyprojectPath.exists()) {
-                throw IllegalStateException("No pyproject.toml found in ${parentDir.absolutePath}. Initialize a project first.")
-            }
-
-            val packageSpec = resolvePackageSpec(parentDir, packageName)
-            val packageDir = packageSpec.directory
-            if (packageDir.exists()) {
-                throw IllegalArgumentException("Package directory already exists: ${packageDir.absolutePath}")
-            }
-            require(packageDir.mkdirs()) {
-                "Failed to create package directory: ${packageDir.absolutePath}"
-            }
-
-            // Execute UV init with --package flag
-            val uvExtraArgs = mutableMapOf<String, String>()
-            uvExtraArgs["package"] = "" // --package flag (no value)
-            uvExtraArgs["name"] = packageSpec.name
-            uvExtraArgs["no-workspace"] = ""
-            uvExtraArgs["directory"] = packageDir.absolutePath
-
-            // Merge user's extra args
-            extraArgs?.forEach { (key, value) ->
-                uvExtraArgs[key] = value
-            }
-
-            // Call backend to create package
-            val result =
-                runBlocking {
-                    backend.initProject(
-                        path = null,
-                        extraArgs = uvExtraArgs,
-                    )
-                }
-
-            if (result.isFailure) {
-                throw result.exceptionOrNull() ?: Exception("Failed to create package")
-            }
-
-            val pyprojectContent = workspacePyprojectPath.readText()
-            val editor = TomlEditor(pyprojectContent)
-            val workspaceTablePath = "tool.uv.workspace"
-            if (!editor.hasTable(workspaceTablePath)) {
-                editor.createTable(workspaceTablePath)
-            }
-            editor.addToArray(
-                tablePath = workspaceTablePath,
-                key = "members",
-                packageSpec.relativePath,
-            )
-            workspacePyprojectPath.writeText(editor.toTomlString())
-
-            val output = result.getOrThrow()
-            "Package '${packageSpec.input}' created successfully at ${packageDir.absolutePath}\n$output"
-        }
+    ): Result<String> = crossEnvService().addPackage(packageName, path, extraArgs)
 
     /** Remove a package from the workspace */
     override fun removePackage(
         packageName: String,
         path: String?,
-    ): Result<String> =
-        runCatching {
-            // Resolve parent directory (where workspace pyproject.toml is)
-            val parentDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
-            if (!parentDir.exists() || !parentDir.isDirectory) {
-                throw IllegalArgumentException("Invalid path: ${parentDir.absolutePath}")
-            }
-
-            // Check workspace pyproject.toml exists
-            val workspacePyprojectPath = File(parentDir, "pyproject.toml")
-            if (!workspacePyprojectPath.exists()) {
-                throw IllegalStateException("No pyproject.toml found in ${parentDir.absolutePath}")
-            }
-
-            val packageSpec = resolvePackageSpec(parentDir, packageName)
-            val packageDir = packageSpec.directory
-            if (!packageDir.exists()) {
-                throw IllegalArgumentException("Package directory not found: ${packageDir.absolutePath}")
-            }
-
-            // Delete package directory recursively
-            val deleteSuccess = packageDir.deleteRecursively()
-            if (!deleteSuccess) {
-                throw Exception("Failed to delete package directory: ${packageDir.absolutePath}")
-            }
-
-            // Update workspace pyproject.toml to remove from tool.uv.workspace.members
-            val pyprojectContent = workspacePyprojectPath.readText()
-            val editor = TomlEditor(pyprojectContent)
-
-            val workspaceTablePath = "tool.uv.workspace"
-            if (editor.hasTable(workspaceTablePath)) {
-                editor.removeFromArray(
-                    tablePath = workspaceTablePath,
-                    key = "members",
-                    packageSpec.relativePath,
-                )
-
-                workspacePyprojectPath.writeText(editor.toTomlString())
-            }
-
-            "Package '${packageSpec.input}' removed successfully from ${parentDir.absolutePath}"
-        }
-
-    private data class PackageSpec(
-        val input: String,
-        val name: String,
-        val relativePath: String,
-        val directory: File,
-    )
-
-    private fun resolvePackageSpec(
-        parentDir: File,
-        packageInput: String,
-    ): PackageSpec {
-        val trimmed = packageInput.trim()
-        require(trimmed.isNotEmpty()) { "Package name cannot be blank" }
-
-        val relativePath =
-            trimmed
-                .replace('\\', '/')
-                .trimStart('/')
-
-        require(relativePath.isNotEmpty()) { "Package name cannot be blank" }
-
-        val packageDir = File(parentDir, relativePath).normalize()
-        val parentPath = parentDir.canonicalFile.toPath()
-        val packagePath = packageDir.canonicalFile.toPath()
-        require(packagePath.startsWith(parentPath)) {
-            "Package path must stay within workspace: $trimmed"
-        }
-
-        val canonicalName = packageDir.name
-        require(canonicalName.isNotBlank()) { "Package name cannot be blank" }
-
-        return PackageSpec(
-            input = trimmed,
-            name = canonicalName,
-            relativePath = relativePath,
-            directory = packageDir,
-        )
-    }
+    ): Result<String> = crossEnvService().removePackage(packageName, path)
 
     /** Add target platforms to a package */
     override fun addTargets(
         targets: List<String>,
         path: String?,
-    ): Result<String> =
-        runCatching {
-            // Resolve package directory
-            val packageDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
-            if (!packageDir.exists() || !packageDir.isDirectory) {
-                throw IllegalArgumentException("Invalid path: ${packageDir.absolutePath}")
-            }
-
-            // Check pyproject.toml exists
-            val pyprojectPath = File(packageDir, "pyproject.toml")
-            if (!pyprojectPath.exists()) {
-                throw IllegalStateException("No pyproject.toml found in ${packageDir.absolutePath}")
-            }
-
-            // Load and edit pyproject.toml
-            val pyprojectContent = pyprojectPath.readText()
-            val editor = TomlEditor(pyprojectContent)
-
-            // Use existing private helper method
-            addPlatforms(editor, targets)
-
-            // Save changes
-            pyprojectPath.writeText(editor.toTomlString())
-
-            val sortedTargets = Platforms.sort(targets)
-            "Successfully added targets: ${sortedTargets.joinToString(", ")}"
-        }
+    ): Result<String> = crossEnvService().addTargets(targets, path)
 
     /** Remove target platforms from a package */
     override fun removeTargets(
         targets: List<String>,
         path: String?,
-    ): Result<String> =
-        runCatching {
-            // Resolve package directory
-            val packageDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
-            if (!packageDir.exists() || !packageDir.isDirectory) {
-                throw IllegalArgumentException("Invalid path: ${packageDir.absolutePath}")
-            }
-
-            // Check pyproject.toml exists
-            val pyprojectPath = File(packageDir, "pyproject.toml")
-            if (!pyprojectPath.exists()) {
-                throw IllegalStateException("No pyproject.toml found in ${packageDir.absolutePath}")
-            }
-
-            // Load and edit pyproject.toml
-            val pyprojectContent = pyprojectPath.readText()
-            val editor = TomlEditor(pyprojectContent)
-
-            // Use existing private helper method
-            removePlatforms(editor, targets)
-
-            // Save changes
-            pyprojectPath.writeText(editor.toTomlString())
-
-            "Successfully removed targets: ${targets.joinToString(", ")}"
-        }
+    ): Result<String> = crossEnvService().removeTargets(targets, path)
 
     private fun addPlatforms(
         tomlEditor: TomlEditor,
@@ -463,23 +268,6 @@ class DefaultInterface : BaseInterface {
             *normalizedPlatforms.toTypedArray(),
             sorter = { Platforms.sort(it) },
         )
-    }
-
-    private fun removePlatforms(
-        tomlEditor: TomlEditor,
-        platforms: List<String>,
-    ) {
-        val tablePath = "tool.ppp.dependencies"
-        val normalizedPlatforms = Platforms.normalizeTargetsOrThrow(platforms, label = "platform")
-
-        // Remove from array (silently does nothing if table/key doesn't exist)
-        if (tomlEditor.hasTable(tablePath)) {
-            tomlEditor.removeFromArray(
-                tablePath = tablePath,
-                key = "platforms",
-                *normalizedPlatforms.toTypedArray(),
-            )
-        }
     }
 
     private fun findProjectRoot(): File? = findWorkspaceProjectRoot()
