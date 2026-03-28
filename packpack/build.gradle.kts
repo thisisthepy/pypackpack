@@ -160,7 +160,7 @@ graalvmNative {
                 "--enable-preview",
                 "--install-exit-handlers",
                 "--initialize-at-build-time=kotlin,kotlinx.coroutines,org.koin",
-                "--initialize-at-run-time=org.thisisthepy.python.multiplatform.packpack.util.Downloader,kotlin.uuid.SecureRandomHolder",
+                "--initialize-at-run-time=org.thisisthepy.python.multiplatform.packpack.utils.Downloader,kotlin.uuid.SecureRandomHolder",
                 "-H:+ReportExceptionStackTraces",
                 "-H:+AddAllCharsets",
                 "--gc=serial"

@@ -6,28 +6,7 @@
       },
       {
         "pattern": "\\QMETA-INF/native-image/\\E.*"
-      },
-      {
-        "pattern": "\\Q.properties\\E"
-      },
-      {
-        "pattern": "\\Q.json\\E"
-      },
-      {
-        "pattern": "\\Q.toml\\E"
-      },
-      {
-        "pattern": "\\Q.txt\\E"
-      },
-      {
-        "pattern": "\\Q.md\\E"
       }
     ]
-  },
-  "bundles": [
-    {
-      "name": "messages",
-      "locales": ["en", "ko"]
-    }
-  ]
+  }
 }
