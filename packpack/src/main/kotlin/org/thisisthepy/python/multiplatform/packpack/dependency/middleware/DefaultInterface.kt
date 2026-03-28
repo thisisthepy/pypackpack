@@ -4,7 +4,6 @@ import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendType
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.internal.WorkspacePaths
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
@@ -483,7 +482,7 @@ class DefaultInterface : BaseInterface {
         }
     }
 
-    private fun findProjectRoot(): File? = WorkspacePaths.findProjectRoot()
+    private fun findProjectRoot(): File? = findWorkspaceProjectRoot()
 
     private fun normalizeTreeTargets(targets: List<String>?): List<String> {
         val defaults = listOf(Platforms.detectHostTarget())
@@ -517,4 +516,39 @@ internal object MarkerPolicy {
             target.contains("linux") || target.contains("manylinux") -> "Linux"
             else -> throw IllegalArgumentException("Unsupported target for marker mapping: $target")
         }
+}
+
+private const val PYPROJECT_FILE = "pyproject.toml"
+
+internal fun findWorkspaceProjectRoot(startDir: File = File(System.getProperty("user.dir"))): File? {
+    var dir = startDir
+    while (true) {
+        if (File(dir, PYPROJECT_FILE).exists()) {
+            return dir
+        }
+        val parent = dir.parentFile ?: return null
+        dir = parent
+    }
+}
+
+internal fun requireWorkspaceProjectRoot(startDir: File = File(System.getProperty("user.dir"))): File =
+    findWorkspaceProjectRoot(startDir)
+        ?: throw IllegalStateException("No pyproject.toml found in current directory or parent directories")
+
+internal fun resolveWorkspaceRootForPackage(
+    packageName: String,
+    startDir: File = File(System.getProperty("user.dir")),
+): File {
+    var dir = startDir
+    while (true) {
+        val pyproject = File(dir, PYPROJECT_FILE)
+        val packageDir = File(dir, packageName)
+        if (pyproject.exists() && packageDir.exists() && packageDir.isDirectory) {
+            return dir
+        }
+
+        val parent = dir.parentFile
+            ?: throw IllegalStateException("Unable to resolve workspace root for package '$packageName'")
+        dir = parent
+    }
 }

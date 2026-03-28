@@ -3,7 +3,8 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.internal.WorkspacePaths
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.requireWorkspaceProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.resolveWorkspaceRootForPackage
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
@@ -267,9 +268,9 @@ class CrossEnv {
             }
         }
 
-    private fun resolveWorkspaceRoot(packageName: String): File = WorkspacePaths.resolveWorkspaceRootForPackage(packageName)
+    private fun resolveWorkspaceRoot(packageName: String): File = resolveWorkspaceRootForPackage(packageName)
 
-    private fun findWorkspaceRoot(): File = WorkspacePaths.requireProjectRoot()
+    private fun findWorkspaceRoot(): File = requireWorkspaceProjectRoot()
 
     private fun packagePyprojectPath(
         workspaceRoot: File,
