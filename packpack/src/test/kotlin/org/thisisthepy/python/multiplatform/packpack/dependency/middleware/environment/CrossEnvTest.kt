@@ -37,6 +37,36 @@ class CrossEnvTest {
     }
 
     @Test
+    fun addPackage_inheritsWorkspaceTargetsIntoPackagePyproject() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = []
+
+            [tool.ppp.dependencies]
+            platforms = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            val result = crossEnv.addPackage("demo_pkg")
+
+            assertTrue(result.isSuccess)
+            val packagePyproject = File(workspaceRoot, "demo_pkg/pyproject.toml")
+            val packageEditor = TomlEditor(packagePyproject.readText())
+            val platforms = packageEditor.getArray("tool.ppp.dependencies", "platforms")
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"),
+                platforms,
+            )
+        }
+    }
+
+    @Test
     fun removePackage_deletesDirectoryAndRemovesWorkspaceMember() {
         withWorkspace(
             """

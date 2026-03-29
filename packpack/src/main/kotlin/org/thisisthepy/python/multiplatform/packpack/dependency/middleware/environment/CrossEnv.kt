@@ -62,6 +62,11 @@ class CrossEnv {
                 backend.initProject(null, extraArgs = uvArgs)
             }.getOrThrow()
 
+            inheritWorkspaceTargetsToPackage(
+                workspacePyproject = workspacePyproject,
+                packagePyproject = File(packageDir, pyprojectFile),
+            )
+
             "Package '${packageSpec.input}' created successfully at ${packageDir.absolutePath}"
         }
 
@@ -234,7 +239,7 @@ class CrossEnv {
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = resolveCrossTargets(packageSpec, targets)
             val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
-            val wheelAvailability =
+            val wheelAvailabilityResult =
                 runBlocking {
                     targetWheelInspector.inspectDependencies(
                         workspaceRoot = workspaceRoot,
@@ -242,9 +247,15 @@ class CrossEnv {
                         dependencies = dependencies,
                         targets = normalizedTargets,
                     )
-                }.getOrNull()
+                }
 
-            wheelAvailability?.forEach { report ->
+            wheelAvailabilityResult.exceptionOrNull()?.let { error ->
+                println("Warning: failed to inspect target wheel availability: ${error.message}")
+            }
+
+            val wheelAvailability = wheelAvailabilityResult.getOrDefault(emptyList())
+
+            wheelAvailability.forEach { report ->
                 val missingTargets = report.targets.filterNot { it.hasWheel }.map { it.target }
                 if (missingTargets.isNotEmpty()) {
                     println(
@@ -484,6 +495,40 @@ class CrossEnv {
 
         val editor = TomlEditor(workspacePyproject.readText())
         return editor.getArray("tool.uv.workspace", "members")
+    }
+
+    private fun inheritWorkspaceTargetsToPackage(
+        workspacePyproject: File,
+        packagePyproject: File,
+    ) {
+        if (!workspacePyproject.exists() || !packagePyproject.exists()) {
+            return
+        }
+
+        val workspaceEditor = TomlEditor(workspacePyproject.readText())
+        val workspaceTargets = workspaceEditor.getArray("tool.ppp.dependencies", "platforms")
+        if (workspaceTargets.isEmpty()) {
+            return
+        }
+
+        val packageEditor = TomlEditor(packagePyproject.readText())
+        val tablePath = "tool.ppp.dependencies"
+        if (!packageEditor.hasTable(tablePath)) {
+            packageEditor.createTable(tablePath)
+        }
+
+        val existingTargets = packageEditor.getArray(tablePath, "platforms")
+        if (existingTargets.isNotEmpty()) {
+            return
+        }
+
+        packageEditor.addToArray(
+            tablePath = tablePath,
+            key = "platforms",
+            *workspaceTargets.toTypedArray(),
+            sorter = { Platforms.sort(it) },
+        )
+        packagePyproject.writeText(packageEditor.toTomlString())
     }
 
     private fun withWorkingDir(
