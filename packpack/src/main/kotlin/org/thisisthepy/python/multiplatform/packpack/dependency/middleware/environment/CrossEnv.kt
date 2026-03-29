@@ -11,6 +11,7 @@ import java.io.File
 class CrossEnv {
     private lateinit var backend: BaseInterface
     private val pyprojectFile = "pyproject.toml"
+    private val targetWheelInspector = TargetWheelInspector()
 
     private data class PackageSpec(
         val input: String,
@@ -233,6 +234,24 @@ class CrossEnv {
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = resolveCrossTargets(packageSpec, targets)
             val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
+            val wheelAvailability =
+                runBlocking {
+                    targetWheelInspector.inspectDependencies(
+                        workspaceRoot = workspaceRoot,
+                        packageRelativePath = packageSpec.relativePath,
+                        dependencies = dependencies,
+                        targets = normalizedTargets,
+                    )
+                }.getOrNull()
+
+            wheelAvailability?.forEach { report ->
+                val missingTargets = report.targets.filterNot { it.hasWheel }.map { it.target }
+                if (missingTargets.isNotEmpty()) {
+                    println(
+                        "Warning: '${report.dependencySpec}' has no compatible wheel on PyPI for targets: ${missingTargets.joinToString(", ")}",
+                    )
+                }
+            }
 
             for (target in normalizedTargets) {
                 val marker = MarkerPolicy.markerForTarget(target)
