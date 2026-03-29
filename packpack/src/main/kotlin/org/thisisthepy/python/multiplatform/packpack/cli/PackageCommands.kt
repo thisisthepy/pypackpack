@@ -52,7 +52,7 @@ class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
     override fun help(context: Context) = "Synchronize dependencies for a specific package."
 
     val packageName by argument(help = "Package name")
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",").default(emptyList())
+    val targets by option("--target", help = "Target platforms (--target windows linux macos)").varargValues().default(emptyList())
 
     override fun run() {
         val middleware = requireMiddleware()
@@ -70,7 +70,7 @@ class PackageTreeCommand : BaseDependencyCommand(name = "tree") {
     override fun help(context: Context) = "Show the dependency tree for a specific package."
 
     val packageName by argument(help = "Package name")
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",").default(emptyList())
+    val targets by option("--target", help = "Target platforms (--target windows linux macos)").varargValues().default(emptyList())
 
     override fun run() {
         val middleware = requireMiddleware()

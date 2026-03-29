@@ -97,7 +97,7 @@ class SyncCommand : BaseDependencyCommand(name = "sync") {
 class TreeCommand : BaseDependencyCommand(name = "tree") {
     override fun help(context: Context) = "Show the dependency tree for the development environment."
 
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",").default(emptyList())
+    val targets by option("--target", help = "Target platforms (--target windows linux macos)").varargValues().default(emptyList())
 
     override fun run() {
         val middleware = requireMiddleware()
