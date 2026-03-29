@@ -4,7 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external.UV
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
-import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.nio.file.Files
 
@@ -107,22 +106,19 @@ internal class TargetWheelInspector(
         withContext(Dispatchers.IO) {
             val tempRoot = Files.createTempDirectory("ppp-target-resolve").toFile()
             try {
-                copyWorkspaceForInspection(workspaceRoot, tempRoot)
-
-                val packagePyproject = File(tempRoot, "$packageRelativePath/pyproject.toml")
+                val packagePyproject = File(workspaceRoot, "$packageRelativePath/pyproject.toml")
                 require(packagePyproject.exists()) {
                     "Package pyproject.toml not found for inspection: ${packagePyproject.absolutePath}"
                 }
 
-                val editor = TomlEditor(packagePyproject.readText())
-                dependencies.forEach { dependency ->
-                    editor.addToArray(
-                        tablePath = "project",
-                        key = "dependencies",
-                        appendTargetMarker(dependency, target),
-                    )
-                }
-                packagePyproject.writeText(editor.toTomlString())
+                val tempPyproject = File(tempRoot, "pyproject.toml")
+                tempPyproject.writeText(
+                    buildInspectionPyproject(
+                        packagePyproject = packagePyproject,
+                        dependencies = dependencies,
+                        target = target,
+                    ),
+                )
 
                 val result = uv.executeCommand(listOf("lock"), tempRoot)
                 if (result.first != 0) {
@@ -137,29 +133,37 @@ internal class TargetWheelInspector(
             }
         }
 
-    private fun copyWorkspaceForInspection(
-        sourceRoot: File,
-        targetRoot: File,
-    ) {
-        sourceRoot
-            .listFiles()
-            .orEmpty()
-            .filterNot { shouldSkipCopy(it.name) }
-            .forEach { source ->
-                val destination = File(targetRoot, source.name)
-                if (source.isDirectory) {
-                    source.copyRecursively(destination, overwrite = true)
-                } else {
-                    source.copyTo(destination, overwrite = true)
-                }
-            }
-    }
+    private fun buildInspectionPyproject(
+        packagePyproject: File,
+        dependencies: List<String>,
+        target: String,
+    ): String {
+        val packageContent = packagePyproject.readText()
+        val requiresPython =
+            Regex("""(?m)^requires-python\s*=\s*"([^"]+)"""")
+                .find(packageContent)
+                ?.groupValues
+                ?.getOrNull(1)
 
-    private fun shouldSkipCopy(name: String): Boolean =
-        name == ".git" ||
-            name == ".gradle" ||
-            name == "build" ||
-            name == ".idea"
+        val dependencyLines =
+            dependencies.joinToString(",\n") { dependency ->
+                "    ${toTomlString(appendTargetMarker(dependency, target))}"
+            }
+
+        return buildString {
+            appendLine("[project]")
+            appendLine("name = \"ppp-target-inspector\"")
+            appendLine("version = \"0.0.0\"")
+            if (!requiresPython.isNullOrBlank()) {
+                appendLine("requires-python = ${toTomlString(requiresPython)}")
+            }
+            appendLine("dependencies = [")
+            if (dependencyLines.isNotEmpty()) {
+                appendLine(dependencyLines)
+            }
+            appendLine("]")
+        }
+    }
 
     private fun appendTargetMarker(
         dependency: String,
@@ -170,6 +174,22 @@ internal class TargetWheelInspector(
         require(!trimmed.contains(';')) { "Dependency spec already contains a marker: $dependency" }
         return "$trimmed ; ${MarkerPolicy.markerForTarget(target)}"
     }
+
+    private fun toTomlString(value: String): String =
+        buildString {
+            append('"')
+            value.forEach { ch ->
+                when (ch) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(ch)
+                }
+            }
+            append('"')
+        }
 
     internal fun parseDependencySpec(spec: String): ParsedDependencySpec {
         val requirement = spec.substringBefore(';').trim()
