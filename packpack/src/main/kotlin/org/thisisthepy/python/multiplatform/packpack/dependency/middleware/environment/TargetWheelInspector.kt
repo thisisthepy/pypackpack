@@ -37,15 +37,16 @@ internal class TargetWheelInspector(
             require(targets.isNotEmpty()) { "No targets specified" }
 
             val reportsByDependency =
-                dependencies.associate { spec ->
-                    parseDependencySpec(spec).normalizedName to
-                        DependencyWheelAvailability(
-                            dependencySpec = spec,
-                            normalizedPackageName = parseDependencySpec(spec).normalizedName,
-                            resolvedVersion = null,
-                            targets = emptyList(),
-                        )
-                }.toMutableMap()
+                dependencies
+                    .associate { spec ->
+                        parseDependencySpec(spec).normalizedName to
+                            DependencyWheelAvailability(
+                                dependencySpec = spec,
+                                normalizedPackageName = parseDependencySpec(spec).normalizedName,
+                                resolvedVersion = null,
+                                targets = emptyList(),
+                            )
+                    }.toMutableMap()
 
             val targetReports = mutableMapOf<String, MutableList<TargetWheelAvailability>>()
             val resolvedVersions = mutableMapOf<String, String?>()
@@ -252,53 +253,93 @@ internal class TargetWheelInspector(
         }
 
         return when (target) {
-            "x86_64-pc-windows-msvc" -> platformTags.any { it == "win_amd64" }
-            "aarch64-pc-windows-msvc" -> platformTags.any { it == "win_arm64" }
-            "i686-pc-windows-msvc" -> platformTags.any { it == "win32" }
-            "x86_64-unknown-linux-gnu" ->
+            "x86_64-pc-windows-msvc" -> {
+                platformTags.any { it == "win_amd64" }
+            }
+
+            "aarch64-pc-windows-msvc" -> {
+                platformTags.any { it == "win_arm64" }
+            }
+
+            "i686-pc-windows-msvc" -> {
+                platformTags.any { it == "win32" }
+            }
+
+            "x86_64-unknown-linux-gnu" -> {
                 platformTags.any {
                     it == "linux_x86_64" || (it.contains("manylinux") && it.contains("x86_64"))
                 }
-            "aarch64-unknown-linux-gnu" ->
+            }
+
+            "aarch64-unknown-linux-gnu" -> {
                 platformTags.any {
                     it == "linux_aarch64" || (it.contains("manylinux") && it.contains("aarch64"))
                 }
-            "x86_64-unknown-linux-musl" ->
+            }
+
+            "x86_64-unknown-linux-musl" -> {
                 platformTags.any {
                     (it.contains("musllinux") && it.contains("x86_64")) || it == "linux_x86_64"
                 }
-            "aarch64-unknown-linux-musl" ->
+            }
+
+            "aarch64-unknown-linux-musl" -> {
                 platformTags.any {
                     (it.contains("musllinux") && it.contains("aarch64")) || it == "linux_aarch64"
                 }
-            "x86_64-apple-darwin" ->
+            }
+
+            "x86_64-apple-darwin" -> {
                 platformTags.any {
                     (it.contains("macosx") && it.contains("x86_64")) || it.endsWith("universal2")
                 }
-            "aarch64-apple-darwin" ->
+            }
+
+            "aarch64-apple-darwin" -> {
                 platformTags.any {
                     (it.contains("macosx") && it.contains("arm64")) || it.endsWith("universal2")
                 }
-            else ->
+            }
+
+            else -> {
                 when {
-                    target.startsWith("x86_64-manylinux") ->
+                    target.startsWith("x86_64-manylinux") -> {
                         platformTags.any { it.contains("manylinux") && it.contains("x86_64") }
-                    target.startsWith("aarch64-manylinux") ->
+                    }
+
+                    target.startsWith("aarch64-manylinux") -> {
                         platformTags.any { it.contains("manylinux") && it.contains("aarch64") }
-                    target == "aarch64-linux-android" ->
+                    }
+
+                    target == "aarch64-linux-android" -> {
                         platformTags.any { it.contains("android") && it.contains("aarch64") }
-                    target == "x86_64-linux-android" ->
+                    }
+
+                    target == "x86_64-linux-android" -> {
                         platformTags.any { it.contains("android") && it.contains("x86_64") }
-                    target == "wasm32-pyodide2024" ->
+                    }
+
+                    target == "wasm32-pyodide2024" -> {
                         platformTags.any { it.contains("emscripten") || it.contains("pyodide") || it.contains("wasm32") }
-                    target == "arm64-apple-ios" ->
+                    }
+
+                    target == "arm64-apple-ios" -> {
                         platformTags.any { it.contains("ios") && it.contains("arm64") }
-                    target == "arm64-apple-ios-simulator" ->
+                    }
+
+                    target == "arm64-apple-ios-simulator" -> {
                         platformTags.any { it.contains("ios") && it.contains("arm64") && it.contains("simulator") }
-                    target == "x86_64-apple-ios-simulator" ->
+                    }
+
+                    target == "x86_64-apple-ios-simulator" -> {
                         platformTags.any { it.contains("ios") && it.contains("x86_64") && it.contains("simulator") }
-                    else -> false
+                    }
+
+                    else -> {
+                        false
+                    }
                 }
+            }
         }
     }
 

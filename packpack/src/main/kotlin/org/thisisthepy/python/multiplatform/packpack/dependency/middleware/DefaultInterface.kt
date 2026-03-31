@@ -67,12 +67,13 @@ class DefaultInterface : BaseInterface {
         targets: List<String>?,
         extraArgs: Map<String, String>?,
     ): Result<String> {
-        val uvArgs = (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
-            putIfAbsent("no-workspace", "")
-        }
+        val uvArgs =
+            (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
+                putIfAbsent("bare", "")
+            }
         val result =
             runBlocking {
-                backend.initProject(path, uvArgs)
+                backendInterface().initProject(path, uvArgs)
             }
 
         val targetPlatforms: List<String>? = targets
@@ -86,6 +87,11 @@ class DefaultInterface : BaseInterface {
         }
 
         File(pyprojectTomlPath).writeText(editor.toTomlString())
+        writeInitScaffold(
+            projectDir = projectDir,
+            projectName = uvArgs["name"].takeUnless { it.isNullOrBlank() } ?: projectDir.name,
+            pythonVersion = uvArgs["python"].takeUnless { it.isNullOrBlank() },
+        )
 
         return result
     }
@@ -285,25 +291,54 @@ class DefaultInterface : BaseInterface {
         directory?.let { base["__working_dir"] = it.absolutePath }
         return base
     }
+
+    private fun writeInitScaffold(
+        projectDir: File,
+        projectName: String,
+        pythonVersion: String?,
+    ) {
+        writeFileIfMissing(
+            File(projectDir, ".gitignore"),
+            """
+            .venv/
+            __pycache__/
+            *.pyc
+            *.pyo
+            *.pyd
+            .python-version
+            build/
+            dist/
+            *.egg-info/
+            """.trimIndent() + "\n",
+        )
+
+        writeFileIfMissing(
+            File(projectDir, "README.md"),
+            "# $projectName\n",
+        )
+
+        pythonVersion?.let { version ->
+            File(projectDir, ".python-version").writeText("$version\n")
+        }
+    }
+
+    private fun writeFileIfMissing(
+        file: File,
+        content: String,
+    ) {
+        if (!file.exists()) {
+            file.writeText(content)
+        }
+    }
 }
 
 internal object MarkerPolicy {
     fun markerForTarget(target: String): String {
-        val system = mapTargetToPlatformSystem(target)
-        val machine = target.substringBefore('-').replace("aarch64", "arm64")
+        val descriptor = Platforms.describeTarget(target)
+        val system = descriptor.markerSystem
+        val machine = descriptor.markerMachine
         return "platform_system == '$system' and platform_machine == '$machine'"
     }
-
-    private fun mapTargetToPlatformSystem(target: String): String =
-        when {
-            target.contains("windows") -> "Windows"
-            target.contains("android") -> "Android"
-            target.contains("apple-ios") -> "iOS"
-            target.startsWith("wasm32") || target.contains("pyodide") || target.contains("emscripten") -> "Emscripten"
-            target.contains("apple-darwin") -> "Darwin"
-            target.contains("linux") || target.contains("manylinux") -> "Linux"
-            else -> throw IllegalArgumentException("Unsupported target for marker mapping: $target")
-        }
 }
 
 private const val PYPROJECT_FILE = "pyproject.toml"
@@ -335,8 +370,9 @@ internal fun resolveWorkspaceRootForPackage(
             return dir
         }
 
-        val parent = dir.parentFile
-            ?: throw IllegalStateException("Unable to resolve workspace root for package '$packageName'")
+        val parent =
+            dir.parentFile
+                ?: throw IllegalStateException("Unable to resolve workspace root for package '$packageName'")
         dir = parent
     }
 }

@@ -66,10 +66,10 @@ open class UVInterface(
 
         private val INIT_ALLOWED_OPTIONS =
             setOf(
+                "bare",
                 "name",
                 "package",
                 "python",
-                "no-workspace",
                 "directory",
             )
     }

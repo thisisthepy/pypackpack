@@ -8,6 +8,13 @@ package org.thisisthepy.python.multiplatform.packpack.utils
  * - **Platform Family**: The general OS family (e.g., `windows`, `linux`).
  */
 object Platforms {
+    data class TargetDescriptor(
+        val canonicalTarget: String,
+        val family: String,
+        val markerSystem: String,
+        val markerMachine: String,
+    )
+
     /**
      * List of all supported targets and aliases for display purposes.
      * Used by `pypackpack target list`.
@@ -159,16 +166,63 @@ object Platforms {
      * Get the platform family directory name for a given target.
      * (Used for `package/src/<dir>` layout.)
      */
-    fun getPlatformFamily(target: String): String {
+    fun getPlatformFamily(target: String): String = describeTarget(target).family
+
+    /**
+     * Describe a target in terms shared across platform layout and dependency markers.
+     */
+    fun describeTarget(target: String): TargetDescriptor {
         val canonical = normalizeTarget(target) ?: target
         return when {
-            canonical.contains("windows") -> "windows"
-            canonical.contains("apple-darwin") || canonical.contains("darwin") -> "macos"
-            canonical.contains("manylinux") || canonical.contains("linux") -> "linux"
-            canonical.contains("android") -> "android"
-            canonical.startsWith("wasm") || canonical.contains("pyodide") -> "wasm"
-            canonical.contains("apple-ios") || canonical.contains("ios") -> "ios"
-            else -> canonical.split('-', '_').firstOrNull() ?: canonical
+            canonical.contains("windows") ->
+                TargetDescriptor(
+                    canonicalTarget = canonical,
+                    family = "windows",
+                    markerSystem = "Windows",
+                    markerMachine = markerMachine(canonical),
+                )
+
+            canonical.contains("android") ->
+                TargetDescriptor(
+                    canonicalTarget = canonical,
+                    family = "android",
+                    markerSystem = "Android",
+                    markerMachine = markerMachine(canonical),
+                )
+
+            canonical.contains("apple-ios") || canonical.contains("ios") ->
+                TargetDescriptor(
+                    canonicalTarget = canonical,
+                    family = "ios",
+                    markerSystem = "iOS",
+                    markerMachine = markerMachine(canonical),
+                )
+
+            canonical.startsWith("wasm") || canonical.contains("pyodide") || canonical.contains("emscripten") ->
+                TargetDescriptor(
+                    canonicalTarget = canonical,
+                    family = "wasm",
+                    markerSystem = "Emscripten",
+                    markerMachine = markerMachine(canonical),
+                )
+
+            canonical.contains("apple-darwin") || canonical.contains("darwin") ->
+                TargetDescriptor(
+                    canonicalTarget = canonical,
+                    family = "macos",
+                    markerSystem = "Darwin",
+                    markerMachine = markerMachine(canonical),
+                )
+
+            canonical.contains("manylinux") || canonical.contains("linux") ->
+                TargetDescriptor(
+                    canonicalTarget = canonical,
+                    family = "linux",
+                    markerSystem = "Linux",
+                    markerMachine = markerMachine(canonical),
+                )
+
+            else -> throw IllegalArgumentException("Unsupported target metadata: $target")
         }
     }
     
@@ -277,4 +331,6 @@ object Platforms {
 
         return dp[s1.length][s2.length]
     }
+
+    private fun markerMachine(target: String): String = target.substringBefore('-').replace("aarch64", "arm64")
 }
