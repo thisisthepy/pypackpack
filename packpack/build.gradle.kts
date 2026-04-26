@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    kotlin("plugin.serialization") version "2.1.20"
+    kotlin("plugin.serialization") version "2.3.0"
     application
     id("org.graalvm.buildtools.native")
 }
@@ -17,6 +17,8 @@ dependencies {
     implementation(libs.clikt)
     implementation("com.akuleshov7:ktoml-core:0.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
@@ -140,7 +142,6 @@ tasks.named("nativeCompile") {
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(21))
-        vendor.set(JvmVendorSpec.GRAAL_VM)
     }
 }
 
@@ -154,13 +155,12 @@ graalvmNative {
                 "--no-fallback",
                 "--enable-preview",
                 "--install-exit-handlers",
-                "--initialize-at-build-time=kotlin,kotlinx.coroutines,org.koin",
-                "--initialize-at-run-time=org.thisisthepy.python.multiplatform.packpack.utils.Downloader,kotlin.uuid.SecureRandomHolder",
+                "--initialize-at-build-time=kotlin,kotlinx.coroutines,io.ktor,kotlinx.io",
                 "-H:+ReportExceptionStackTraces",
                 "-H:+AddAllCharsets",
                 "--gc=serial"
             )
-            
+
             // Platform-specific optimizations
             val osName = System.getProperty("os.name").lowercase()
             when {
@@ -178,11 +178,11 @@ graalvmNative {
                     // macOS uses default dynamic linking - no additional flags needed
                 }
             }
-            
+
             // Debug build configuration
             debug.set(false)
             verbose.set(true)
-            
+
             // Resource configuration
             resources.autodetect()
         }
