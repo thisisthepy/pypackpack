@@ -10,7 +10,7 @@ abstract class BaseDependencyCommand(
     val dev by option("--dev", help = "Install as development dependency").flag()
     val editable by option("--editable", help = "Install in editable mode").flag()
     val noSync by option("--no-sync", help = "Skip synchronization").flag()
-    val noCache by option("--no-cache", help = "Disable cache").flag()
+    
     val quiet by option("--quiet", help = "Suppress output").flag()
     val verbose by option("--verbose", help = "Enable verbose output").flag()
     val upgrade by option("--upgrade", help = "Upgrade dependencies").flag()
@@ -26,7 +26,7 @@ abstract class BaseDependencyCommand(
         if (dev) map["dev"] = ""
         if (editable) map["editable"] = ""
         if (noSync) map["no-sync"] = ""
-        if (noCache) map["no-cache"] = ""
+        
         if (quiet) map["quiet"] = ""
         if (verbose) map["verbose"] = ""
         if (upgrade) map["upgrade"] = ""
