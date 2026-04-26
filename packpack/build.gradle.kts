@@ -149,11 +149,6 @@ graalvmNative {
         named("main") {
             imageName.set("pypackpack")
             mainClass.set("org.thisisthepy.python.multiplatform.packpack.cli.CommandKt")
-            javaLauncher.set(javaToolchains.launcherFor {
-                languageVersion.set(JavaLanguageVersion.of(21))
-                vendor.set(JvmVendorSpec.GRAAL_VM)
-            })
-            
             // Build arguments for optimization
             buildArgs.addAll(
                 "--no-fallback",
@@ -176,10 +171,8 @@ graalvmNative {
                     )
                 }
                 osName.contains("linux") -> {
-                    buildArgs.addAll(
-                        "--static",
-                        "-H:+StaticExecutableWithDynamicLibC"
-                    )
+                    // Default to dynamic linking on glibc-based Linux.
+                    // Static builds require a musl toolchain and separate setup.
                 }
                 osName.contains("mac") -> {
                     // macOS uses default dynamic linking - no additional flags needed
@@ -194,5 +187,8 @@ graalvmNative {
             resources.autodetect()
         }
     }
+    // When toolchain detection is disabled, the plugin uses GRAALVM_HOME/JAVA_HOME.
+    // This avoids Gradle selecting a cached GraalVM toolchain that may not have a
+    // working native-image binary.
     toolchainDetection.set(false)
 }
