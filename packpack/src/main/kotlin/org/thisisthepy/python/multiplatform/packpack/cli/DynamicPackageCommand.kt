@@ -11,7 +11,7 @@ class DynamicPackageCommand(
     override fun help(context: Context) = "Perform $operation on package '$packageName'"
 
     val dependencies by argument(help = "Dependencies").multiple()
-    val targets by option("--target", help = "Target platforms (comma-separated)").split(",")
+    val targets by option("--target", help = "Target platforms (--target windows linux macos)").varargValues().default(emptyList())
 
     override fun run() {
         val middleware = currentContext.findOrSetObject { createCliMiddleware() }

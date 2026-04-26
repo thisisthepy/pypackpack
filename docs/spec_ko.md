@@ -51,19 +51,16 @@
   - packpack
     - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack
       - cli
-        - Main.kt                 # main entry point and CliContext
-        - DependencyCommands.kt   # handles 'add', 'remove', 'sync', 'tree' for dependencies
-        - GeneralCommands.kt      # handles 'help', 'version', 'init' commands
-        - PackageCommands.kt      # handles 'package' and package-specific commands
-        - PythonCommands.kt       # handles 'python' related commands
-        - TargetCommands.kt       # handles 'target' related commands
-        - internal
-          - ArgsParser.kt           # argument parsing utilities
-          - CommandResult.kt        # data class for command results
-          - ErrorHandler.kt         # centralized error handling
-          - ProgressIndicator.kt    # progress indication for CLI
-      - util
-        - TargetPlatforms.kt
+        - Command.kt               # main entry point, root command, dynamic package command dispatch
+        - CommandExtensions.kt     # CLI helper, validation, progress display
+        - DependencyCommands.kt    # handles root-level 'add', 'remove', 'sync', 'tree'
+        - DynamicPackageCommand.kt # handles '<package> add/remove/sync/tree'
+        - PackageCommands.kt       # handles 'package add/remove/sync/tree'
+        - ProjectCommands.kt       # handles 'version', 'init'
+        - PythonCommands.kt        # handles 'python' related commands
+        - TargetCommands.kt        # handles 'target' related commands
+      - utils
+        - Platforms.kt
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader)
         - DownloadSpec.kt  # external tool download spec
       - dependency
@@ -179,9 +176,17 @@
 
 ## 기능 명세
 
+### dependency 명세 해석 기준
+
+- 이 문서의 dependency 관련 항목은 아래 세 가지 상태로 구분한다.
+- `구현됨`: 현재 `packpack/src/main/kotlin/.../dependency` 및 연결된 CLI에서 동작이 확인되는 항목
+- `부분 구현`: 핵심 흐름은 있으나 문서상 목표 대비 제약이나 누락이 있는 항목
+- `미구현 목표`: 아직 코드로 반영되지 않았지만 유지하고 싶은 방향성
+- dependency 관련 섹션에서는 `현재 구현`을 기준 사실로 서술하고, 미래 계획은 별도로 분리한다.
+
 ### 기본 기능
 
-#### CLI Help (DevEnv.kt)
+#### CLI Help (`구현됨`)
 
 ```bash
 pypackpack help
@@ -190,7 +195,7 @@ pypackpack --help
 
 - CLI 사용법을 출력
 
-#### CLI Version (DevEnv.kt)
+#### CLI Version (`구현됨`)
 
 ```bash
 pypackpack version
@@ -199,30 +204,37 @@ pypackpack -v
 ```
 
 - 현재 사용 중인 pypackpack 버전과 감지된 uv 버전을 출력
+- uv 미감지 시 .pypackpack에 내부적으로 uv 설치해서 사용
 
-#### 프로젝트 생성 (DevEnv.kt)
+#### 프로젝트 생성 (`부분 구현`)
 
 ```bash
 pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package]
 ```
 
-- `path`가 주어지면 해당 경로에 프로젝트를 생성하고, 없으면 현재 폴더를 기준으로 초기화
-- `--python`으로 파이썬 버전을 지정할 수 있음
-- `--name`, `--package` 옵션은 uv init 규칙을 따름
-- pyproject.toml이 이미 있으면 ppp를 사용 중인지 확인하고, 만약 ppp를 사용중인 것이 아니라면 다른 패키징 도구를 사용중이라고 오류를 띄우고, 사용중이라면 이미 이니셜라이즈 되었다고 오류를 띄움
-- 프로젝트 루트에 기본적인 파일들을 생성 (pyproject.toml, LICENSE, README.md, .gitignore)
-- 시스템에 uv가 설치되어있는지 확인 후 만약 설치되어 있지 않다면 최신버전의 uv를 다운받을 수 있는 명령을 출력
-- 지정된 파이썬 버전을 uv를 통해 다운로드 받고 .venv 생성
+- 명세상 프로젝트 초기화는 `uv init --bare`를 기반으로 수행한다.
+- `path`, `--python`, `--name`, `--package`를 `uv init` 옵션으로 전달하되, `uv`는 `pyproject.toml`만 생성하고 나머지 필요한 파일은 ppp가 생성한다.
+- `targets`가 주어진 경우 루트 `pyproject.toml`의 `[tool.ppp.dependencies].platforms`를 갱신한다.
+- 현재 구현은 `uv init --bare`로 초기화한 뒤, ppp가 `.gitignore`, `README.md`, `.python-version` 등을 추가 생성한다.
 
-#### 프로젝트 파이썬 버전 변경 (DevEnv.kt)
+Limitation
+
+- 기존 `pyproject.toml`의 ppp 여부 검사와 타 패키징 도구 충돌 판별은 아직 없다.
+- `LICENSE` 생성과 `.venv` 자동 생성 보장은 아직 구현되어 있지 않다.
+
+#### 프로젝트 파이썬 버전 변경 (`부분 구현`)
 
 ```bash
 pypackpack python use <python version>
 ```
 
-- 지정된 파이썬 버전을 uv를 통해 다운로드 받고 .venv와 프로젝트 전체 빌드 내역 초기화(하위 패키지들의 build 폴더 삭제)
+- 프로젝트 루트 기준 `.venv`를 삭제한 뒤 새 Python 버전으로 다시 생성하고 `uv sync`를 수행한다.
 
-#### 프로젝트 파이썬 관련 추가 기능 (DevEnv.kt)
+Limitation
+
+- 하위 패키지 `build` 디렉토리 정리 로직은 아직 없다.
+
+#### 프로젝트 파이썬 관련 추가 기능 (`구현됨`)
 
 ```bash
 pypackpack python list
@@ -235,23 +247,27 @@ pypackpack python uninstall <python version>
 
 ### 패키지 관리 기능
 
-#### 패키지 추가 (CrossEnv.kt)
+#### 패키지 추가/제거 (`부분 구현`)
 
 ```bash
 pypackpack package add <package path> [--path <workspace root>]
 pypackpack package remove <package path> [--path <workspace root>]
 ```
 
-- `<package path>`는 워크스페이스 루트 기준 상대 경로를 허용 (예: `packages/core`)
-- 패키지 경로는 워크스페이스 바깥으로 벗어날 수 없음
-- 패키지 생성 시 해당 경로에 패키지 디렉토리와 패키지용 `pyproject.toml`을 생성
-- 워크스페이스 멤버 정보는 루트 `pyproject.toml`의 `[tool.uv.workspace].members`를 기준으로 관리
+- `<package path>`는 워크스페이스 루트 기준 상대 경로를 허용한다. 예: `packages/core`
+- 패키지 경로는 워크스페이스 바깥으로 벗어날 수 없다.
+- `package add`의 명세상 초기화는 지정한 경로에 디렉토리를 만든 뒤, 해당 디렉토리에서 `uv init --bare --package --name <leaf dir name>`로 `pyproject.toml`만 생성하고 나머지 필요한 파일은 ppp가 생성하는 방식이다.
+- `package remove`는 패키지 디렉토리를 재귀 삭제하고, 루트 `pyproject.toml`의 `[tool.uv.workspace].members`에서 해당 상대 경로를 제거한다.
+- 패키지 식별은 경로 또는 패키지명 둘 다 허용하지만, 이름만으로 찾을 때 워크스페이스 멤버 중복이 있으면 에러를 낸다.
+- 현재 구현은 `uv init --bare` 뒤에 패키지용 `README.md`, `src/main/<import>/__init__.py`, `src/test/test_import.py`, `build/crossenv`, `build/packpack` 스캐폴드를 생성하고 워크스페이스 멤버도 자동 등록한다.
 
-- 지정된 이름으로 새로운 패키지를 프로젝트 루트에 생성 (init, python, package, target, add, remove, sync, tree, build, bundle, deploy는 패키지 이름으로 사용 불가능 -- 검사 필요)
+Limitation
+
+- 패키지명 예약어 검사와 remove 시 추가 정합성 검증은 아직 없다.
 
 ### 패키지 빌드 타겟 관리 기능
 
-#### 빌드 타겟 플랫폼 추가/제거 (CrossEnv.kt)
+#### 빌드 타겟 플랫폼 조회/추가/제거 (`구현됨`)
 
 ```bash
 pypackpack target list
@@ -259,11 +275,14 @@ pypackpack target add <target name>... [--path <package dir>]
 pypackpack target remove <target name>... [--path <package dir>]
 ```
 
-- `target list`는 지원 타겟을 별칭/플랫폼 패밀리 기준으로 가독성 있게 출력
-- `target add/remove`는 지정한 패키지 디렉토리(`--path`)의 `pyproject.toml`만 수정
-- 잘못된 타겟 입력 시 유사 타겟 제안을 함께 출력할 수 있음
-- 타겟 플랫폼별 venv는 실제 빌드가 필요한 시점에 생성
-- package_name이 비어있는 경우 pyproject.toml에 모든 패키지의 의존성 타겟 플랫폼 추가/제거
+- `target list`는 `Platforms.SUPPORTED_TARGETS`를 별칭과 플랫폼 패밀리 단위로 묶어 출력한다.
+- `target add/remove`는 지정한 패키지 디렉토리 또는 현재 디렉토리의 `pyproject.toml`에 있는 `[tool.ppp.dependencies].platforms` 배열만 수정한다.
+- 타겟은 `Platforms.normalizeTargetsOrThrow`로 정규화한다.
+
+Limitation
+
+- 모든 패키지 일괄 수정 기능은 아직 없다.
+- 잘못된 타겟 입력에 대한 유사 타겟 추천은 아직 없다.
 
 ### 의존성 관리 기능
 
@@ -271,71 +290,99 @@ pypackpack target remove <target name>... [--path <package dir>]
 
 > - `pypackpack add/remove`는 DevEnv 전용이며 `packageName` 없이 동작
 > - `pypackpack <package> add/remove/sync/tree`는 CrossEnv 전용이며 `packageName` 필수
-> - CrossEnv의 타겟 의존성은 `Platforms.kt` 기반으로 정규화한 뒤 PEP 508 marker로 `pyproject.toml`에 기록
+> - CrossEnv의 타겟 의존성은 `Platforms.kt` 기반으로 정규화한 뒤 target별 marker를 사용해 `uv add` 또는 `pyproject.toml` 편집으로 관리
 > - 의존성 문자열에 marker를 직접 포함하는 입력(예: `numpy; ...`)은 금지하고 `--target`만 허용
 > - `remove --target`은 패키지 전체 제거가 아니라 지정된 타겟 범위만 제거
-> - CLI의 `--target` 입력은 쉼표 구분 형식 사용(예: `--target windows,linux`)
-> - 타겟별 전용 venv를 `sync` 단계에서 즉시 생성/설치하지 않고, 실제 타겟 설치는 추후 `build/bundle/deploy` 단계에서 수행
+> - 현재 구현의 CLI `--target` 입력은 공백 구분 형식 사용(예: `--target windows linux`)
+> - `tree`는 host target 또는 지정 target 기준의 해석 결과를 보여주는 검사용 동작이다
+> - 타겟별 전용 venv 생성/설치는 아직 dependency 구현 범위에 없다
 
-#### Dev 환경 의존성 관리 (DevEnv.kt)
+#### Dev 환경 의존성 관리 (`구현됨`)
 
 ```bash
 pypackpack add <pypi name> [<etcs>]
 ```
 
-- 지정된 패키지를 Dev 환경 venv에 설치
-- pyproject.toml 업데이트 및 lock 갱신
+- 프로젝트 루트를 찾은 뒤 루트 워킹 디렉토리에서 `uv add`를 실행한다.
+- `--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`를 지원한다.
 
 ```bash
 pypackpack remove <pypi name> [<etcs>]
 ```
 
-- add와 반대로 동작
+- 루트 워킹 디렉토리에서 `uv remove`를 실행한다.
+- marker가 포함된 의존성 문자열 입력은 허용하지 않는다.
 
 ```bash
 pypackpack sync [<etcs>]
 ```
 
-- Dev 환경 Lock 파일을 기반으로 .venv를 준비.
-- 실제 동작은 Dev 환경 동기화(`uv sync`)를 기준으로 수행
+- 프로젝트 루트의 `.venv`를 대상으로 `uv sync`를 수행한다.
+
+Limitation
+
+- 실제 backend 호출은 워킹 디렉토리 기준으로 동작하며, `venvPath` 인자는 현재 `uv sync` 명령 인자로 전달되지 않는다.
 
 ```bash
-pypackpack tree [--target <target1,target2,...>] [<etcs>]
+pypackpack tree [--target <target1> <target2> ...] [<etcs>]
 ```
 
-#### 패키지별, 타켓 빌드 플랫폼 별 의존성 관리 (CrossEnv.kt)
+- 패키지명이 없을 때는 host target 또는 지정한 target 각각에 대해 `uv tree --python-platform <target>`를 호출한다.
+- target 미지정 시 현재 호스트에 대응하는 target 하나를 기본값으로 사용한다.
+
+#### 패키지별 타겟 의존성 관리 (`구현됨`)
 
 ```bash
-pypackpack <package name> add <pypi name> [--target <target1,target2,...>] [<etcs>]
+pypackpack <package name> add <pypi name> [--target <target1> <target2> ...] [<etcs>]
 ```
 
 ```bash
 # example
-pypackpack mypackage add numpy --target windows,linux
-pypackpack mypackage add numpy --target windows,linux --extra-index-url https://pypi.org/simple
+pypackpack mypackage add numpy --target windows linux
+pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple
 ```
 
-- 지정된 패키지에 의존성을 추가
-- target name이 들어오면 해당 타겟 marker를 사용해 추가, 비어있으면 패키지 기본 platforms를 사용
-- pyproject.toml 업데이트 및 lock 갱신
+- 동적 패키지 커맨드 `pypackpack <package> add/remove/sync/tree`가 지원된다.
+- 대상 패키지는 워크스페이스 멤버에서 이름 또는 상대 경로로 해석한다.
+- `add`는 target마다 marker를 계산해 `uv add --package <name> --marker <marker>`를 반복 호출한다.
+- `--target`이 없으면 패키지 `pyproject.toml`의 `[tool.ppp.dependencies].platforms` 값을 기본 target으로 사용한다.
+- 기본 target도 없고 `--target`도 비어 있으면 에러를 낸다.
 
 ```bash
-pypackpack <package name> remove <pypi name> [--target <target1,target2,...>] [<etcs>]
+pypackpack <package name> remove <pypi name> [--target <target1> <target2> ...] [<etcs>]
 ```
+
+- `remove`는 패키지 `pyproject.toml`의 `project.dependencies`를 직접 편집해, 요청된 패키지명과 target marker가 모두 일치하는 항목만 제거한다.
+- 제거 후 워크스페이스 루트에서 `uv lock`을 수행한다.
+
+Limitation
+
+- `uv remove --marker`를 호출하지 않고 TOML 편집 방식으로 처리한다.
 
 ```bash
-pypackpack <package name> sync [--target <target1,target2,...>] [<etcs>]
+pypackpack <package name> sync [--target <target1> <target2> ...] [<etcs>]
 ```
 
-- `--target`이 있으면 해당 타겟(들), 없으면 host target 기준으로 검증
-- sync는 환경 동기화 + 타겟 검증으로 동작하며, 타겟별 실제 설치는 수행하지 않음
+- `sync`는 먼저 `uv sync --package <name>`를 호출한 뒤, target마다 `uv tree --package <name> --python-platform <target>`를 호출해 해석 가능 여부를 확인한다.
+- `--target`이 없으면 host target 하나를 기본값으로 사용한다.
+
+Limitation
+
+- target별 가상환경을 생성하지 않는다.
 
 ```bash
-pypackpack <package name> tree [--target <target1,target2,...>] [<etcs>]
+pypackpack <package name> tree [--target <target1> <target2> ...] [<etcs>]
 ```
 
-- `--target`이 있으면 해당 타겟(들) 기준으로 `uv tree --python-platform <target>` 검사
-- `--target`이 없으면 host target 기준으로 검사
+- `tree`는 target마다 `uv tree --package <name> --python-platform <target>`를 호출하고 결과를 이어서 출력한다.
+- `--target`이 없으면 host target 하나를 기본값으로 사용한다.
+
+#### 미구현 목표
+
+- CrossEnv 의존성을 위한 target별 전용 venv 생성 및 유지
+- `sync` 단계에서 target별 설치 결과를 별도 환경으로 보존하는 기능
+- `init` 시 기존 프로젝트 상태 검사와 ppp 프로젝트 판별 강화
+- `python use` 시 하위 패키지 build 디렉토리 정리
 
 ### 빌드, 번들링, 배포
 

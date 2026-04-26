@@ -8,6 +8,7 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CrossEnvTest {
@@ -33,6 +34,71 @@ class CrossEnvTest {
             val rootEditor = TomlEditor(File(workspaceRoot, "pyproject.toml").readText())
             val members = rootEditor.getArray("tool.uv.workspace", "members")
             assertTrue("demo_pkg" in members)
+            assertEquals("", FakeBackend.lastInitExtraArgs["bare"])
+            assertNull(FakeBackend.lastInitExtraArgs["package"])
+        }
+    }
+
+    @Test
+    fun addPackage_createsCommonPackageScaffoldOnly() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = []
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            val result = crossEnv.addPackage("demo-pkg")
+
+            assertTrue(result.isSuccess)
+            val packageDir = File(workspaceRoot, "demo-pkg")
+            assertTrue(File(packageDir, "README.md").exists())
+            assertEquals("# demo-pkg\n", File(packageDir, "README.md").readText())
+            assertTrue(File(packageDir, "src/main/demo_pkg/__init__.py").exists())
+            assertTrue(File(packageDir, "src/test/test_import.py").exists())
+            assertTrue(File(packageDir, "build").isDirectory)
+            assertTrue(File(packageDir, "build/crossenv").isDirectory)
+            assertTrue(File(packageDir, "build/packpack").isDirectory)
+
+            assertFalse(File(packageDir, "src/windows").exists())
+            assertFalse(File(packageDir, "src/android").exists())
+            assertFalse(File(packageDir, "build/packpack/binary").exists())
+            assertFalse(File(packageDir, "build/packpack/fat").exists())
+        }
+    }
+
+    @Test
+    fun addPackage_inheritsWorkspaceTargetsIntoPackagePyproject() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = []
+
+            [tool.ppp.dependencies]
+            platforms = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            val result = crossEnv.addPackage("demo_pkg")
+
+            assertTrue(result.isSuccess)
+            val packagePyproject = File(workspaceRoot, "demo_pkg/pyproject.toml")
+            val packageEditor = TomlEditor(packagePyproject.readText())
+            val platforms = packageEditor.getArray("tool.ppp.dependencies", "platforms")
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"),
+                platforms,
+            )
         }
     }
 
@@ -168,6 +234,11 @@ class CrossEnvTest {
     }
 
     private class FakeBackend : BaseInterface {
+        companion object {
+            var lastInitPath: String? = null
+            var lastInitExtraArgs: Map<String, String> = emptyMap()
+        }
+
         override fun initialize() = Unit
 
         override suspend fun getVersion(): Result<String> = Result.success("uv 0.0.0")
@@ -186,6 +257,8 @@ class CrossEnvTest {
             path: String?,
             extraArgs: Map<String, String>?,
         ): Result<String> {
+            lastInitPath = path
+            lastInitExtraArgs = extraArgs ?: emptyMap()
             val workingDir = extraArgs?.get("directory") ?: extraArgs?.get("__working_dir")
             val packageDir =
                 when {
@@ -196,23 +269,6 @@ class CrossEnvTest {
                 }
             packageDir.mkdirs()
             File(packageDir, "pyproject.toml").writeText("[project]\nname = \"${packageDir.name}\"\n")
-
-            val workspaceRoot = packageDir.parentFile ?: return Result.success("ok")
-            val rootPyproject = File(workspaceRoot, "pyproject.toml")
-            val rootEditor = TomlEditor(rootPyproject.readText())
-            val tablePath = "tool.uv.workspace"
-            if (!rootEditor.hasTable(tablePath)) {
-                rootEditor.createTable(tablePath)
-            }
-            val relativePath =
-                workspaceRoot
-                    .toPath()
-                    .relativize(packageDir.toPath())
-                    .toString()
-                    .replace('\\', '/')
-            rootEditor.addToArray(tablePath = tablePath, key = "members", relativePath)
-            rootPyproject.writeText(rootEditor.toTomlString())
-
             return Result.success("ok")
         }
 
