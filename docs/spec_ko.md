@@ -204,6 +204,7 @@ pypackpack -v
 ```
 
 - 현재 사용 중인 pypackpack 버전과 감지된 uv 버전을 출력
+- uv 미감지 시 .pypackpack에 내부적으로 uv 설치해서 사용
 
 #### 프로젝트 생성 (`부분 구현`)
 
@@ -217,6 +218,7 @@ pypackpack init [<path>] [--python <python version>] [--name <project name>] [--
 - 현재 구현은 `uv init --bare`로 초기화한 뒤, ppp가 `.gitignore`, `README.md`, `.python-version` 등을 추가 생성한다.
 
 Limitation
+
 - 기존 `pyproject.toml`의 ppp 여부 검사와 타 패키징 도구 충돌 판별은 아직 없다.
 - `LICENSE` 생성과 `.venv` 자동 생성 보장은 아직 구현되어 있지 않다.
 
@@ -229,6 +231,7 @@ pypackpack python use <python version>
 - 프로젝트 루트 기준 `.venv`를 삭제한 뒤 새 Python 버전으로 다시 생성하고 `uv sync`를 수행한다.
 
 Limitation
+
 - 하위 패키지 `build` 디렉토리 정리 로직은 아직 없다.
 
 #### 프로젝트 파이썬 관련 추가 기능 (`구현됨`)
@@ -259,6 +262,7 @@ pypackpack package remove <package path> [--path <workspace root>]
 - 현재 구현은 `uv init --bare` 뒤에 패키지용 `README.md`, `src/main/<import>/__init__.py`, `src/test/test_import.py`, `build/crossenv`, `build/packpack` 스캐폴드를 생성하고 워크스페이스 멤버도 자동 등록한다.
 
 Limitation
+
 - 패키지명 예약어 검사와 remove 시 추가 정합성 검증은 아직 없다.
 
 ### 패키지 빌드 타겟 관리 기능
@@ -276,6 +280,7 @@ pypackpack target remove <target name>... [--path <package dir>]
 - 타겟은 `Platforms.normalizeTargetsOrThrow`로 정규화한다.
 
 Limitation
+
 - 모든 패키지 일괄 수정 기능은 아직 없다.
 - 잘못된 타겟 입력에 대한 유사 타겟 추천은 아직 없다.
 
@@ -301,7 +306,6 @@ pypackpack add <pypi name> [<etcs>]
 - 프로젝트 루트를 찾은 뒤 루트 워킹 디렉토리에서 `uv add`를 실행한다.
 - `--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`를 지원한다.
 
-
 ```bash
 pypackpack remove <pypi name> [<etcs>]
 ```
@@ -316,6 +320,7 @@ pypackpack sync [<etcs>]
 - 프로젝트 루트의 `.venv`를 대상으로 `uv sync`를 수행한다.
 
 Limitation
+
 - 실제 backend 호출은 워킹 디렉토리 기준으로 동작하며, `venvPath` 인자는 현재 `uv sync` 명령 인자로 전달되지 않는다.
 
 ```bash
@@ -351,6 +356,7 @@ pypackpack <package name> remove <pypi name> [--target <target1> <target2> ...] 
 - 제거 후 워크스페이스 루트에서 `uv lock`을 수행한다.
 
 Limitation
+
 - `uv remove --marker`를 호출하지 않고 TOML 편집 방식으로 처리한다.
 
 ```bash
@@ -361,6 +367,7 @@ pypackpack <package name> sync [--target <target1> <target2> ...] [<etcs>]
 - `--target`이 없으면 host target 하나를 기본값으로 사용한다.
 
 Limitation
+
 - target별 가상환경을 생성하지 않는다.
 
 ```bash
@@ -376,7 +383,6 @@ pypackpack <package name> tree [--target <target1> <target2> ...] [<etcs>]
 - `sync` 단계에서 target별 설치 결과를 별도 환경으로 보존하는 기능
 - `init` 시 기존 프로젝트 상태 검사와 ppp 프로젝트 판별 강화
 - `python use` 시 하위 패키지 build 디렉토리 정리
-
 
 ### 빌드, 번들링, 배포
 

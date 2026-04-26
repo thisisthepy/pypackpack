@@ -7,7 +7,6 @@ import java.io.File
 open class UVInterface(
     private val uv: UV = UV(),
 ) : BaseInterface {
-
     companion object {
         private const val WORKING_DIR_KEY = "__working_dir"
 
@@ -222,16 +221,13 @@ open class UVInterface(
         }
 
     /** List available Python versions */
-    override suspend fun listPython(): Result<String> =
-        executeCommand(listOf("python", "list"))
+    override suspend fun listPython(): Result<String> = executeCommand(listOf("python", "list"))
 
     /** Find a specific Python version */
-    override suspend fun findPython(pythonVersion: String): Result<String> =
-        executeCommand(listOf("python", "find", pythonVersion))
+    override suspend fun findPython(pythonVersion: String): Result<String> = executeCommand(listOf("python", "find", pythonVersion))
 
     /** Install a specific Python version */
-    override suspend fun installPython(pythonVersion: String): Result<String> =
-        executeCommand(listOf("python", "install", pythonVersion))
+    override suspend fun installPython(pythonVersion: String): Result<String> = executeCommand(listOf("python", "install", pythonVersion))
 
     /** Uninstall a specific Python version */
     override suspend fun uninstallPython(pythonVersion: String): Result<String> =
@@ -243,6 +239,7 @@ open class UVInterface(
         workingDir: File? = null,
     ): Result<String> =
         runCatching {
+            ensureToolInstalled()
             val (exitCode, output) = uv.executeCommand(command, workingDir)
             if (exitCode == 0) {
                 output
@@ -250,6 +247,13 @@ open class UVInterface(
                 throw Exception(output)
             }
         }
+
+    private suspend fun ensureToolInstalled() {
+        if (!uv.isInstalled()) {
+            val success = uv.ensureInstalled()
+            require(success) { "Failed to install UV" }
+        }
+    }
 
     private fun normalizeExtraArgs(
         extraArgs: Map<String, String>?,

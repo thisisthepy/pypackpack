@@ -1,80 +1,73 @@
 package org.thisisthepy.python.multiplatform.packpack.utils
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URI
-import java.net.URL
-import java.nio.channels.Channels
 
-/**
- * Download specification data class
- */
 data class DownloadSpec(
     val url: String,
     val fileName: String,
 )
 
-/**
- * Download result data class
- */
 data class DownloadResult(
     val success: Boolean,
     val filePath: String,
     val error: String,
 )
 
-/**
- * Utility for downloading files
- */
-class Downloader {
-    /**
-     * Download file from URL
-     * @param spec Download specification
-     * @return Download result
-     */
-    suspend fun download(spec: DownloadSpec): DownloadResult =
-        withContext(Dispatchers.IO) {
-            try {
-                val url = URI(spec.url).toURL()
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connect()
-
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                    return@withContext DownloadResult(
-                        false,
-                        "",
-                        "Failed to download file: HTTP ${connection.responseCode} - ${connection.responseMessage}",
-                    )
-                }
-
-                // Create temp directory if it doesn't exist
-                val tempDir = File(System.getProperty("java.io.tmpdir"), "pypackpack")
-                if (!tempDir.exists() && !tempDir.mkdirs()) {
-                    return@withContext DownloadResult(
-                        false,
-                        "",
-                        "Failed to create temporary directory",
-                    )
-                }
-
-                // Download file
-                val outputFile = File(tempDir, spec.fileName)
-                val readableByteChannel = Channels.newChannel(connection.inputStream)
-                val fileOutputStream = FileOutputStream(outputFile)
-                val fileChannel = fileOutputStream.channel
-
-                fileChannel.transferFrom(readableByteChannel, 0, Long.MAX_VALUE)
-
-                fileOutputStream.close()
-                readableByteChannel.close()
-
-                DownloadResult(true, outputFile.absolutePath, "")
-            } catch (e: Exception) {
-                DownloadResult(false, "", "Failed to download file: ${e.message}")
-            }
+class Downloader(
+    private val httpClient: HttpClient = HttpClient(CIO) {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 300_000
+            connectTimeoutMillis = 30_000
+            socketTimeoutMillis = 300_000
         }
+    },
+) {
+    init {
+        Runtime.getRuntime().addShutdownHook(object : Thread("Downloader-Shutdown") {
+            override fun run() {
+                try {
+                    httpClient.close()
+                } catch (_: Exception) {
+                }
+            }
+        })
+    }
+
+    suspend fun download(spec: DownloadSpec): DownloadResult {
+        return try {
+            val tempDir = File(System.getProperty("java.io.tmpdir"), "pypackpack")
+            if (!tempDir.exists() && !tempDir.mkdirs()) {
+                return DownloadResult(false, "", "Failed to create temporary directory")
+            }
+
+            val outputFile = File(tempDir, spec.fileName)
+
+            val response: HttpResponse = httpClient.get(spec.url)
+            val statusCode = response.status.value
+
+            if (statusCode < 200 || statusCode > 299) {
+                return DownloadResult(
+                    false,
+                    "",
+                    "Failed to download file: HTTP $statusCode - ${response.status.description}",
+                )
+            }
+
+            val bytes: ByteArray = response.readRawBytes()
+            outputFile.writeBytes(bytes)
+
+            DownloadResult(true, outputFile.absolutePath, "")
+        } catch (e: Exception) {
+            DownloadResult(false, "", "Failed to download file: ${e.message}")
+        }
+    }
+
+    fun close() {
+        httpClient.close()
+    }
 }
