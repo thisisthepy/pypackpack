@@ -7,6 +7,10 @@ import com.github.ajalt.clikt.parameters.options.*
 abstract class BaseDependencyCommand(
     name: String,
 ) : CliktCommand(name = name) {
+    init {
+        configureCliTerminal()
+    }
+
     val dev by option("--dev", help = "Install as development dependency").flag()
     val editable by option("--editable", help = "Install in editable mode").flag()
     val noSync by option("--no-sync", help = "Skip synchronization").flag()

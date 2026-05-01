@@ -25,6 +25,8 @@ class PyPackPackCommand : CliktCommand(name = "pypackpack") {
         )
 
     init {
+        configureCliTerminal()
+
         subcommands(
             InitCommand(),
             PythonCommand(),

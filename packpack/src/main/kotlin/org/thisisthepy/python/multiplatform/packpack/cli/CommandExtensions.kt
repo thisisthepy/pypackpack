@@ -5,6 +5,22 @@ import com.github.ajalt.mordant.rendering.TextColors.*
 import com.github.ajalt.mordant.terminal.Terminal
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
 
+private const val DEFAULT_TERMINAL_WIDTH = 100
+
+internal fun CliktCommand.configureCliTerminal() {
+    configureContext {
+        terminal = Terminal(width = terminalWidth())
+    }
+}
+
+private fun terminalWidth(): Int =
+    listOfNotNull(
+        System.getenv("PYPACKPACK_TERMINAL_WIDTH"),
+        System.getenv("COLUMNS"),
+    ).firstNotNullOfOrNull { value ->
+        value.toIntOrNull()?.takeIf { it >= 40 }
+    } ?: DEFAULT_TERMINAL_WIDTH
+
 internal fun CliktCommand.requireMiddleware(): MiddlewareInterface = currentContext.findObject<MiddlewareInterface>()!!
 
 internal fun CliktCommand.runBooleanCommand(
