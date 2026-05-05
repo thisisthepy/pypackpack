@@ -3,14 +3,15 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.requireWorkspaceProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.findWorkspaceProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 
+private const val PYPROJECT_FILE = "pyproject.toml"
+
 class CrossEnv {
     private lateinit var backend: BaseInterface
-    private val pyprojectFile = "pyproject.toml"
     private val targetWheelInspector = TargetWheelInspector()
 
     private data class PackageSpec(
@@ -32,12 +33,17 @@ class CrossEnv {
     ): Result<String> =
         runCatching {
             val workspaceRoot = resolveWorkspaceRootFromPath(path)
-            val workspacePyproject = File(workspaceRoot, pyprojectFile)
+            val workspacePyproject = File(workspaceRoot, PYPROJECT_FILE)
             require(workspacePyproject.exists()) {
                 "No pyproject.toml found in ${workspaceRoot.absolutePath}. Initialize a project first."
             }
 
-            val packageSpec = resolvePackageSpec(workspaceRoot, packageName)
+            val packageSpec =
+                resolvePackageSpec(
+                    packageInput = packageName,
+                    workspaceRoot = workspaceRoot,
+                    matchWorkspaceMembers = false,
+                )
             val packageDir = packageSpec.directory
             require(!packageDir.exists()) {
                 "Package directory already exists: ${packageDir.absolutePath}"
@@ -59,16 +65,15 @@ class CrossEnv {
                 backend.initProject(null, extraArgs = uvArgs)
             }.getOrThrow()
 
-            registerWorkspaceMember(workspacePyproject, packageSpec.relativePath)
             createPackageScaffold(packageSpec)
 
-            inheritWorkspaceTargetsToPackage(
+            syncWorkspaceTargetsToPackage(
                 workspacePyproject = workspacePyproject,
-                packagePyproject = File(packageDir, pyprojectFile),
+                packagePyproject = File(packageDir, PYPROJECT_FILE),
             )
 
             "Package '${packageSpec.input}' created successfully at ${packageDir.absolutePath}"
-        }
+        } // TOOD: Sync targets when workspace targets are added after package creation
 
     fun removePackage(
         packageName: String,
@@ -76,12 +81,17 @@ class CrossEnv {
     ): Result<String> =
         runCatching {
             val workspaceRoot = resolveWorkspaceRootFromPath(path)
-            val workspacePyproject = File(workspaceRoot, pyprojectFile)
+            val workspacePyproject = File(workspaceRoot, PYPROJECT_FILE)
             require(workspacePyproject.exists()) {
                 "No pyproject.toml found in ${workspaceRoot.absolutePath}"
             }
 
-            val packageSpec = resolvePackageSpec(workspaceRoot, packageName)
+            val packageSpec =
+                resolvePackageSpec(
+                    packageInput = packageName,
+                    workspaceRoot = workspaceRoot,
+                    matchWorkspaceMembers = false,
+                )
             val packageDir = packageSpec.directory
             require(packageDir.exists()) {
                 "Package directory not found: ${packageDir.absolutePath}"
@@ -172,7 +182,7 @@ class CrossEnv {
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = resolveCrossTargets(packageSpec, targets)
             val packageDir = packageSpec.directory
-            val packagePyproject = File(packageDir, pyprojectFile)
+            val packagePyproject = File(packageDir, PYPROJECT_FILE)
             require(packagePyproject.exists()) {
                 "No pyproject.toml found for package '${packageSpec.input}'"
             }
@@ -211,7 +221,7 @@ class CrossEnv {
         runCatching {
             val packageSpec = resolvePackageSpec(packageName)
             val workspaceRoot = packageSpec.workspaceRoot
-            val normalizedTargets = normalizeTreeTargets(targets)
+            val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
             val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
 
             val syncArgs = workingArgs.filterKeys { it != "python-platform" }
@@ -236,7 +246,7 @@ class CrossEnv {
     ): Result<String> =
         runCatching {
             val packageSpec = resolvePackageSpec(packageName)
-            val normalizedTargets = normalizeTreeTargets(targets)
+            val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
             val baseDir = packageSpec.workspaceRoot
             val workingArgs = withWorkingDir(extraArgs, baseDir)
 
@@ -263,12 +273,12 @@ class CrossEnv {
             require(targets.isNotEmpty()) { "No targets specified" }
 
             val packageDir = resolvePackageDir(path)
-            val packagePyproject = File(packageDir, pyprojectFile)
+            val packagePyproject = File(packageDir, PYPROJECT_FILE)
             require(packagePyproject.exists()) {
                 "No pyproject.toml found in ${packageDir.absolutePath}"
             }
 
-            val normalizedTargets = normalizeInputTargets(targets)
+            val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets)
             val editor = TomlEditor(packagePyproject.readText())
             val tablePath = "tool.ppp.dependencies"
             if (!editor.hasTable(tablePath)) {
@@ -293,12 +303,12 @@ class CrossEnv {
             require(targets.isNotEmpty()) { "No targets specified" }
 
             val packageDir = resolvePackageDir(path)
-            val packagePyproject = File(packageDir, pyprojectFile)
+            val packagePyproject = File(packageDir, PYPROJECT_FILE)
             require(packagePyproject.exists()) {
                 "No pyproject.toml found in ${packageDir.absolutePath}"
             }
 
-            val normalizedTargets = normalizeInputTargets(targets)
+            val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets)
             val editor = TomlEditor(packagePyproject.readText())
             val tablePath = "tool.ppp.dependencies"
             if (editor.hasTable(tablePath)) {
@@ -313,10 +323,6 @@ class CrossEnv {
             "Successfully removed targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}"
         }
 
-    private fun findWorkspaceRoot(): File = requireWorkspaceProjectRoot()
-
-    private fun normalizeInputTargets(targets: List<String>): List<String> = Platforms.normalizeTargetsOrThrow(targets)
-
     private fun resolveCrossTargets(
         packageSpec: PackageSpec,
         targets: List<String>?,
@@ -329,7 +335,7 @@ class CrossEnv {
     }
 
     private fun readPackageDefaultTargets(packageSpec: PackageSpec): List<String> {
-        val packagePyproject = File(packageSpec.directory, pyprojectFile)
+        val packagePyproject = File(packageSpec.directory, PYPROJECT_FILE)
         if (!packagePyproject.exists()) {
             return emptyList()
         }
@@ -338,21 +344,17 @@ class CrossEnv {
         return editor.getArray("tool.ppp.dependencies", "platforms")
     }
 
-    private fun normalizeTreeTargets(targets: List<String>?): List<String> {
-        val defaults = listOf(Platforms.detectHostTarget())
-        return Platforms.normalizeTargetsOrThrow(targets, defaultTargets = defaults)
-    }
-
     private fun resolveWorkspaceRootFromPath(path: String?): File {
         val baseDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
         require(baseDir.exists() && baseDir.isDirectory) {
             "Invalid path: ${baseDir.absolutePath}"
         }
-        val pyproject = File(baseDir, pyprojectFile)
+        val pyproject = File(baseDir, PYPROJECT_FILE)
         return if (pyproject.exists()) {
             baseDir
         } else {
-            requireWorkspaceProjectRoot(baseDir)
+            findWorkspaceProjectRoot(baseDir)
+                ?: throw IllegalStateException("No pyproject.toml found in current directory or parent directories")
         }
     }
 
@@ -365,21 +367,45 @@ class CrossEnv {
     }
 
     private fun resolvePackageSpec(
-        workspaceRoot: File,
         packageInput: String,
+        workspaceRoot: File? = null,
+        matchWorkspaceMembers: Boolean = workspaceRoot == null,
     ): PackageSpec {
+        val resolvedWorkspaceRoot =
+            workspaceRoot
+                ?: findWorkspaceProjectRoot()
+                ?: throw IllegalStateException("No pyproject.toml found in current directory or parent directories")
         val trimmed = packageInput.trim()
         require(trimmed.isNotEmpty()) { "Package name cannot be blank" }
 
+        val normalizedInput = trimmed.replace('\\', '/').trimStart('/')
+        require(normalizedInput.isNotEmpty()) { "Package name cannot be blank" }
+
         val relativePath =
-            trimmed
-                .replace('\\', '/')
-                .trimStart('/')
+            if (matchWorkspaceMembers && '/' !in normalizedInput) {
+                val memberMatch =
+                    readWorkspaceMembers(resolvedWorkspaceRoot)
+                        .filter { member ->
+                            val normalizedMember = member.replace('\\', '/').trimStart('/')
+                            normalizedMember == normalizedInput || File(normalizedMember).name == normalizedInput
+                        }.distinct()
 
-        require(relativePath.isNotEmpty()) { "Package name cannot be blank" }
+                when {
+                    memberMatch.size == 1 -> memberMatch.single().replace('\\', '/').trimStart('/')
+                    memberMatch.size > 1 -> {
+                        throw IllegalArgumentException(
+                            "Package name '$trimmed' is ambiguous. Use one of: ${memberMatch.joinToString(", ")}",
+                        )
+                    }
 
-        val packageDir = File(workspaceRoot, relativePath).normalize()
-        val workspacePath = workspaceRoot.canonicalFile.toPath()
+                    else -> normalizedInput
+                }
+            } else {
+                normalizedInput
+            }
+
+        val packageDir = File(resolvedWorkspaceRoot, relativePath).normalize()
+        val workspacePath = resolvedWorkspaceRoot.canonicalFile.toPath()
         val packagePath = packageDir.canonicalFile.toPath()
         require(packagePath.startsWith(workspacePath)) {
             "Package path must stay within workspace: $trimmed"
@@ -389,71 +415,22 @@ class CrossEnv {
         require(canonicalName.isNotBlank()) { "Package name cannot be blank" }
 
         return PackageSpec(
-            input = trimmed,
+            input = if (matchWorkspaceMembers) relativePath else trimmed,
             name = canonicalName,
             relativePath = relativePath,
             directory = packageDir,
-            workspaceRoot = workspaceRoot,
+            workspaceRoot = resolvedWorkspaceRoot,
         )
     }
 
-    private fun resolvePackageSpec(packageInput: String): PackageSpec {
-        val workspaceRoot = findWorkspaceRoot()
-        val workspaceMembers = readWorkspaceMembers(workspaceRoot)
-
-        val trimmed = packageInput.trim()
-        require(trimmed.isNotEmpty()) { "Package name cannot be blank" }
-
-        val normalizedInput = trimmed.replace('\\', '/').trimStart('/')
-        if ('/' in normalizedInput) {
-            return resolvePackageSpec(workspaceRoot, normalizedInput)
-        }
-
-        val memberMatch =
-            workspaceMembers
-                .filter { member ->
-                    val normalizedMember = member.replace('\\', '/').trimStart('/')
-                    normalizedMember == normalizedInput || File(normalizedMember).name == normalizedInput
-                }.distinct()
-
-        return when {
-            memberMatch.size == 1 -> {
-                resolvePackageSpec(workspaceRoot, memberMatch.single())
-            }
-
-            memberMatch.size > 1 -> {
-                throw IllegalArgumentException(
-                    "Package name '$trimmed' is ambiguous. Use one of: ${memberMatch.joinToString(", ")}",
-                )
-            }
-
-            else -> {
-                resolvePackageSpec(workspaceRoot, normalizedInput)
-            }
-        }
-    }
-
     private fun readWorkspaceMembers(workspaceRoot: File): List<String> {
-        val workspacePyproject = File(workspaceRoot, pyprojectFile)
+        val workspacePyproject = File(workspaceRoot, PYPROJECT_FILE)
         if (!workspacePyproject.exists()) {
             return emptyList()
         }
 
         val editor = TomlEditor(workspacePyproject.readText())
         return editor.getArray("tool.uv.workspace", "members")
-    }
-
-    private fun registerWorkspaceMember(
-        workspacePyproject: File,
-        relativePath: String,
-    ) {
-        val editor = TomlEditor(workspacePyproject.readText())
-        val tablePath = "tool.uv.workspace"
-        if (!editor.hasTable(tablePath)) {
-            editor.createTable(tablePath)
-        }
-        editor.addToArray(tablePath = tablePath, key = "members", relativePath)
-        workspacePyproject.writeText(editor.toTomlString())
     }
 
     private fun createPackageScaffold(packageSpec: PackageSpec) {
@@ -509,7 +486,7 @@ class CrossEnv {
         return withoutLeadingDigits.ifBlank { "package_module" }
     }
 
-    private fun inheritWorkspaceTargetsToPackage(
+    private fun syncWorkspaceTargetsToPackage(
         workspacePyproject: File,
         packagePyproject: File,
     ) {

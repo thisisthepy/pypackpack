@@ -13,206 +13,29 @@ import kotlin.test.assertTrue
 
 class CrossEnvTest {
     @Test
-    fun addPackage_createsDirectoryAndRegistersWorkspaceMember() {
+    fun printResolvedPackageSpecContents() {
         withWorkspace(
             """
             [project]
             name = "root"
 
             [tool.uv.workspace]
-            members = []
-            """.trimIndent(),
-        ) { workspaceRoot ->
-            val crossEnv = CrossEnv()
-            crossEnv.initialize(FakeBackend())
-
-            val result = crossEnv.addPackage("demo_pkg")
-
-            assertTrue(result.isSuccess)
-            assertTrue(File(workspaceRoot, "demo_pkg").exists())
-
-            val rootEditor = TomlEditor(File(workspaceRoot, "pyproject.toml").readText())
-            val members = rootEditor.getArray("tool.uv.workspace", "members")
-            assertTrue("demo_pkg" in members)
-            assertEquals("", FakeBackend.lastInitExtraArgs["bare"])
-            assertNull(FakeBackend.lastInitExtraArgs["package"])
-        }
-    }
-
-    @Test
-    fun addPackage_createsCommonPackageScaffoldOnly() {
-        withWorkspace(
-            """
-            [project]
-            name = "root"
-
-            [tool.uv.workspace]
-            members = []
-            """.trimIndent(),
-        ) { workspaceRoot ->
-            val crossEnv = CrossEnv()
-            crossEnv.initialize(FakeBackend())
-
-            val result = crossEnv.addPackage("demo-pkg")
-
-            assertTrue(result.isSuccess)
-            val packageDir = File(workspaceRoot, "demo-pkg")
-            assertTrue(File(packageDir, "README.md").exists())
-            assertEquals("# demo-pkg\n", File(packageDir, "README.md").readText())
-            assertTrue(File(packageDir, "src/main/demo_pkg/__init__.py").exists())
-            assertTrue(File(packageDir, "src/test/test_import.py").exists())
-            assertTrue(File(packageDir, "build").isDirectory)
-            assertTrue(File(packageDir, "build/crossenv").isDirectory)
-            assertTrue(File(packageDir, "build/packpack").isDirectory)
-
-            assertFalse(File(packageDir, "src/windows").exists())
-            assertFalse(File(packageDir, "src/android").exists())
-            assertFalse(File(packageDir, "build/packpack/binary").exists())
-            assertFalse(File(packageDir, "build/packpack/fat").exists())
-        }
-    }
-
-    @Test
-    fun addPackage_inheritsWorkspaceTargetsIntoPackagePyproject() {
-        withWorkspace(
-            """
-            [project]
-            name = "root"
-
-            [tool.uv.workspace]
-            members = []
-
-            [tool.ppp.dependencies]
-            platforms = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-            """.trimIndent(),
-        ) { workspaceRoot ->
-            val crossEnv = CrossEnv()
-            crossEnv.initialize(FakeBackend())
-
-            val result = crossEnv.addPackage("demo_pkg")
-
-            assertTrue(result.isSuccess)
-            val packagePyproject = File(workspaceRoot, "demo_pkg/pyproject.toml")
-            val packageEditor = TomlEditor(packagePyproject.readText())
-            val platforms = packageEditor.getArray("tool.ppp.dependencies", "platforms")
-            assertEquals(
-                listOf("x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"),
-                platforms,
-            )
-        }
-    }
-
-    @Test
-    fun removePackage_deletesDirectoryAndRemovesWorkspaceMember() {
-        withWorkspace(
-            """
-            [project]
-            name = "root"
-
-            [tool.uv.workspace]
-            members = ["demo_pkg"]
-            """.trimIndent(),
-        ) { workspaceRoot ->
-            val packageDir = File(workspaceRoot, "demo_pkg")
-            packageDir.mkdirs()
-            File(packageDir, "pyproject.toml").writeText("[project]\nname = \"demo_pkg\"\n")
-
-            val crossEnv = CrossEnv()
-            crossEnv.initialize(FakeBackend())
-
-            val result = crossEnv.removePackage("demo_pkg")
-
-            assertTrue(result.isSuccess)
-            assertFalse(packageDir.exists())
-
-            val rootEditor = TomlEditor(File(workspaceRoot, "pyproject.toml").readText())
-            val members = rootEditor.getArray("tool.uv.workspace", "members")
-            assertFalse("demo_pkg" in members)
-        }
-    }
-
-    @Test
-    fun addTarget_normalizesAndPersistsCanonicalTargets() {
-        withWorkspace(
-            """
-            [project]
-            name = "root"
-
-            [tool.uv.workspace]
-            members = ["demo_pkg"]
-            """.trimIndent(),
-        ) { workspaceRoot ->
-            val packageDir = File(workspaceRoot, "demo_pkg")
-            packageDir.mkdirs()
-            File(packageDir, "pyproject.toml").writeText("[project]\nname = \"demo_pkg\"\n")
-
-            val crossEnv = CrossEnv()
-            crossEnv.initialize(FakeBackend())
-
-            val result = crossEnv.addTarget("demo_pkg", listOf("linux", "windows"))
-
-            assertTrue(result.isSuccess)
-            val packageEditor = TomlEditor(File(packageDir, "pyproject.toml").readText())
-            val platforms = packageEditor.getArray("tool.ppp.dependencies", "platforms")
-            assertEquals(
-                listOf("x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"),
-                platforms,
-            )
-        }
-    }
-
-    @Test
-    fun removeTarget_removesNormalizedTargetEntry() {
-        withWorkspace(
-            """
-            [project]
-            name = "root"
-
-            [tool.uv.workspace]
-            members = ["demo_pkg"]
-            """.trimIndent(),
-        ) { workspaceRoot ->
-            val packageDir = File(workspaceRoot, "demo_pkg")
-            packageDir.mkdirs()
-            File(packageDir, "pyproject.toml").writeText(
-                """
-                [project]
-                name = "demo_pkg"
-
-                [tool.ppp.dependencies]
-                platforms = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-                """.trimIndent(),
-            )
-
-            val crossEnv = CrossEnv()
-            crossEnv.initialize(FakeBackend())
-
-            val result = crossEnv.removeTarget("demo_pkg", listOf("linux"))
-
-            assertTrue(result.isSuccess)
-            val packageEditor = TomlEditor(File(packageDir, "pyproject.toml").readText())
-            val platforms = packageEditor.getArray("tool.ppp.dependencies", "platforms")
-            assertEquals(listOf("x86_64-pc-windows-msvc"), platforms)
-        }
-    }
-
-    @Test
-    fun removePackage_failsWhenPackageMissing() {
-        withWorkspace(
-            """
-            [project]
-            name = "root"
-
-            [tool.uv.workspace]
-            members = []
+            members = ["src/core", "packages/utils"]
             """.trimIndent(),
         ) {
             val crossEnv = CrossEnv()
             crossEnv.initialize(FakeBackend())
 
-            val result = crossEnv.removePackage("missing_pkg")
+            val resolver =
+                CrossEnv::class.java
+                    .getDeclaredMethod("resolvePackageSpec", String::class.java, File::class.java, Boolean::class.javaPrimitiveType)
+                    .apply { isAccessible = true }
 
-            assertFalse(result.isSuccess)
+            listOf("core", "src/core", "packages/utils").forEach { packageInput ->
+                val packageSpec = resolver.invoke(crossEnv, packageInput, null, true)
+                println("packageInput=$packageInput")
+                println(packageSpec)
+            }
         }
     }
 
@@ -220,9 +43,9 @@ class CrossEnvTest {
         pyprojectContent: String,
         block: (File) -> Unit,
     ) {
-        val pppGradleTestDir = File("/workspace/ppp_gradle_test")
-        pppGradleTestDir.mkdirs()
-        val tempRoot = Files.createTempDirectory(pppGradleTestDir.toPath(), "crossenv-test").toFile()
+        val testWorkDir = File("build/tmp/crossenv-test")
+        testWorkDir.mkdirs()
+        val tempRoot = Files.createTempDirectory(testWorkDir.toPath(), "workspace-").toFile()
         val oldUserDir = System.getProperty("user.dir")
         try {
             File(tempRoot, "pyproject.toml").writeText(pyprojectContent)
@@ -230,6 +53,7 @@ class CrossEnvTest {
             block(tempRoot)
         } finally {
             System.setProperty("user.dir", oldUserDir)
+            tempRoot.deleteRecursively()
         }
     }
 

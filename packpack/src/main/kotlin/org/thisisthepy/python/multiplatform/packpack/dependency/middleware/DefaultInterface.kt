@@ -9,6 +9,8 @@ import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface as BackendBaseInterface
 
+private const val PYPROJECT_FILE = "pyproject.toml"
+
 /** Default middleware implementation */
 class DefaultInterface : BaseInterface {
     private lateinit var backend: BackendBaseInterface
@@ -341,8 +343,6 @@ internal object MarkerPolicy {
     }
 }
 
-private const val PYPROJECT_FILE = "pyproject.toml"
-
 internal fun findWorkspaceProjectRoot(startDir: File = File(System.getProperty("user.dir"))): File? {
     var dir = startDir
     while (true) {
@@ -353,10 +353,6 @@ internal fun findWorkspaceProjectRoot(startDir: File = File(System.getProperty("
         dir = parent
     }
 }
-
-internal fun requireWorkspaceProjectRoot(startDir: File = File(System.getProperty("user.dir"))): File =
-    findWorkspaceProjectRoot(startDir)
-        ?: throw IllegalStateException("No pyproject.toml found in current directory or parent directories")
 
 internal fun resolveWorkspaceRootForPackage(
     packageName: String,
