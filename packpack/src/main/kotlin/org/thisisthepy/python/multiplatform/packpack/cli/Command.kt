@@ -5,8 +5,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInt
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendType
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
 
-internal fun createCliMiddleware(): MiddlewareInterface =
-    BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
+internal fun createCliMiddleware(): MiddlewareInterface = BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
 
 class PyPackPackCommand : CliktCommand(name = "pypackpack") {
     override fun help(context: Context) =
@@ -37,6 +36,7 @@ class PyPackPackCommand : CliktCommand(name = "pypackpack") {
             SyncCommand(),
             TreeCommand(),
             VersionCommand(),
+            BuildCommand(),
         )
     }
 
@@ -56,6 +56,7 @@ private val KNOWN_COMMANDS =
         "sync",
         "tree",
         "version",
+        "build",
         "help",
         "--help",
         "-h",
@@ -72,10 +73,9 @@ fun main(args: Array<String>) {
         val secondArg = args[1]
 
         if (firstArg !in KNOWN_COMMANDS && secondArg in DYNAMIC_PACKAGE_OPERATIONS) {
-            val packageName = firstArg
             val remainingArgs = args.drop(2)
 
-            return DynamicPackageCommand(packageName, secondArg).main(remainingArgs)
+            return DynamicPackageCommand(firstArg, secondArg).main(remainingArgs)
         }
     }
 
