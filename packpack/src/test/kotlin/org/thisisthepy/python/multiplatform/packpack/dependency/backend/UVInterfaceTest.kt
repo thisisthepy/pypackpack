@@ -3,7 +3,6 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -17,7 +16,7 @@ class UVInterfaceTest {
                 backend.createVirtualEnvironment(
                     path = ".venv-test",
                     pythonVersion = null,
-                    extraArgs = mapOf("__working_dir" to "/tmp/project"),
+                    workingDir = File("/tmp/project"),
                 )
             }
 
@@ -35,7 +34,7 @@ class UVInterfaceTest {
                 backend.createVirtualEnvironment(
                     path = ".venv-py",
                     pythonVersion = "3.12",
-                    extraArgs = mapOf("__working_dir" to "/tmp/project"),
+                    workingDir = File("/tmp/project"),
                 )
             }
 
@@ -44,7 +43,7 @@ class UVInterfaceTest {
     }
 
     @Test
-    fun createVirtualEnvironment_failsForUnsupportedOptions() {
+    fun createVirtualEnvironment_passesExtraArgsAsUvOptions() {
         val backend = RecordingUVInterface()
 
         val result =
@@ -56,9 +55,8 @@ class UVInterfaceTest {
                 )
             }
 
-        assertFalse(result.isSuccess)
-        val message = result.exceptionOrNull()?.message.orEmpty()
-        assertTrue(message.contains("Unsupported uv options"))
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("venv", "--bad-option", "1", ".venv-test"), backend.lastCommand)
     }
 
     private class RecordingUVInterface : UVInterface() {

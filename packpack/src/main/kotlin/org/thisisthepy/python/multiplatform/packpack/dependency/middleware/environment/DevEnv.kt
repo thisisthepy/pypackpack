@@ -45,7 +45,7 @@ class DevEnv {
 
         return runBlocking {
             backend
-                .addDependencies(null, dependencies, extraArgs)
+                .addDependencies(null, dependencies, extraArgs, projectRoot)
                 .onSuccess {
                     println("Added dependencies: ${dependencies.joinToString(", ")}")
                 }.onFailure { error ->
@@ -73,7 +73,7 @@ class DevEnv {
 
         return runBlocking {
             backend
-                .removeDependencies(null, dependencies, extraArgs)
+                .removeDependencies(null, dependencies, extraArgs, projectRoot)
                 .onSuccess {
                     println("Removed dependencies: ${dependencies.joinToString(", ")}")
                 }.onFailure { error ->
@@ -99,7 +99,7 @@ class DevEnv {
 
         return runBlocking {
             backend
-                .syncDependencies(venvDir.absolutePath, extraArgs)
+                .syncDependencies(venvDir.absolutePath, extraArgs, projectRoot)
                 .onSuccess {
                     println("Dependencies synchronized successfully")
                 }.onFailure { error ->
@@ -129,7 +129,7 @@ class DevEnv {
 
         return runBlocking {
             backend
-                .showDependencyTree(packageName = null, extraArgs = extraArgs)
+                .showDependencyTree(packageName = null, extraArgs = extraArgs, workingDir = projectRoot)
                 .onSuccess { output ->
                     println("=== Dependencies for project ===")
                     println(output)
@@ -229,10 +229,10 @@ class DevEnv {
 
         return runBlocking {
             backend
-                .createVirtualEnvironment(venvDir.absolutePath, pythonVersion)
+                .createVirtualEnvironment(venvDir.absolutePath, pythonVersion, workingDir = projectRoot)
                 .onSuccess {
                     backend
-                        .syncDependencies(venvDir.absolutePath, null)
+                        .syncDependencies(venvDir.absolutePath, null, projectRoot)
                         .onSuccess {
                             println("Changed Python version to $pythonVersion")
                             println("Dependencies synchronized successfully")

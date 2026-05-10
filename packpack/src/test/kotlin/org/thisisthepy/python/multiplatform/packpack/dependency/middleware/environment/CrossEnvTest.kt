@@ -2,14 +2,9 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
-import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class CrossEnvTest {
     @Test
@@ -75,20 +70,23 @@ class CrossEnvTest {
             path: String,
             pythonVersion: String?,
             extraArgs: Map<String, String>?,
+            workingDir: File?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun initProject(
             path: String?,
             extraArgs: Map<String, String>?,
+            workingDir: File?,
         ): Result<String> {
             lastInitPath = path
             lastInitExtraArgs = extraArgs ?: emptyMap()
-            val workingDir = extraArgs?.get("directory") ?: extraArgs?.get("__working_dir")
+            val directory = extraArgs?.get("directory")
             val packageDir =
                 when {
-                    !path.isNullOrBlank() && !workingDir.isNullOrBlank() -> File(workingDir, path)
+                    !path.isNullOrBlank() && workingDir != null -> File(workingDir, path)
                     !path.isNullOrBlank() -> File(path)
-                    !workingDir.isNullOrBlank() -> File(workingDir)
+                    !directory.isNullOrBlank() -> File(directory)
+                    workingDir != null -> workingDir
                     else -> return Result.failure(IllegalArgumentException("path or working dir required"))
                 }
             packageDir.mkdirs()
@@ -100,22 +98,26 @@ class CrossEnvTest {
             packageName: String?,
             dependencies: List<String>,
             extraArgs: Map<String, String>?,
+            workingDir: File?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun removeDependencies(
             packageName: String?,
             dependencies: List<String>,
             extraArgs: Map<String, String>?,
+            workingDir: File?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun syncDependencies(
             venvPath: String,
             extraArgs: Map<String, String>?,
+            workingDir: File?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun showDependencyTree(
             packageName: String?,
             extraArgs: Map<String, String>?,
+            workingDir: File?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun lockDependencies(projectRoot: String): Result<String> = Result.success("ok")
