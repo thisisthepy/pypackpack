@@ -122,8 +122,7 @@ class DefaultInterface : BaseInterface {
         }
 
         return if (packageName.isNullOrBlank()) {
-            val mergedArgs = withWorkingDir(extraArgs, findProjectRoot())
-            devEnvService().addDependencies(dependencies, mergedArgs.ifEmpty { null })
+            devEnvService().addDependencies(dependencies, extraArgs)
         } else {
             crossEnvService()
                 .addDependencies(packageName, dependencies, targets, extraArgs)
@@ -157,8 +156,7 @@ class DefaultInterface : BaseInterface {
         }
 
         return if (packageName.isNullOrBlank()) {
-            val mergedArgs = withWorkingDir(extraArgs, findProjectRoot())
-            devEnvService().removeDependencies(dependencies, mergedArgs.ifEmpty { null })
+            devEnvService().removeDependencies(dependencies, extraArgs)
         } else {
             crossEnvService()
                 .removeDependencies(packageName, dependencies, targets, extraArgs)
@@ -181,8 +179,7 @@ class DefaultInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Boolean {
         if (packageName.isNullOrBlank()) {
-            val mergedArgs = withWorkingDir(extraArgs, findProjectRoot())
-            return devEnvService().syncDependencies(mergedArgs.ifEmpty { null })
+            return devEnvService().syncDependencies(extraArgs)
         }
 
         return crossEnvService()
@@ -217,13 +214,13 @@ class DefaultInterface : BaseInterface {
 
         return runCatching {
             val baseDir = findProjectRoot()
-            val workingArgs = withWorkingDir(extraArgs, baseDir)
+            val options = extraArgs.orEmpty()
 
             for (target in normalizedTargets) {
-                val callArgs = workingArgs + mapOf("python-platform" to target)
+                val callArgs = options + mapOf("python-platform" to target)
                 val result =
                     runBlocking {
-                        backend.showDependencyTree(null, callArgs)
+                        backend.showDependencyTree(null, callArgs, baseDir)
                     }
                 println(result.getOrThrow())
             }
@@ -283,15 +280,6 @@ class DefaultInterface : BaseInterface {
     private fun normalizeTreeTargets(targets: List<String>?): List<String> {
         val defaults = listOf(Platforms.detectHostTarget())
         return Platforms.normalizeTargetsOrThrow(targets, defaultTargets = defaults)
-    }
-
-    private fun withWorkingDir(
-        extraArgs: Map<String, String>?,
-        directory: File?,
-    ): Map<String, String> {
-        val base = extraArgs?.toMutableMap() ?: mutableMapOf()
-        directory?.let { base["__working_dir"] = it.absolutePath }
-        return base
     }
 
     private fun writeInitScaffold(

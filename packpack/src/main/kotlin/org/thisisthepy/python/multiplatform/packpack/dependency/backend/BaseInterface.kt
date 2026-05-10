@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.utils.Downloader
+import java.io.File
 
 /**
  * Backend type enum
@@ -50,6 +50,7 @@ interface BaseInterface {
         path: String,
         pythonVersion: String?,
         extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
     ): Result<String>
 
     /**
@@ -61,6 +62,7 @@ interface BaseInterface {
     suspend fun initProject(
         path: String?,
         extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
     ): Result<String>
 
     /**
@@ -73,6 +75,7 @@ interface BaseInterface {
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
     ): Result<String>
 
     /**
@@ -86,6 +89,7 @@ interface BaseInterface {
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
     ): Result<String>
 
     /**
@@ -97,6 +101,7 @@ interface BaseInterface {
     suspend fun syncDependencies(
         venvPath: String,
         extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
     ): Result<String>
 
     /**
@@ -108,6 +113,7 @@ interface BaseInterface {
     suspend fun showDependencyTree(
         packageName: String?,
         extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
     ): Result<String>
 
     /**

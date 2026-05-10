@@ -62,7 +62,7 @@ class CrossEnv {
             }
 
             runBlocking {
-                backend.initProject(null, extraArgs = uvArgs)
+                backend.initProject(null, extraArgs = uvArgs, workingDir = workspaceRoot)
             }.getOrThrow()
 
             createPackageScaffold(packageSpec)
@@ -127,7 +127,7 @@ class CrossEnv {
             val packageSpec = resolvePackageSpec(packageName)
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = resolveCrossTargets(packageSpec, targets)
-            val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
+            val options = extraArgs.orEmpty()
             val wheelAvailabilityResult =
                 runBlocking {
                     targetWheelInspector.inspectDependencies(
@@ -157,9 +157,9 @@ class CrossEnv {
 
             for (target in normalizedTargets) {
                 val marker = MarkerPolicy.markerForTarget(target)
-                val callArgs = workingArgs + mapOf("marker" to marker)
+                val callArgs = options + mapOf("marker" to marker)
                 runBlocking {
-                    backend.addDependencies(packageSpec.name, dependencies, callArgs)
+                    backend.addDependencies(packageSpec.name, dependencies, callArgs, workspaceRoot)
                 }.getOrThrow()
             }
 
@@ -222,17 +222,17 @@ class CrossEnv {
             val packageSpec = resolvePackageSpec(packageName)
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
-            val workingArgs = withWorkingDir(extraArgs, workspaceRoot)
+            val options = extraArgs.orEmpty()
 
-            val syncArgs = workingArgs.filterKeys { it != "python-platform" }
+            val syncArgs = options.filterKeys { it != "python-platform" }
             runBlocking {
-                backend.syncDependencies("", syncArgs + mapOf("package" to packageSpec.name))
+                backend.syncDependencies("", syncArgs + mapOf("package" to packageSpec.name), workspaceRoot)
             }.getOrThrow()
 
             for (target in normalizedTargets) {
-                val treeArgs = workingArgs + mapOf("package" to packageSpec.name, "python-platform" to target)
+                val treeArgs = options + mapOf("package" to packageSpec.name, "python-platform" to target)
                 runBlocking {
-                    backend.showDependencyTree(packageSpec.name, treeArgs)
+                    backend.showDependencyTree(packageSpec.name, treeArgs, workspaceRoot)
                 }.getOrThrow()
             }
 
@@ -248,14 +248,14 @@ class CrossEnv {
             val packageSpec = resolvePackageSpec(packageName)
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
             val baseDir = packageSpec.workspaceRoot
-            val workingArgs = withWorkingDir(extraArgs, baseDir)
+            val options = extraArgs.orEmpty()
 
             buildString {
                 for ((index, target) in normalizedTargets.withIndex()) {
-                    val callArgs = workingArgs + mapOf("python-platform" to target)
+                    val callArgs = options + mapOf("python-platform" to target)
                     val output =
                         runBlocking {
-                            backend.showDependencyTree(packageSpec.name, callArgs)
+                            backend.showDependencyTree(packageSpec.name, callArgs, baseDir)
                         }.getOrThrow()
                     append(output)
                     if (index != normalizedTargets.lastIndex) {
@@ -523,15 +523,6 @@ class CrossEnv {
             sorter = { Platforms.sort(it) },
         )
         packagePyproject.writeText(packageEditor.toTomlString())
-    }
-
-    private fun withWorkingDir(
-        extraArgs: Map<String, String>?,
-        directory: File,
-    ): Map<String, String> {
-        val base = extraArgs?.toMutableMap() ?: mutableMapOf()
-        base["__working_dir"] = directory.absolutePath
-        return base
     }
 
     private fun extractDependencyName(spec: String): String {

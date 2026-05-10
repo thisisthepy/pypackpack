@@ -7,72 +7,6 @@ import java.io.File
 open class UVInterface(
     private val uv: UV = UV(),
 ) : BaseInterface {
-    companion object {
-        private const val WORKING_DIR_KEY = "__working_dir"
-
-        private val ADD_ALLOWED_OPTIONS =
-            setOf(
-                "dev",
-                "editable",
-                "no-sync",
-                "upgrade",
-                "reinstall",
-                "refresh",
-                "raw-sources",
-                "quiet",
-                "verbose",
-                "frozen",
-                "locked",
-                "preview",
-                "package",
-                "marker",
-            )
-
-        private val REMOVE_ALLOWED_OPTIONS =
-            setOf(
-                "dev",
-                "no-sync",
-                "quiet",
-                "verbose",
-                "frozen",
-                "locked",
-                "preview",
-                "package",
-                "marker",
-            )
-
-        private val SYNC_ALLOWED_OPTIONS =
-            setOf(
-                "no-sync",
-                "quiet",
-                "verbose",
-                "frozen",
-                "locked",
-                "preview",
-                "package",
-            )
-
-        private val TREE_ALLOWED_OPTIONS =
-            setOf(
-                "quiet",
-                "verbose",
-                "frozen",
-                "locked",
-                "preview",
-                "package",
-                "python-platform",
-            )
-
-        private val INIT_ALLOWED_OPTIONS =
-            setOf(
-                "bare",
-                "name",
-                "package",
-                "python",
-                "directory",
-            )
-    }
-
     /** Initialize UV backend */
     override fun initialize() {
         // UV initialization is handled by the UV class
@@ -105,11 +39,11 @@ open class UVInterface(
         path: String,
         pythonVersion: String?,
         extraArgs: Map<String, String>?,
+        workingDir: File?,
     ): Result<String> =
         runCatching {
             require(path.isNotBlank()) { "Path cannot be blank" }
-            val allowedOptions = setOf("python")
-            val (options, workingDir) = normalizeExtraArgs(extraArgs, allowedOptions)
+            val options = extraArgs.orEmpty()
             val command = mutableListOf("venv")
 
             appendOptions(command, options)
@@ -126,8 +60,9 @@ open class UVInterface(
     override suspend fun initProject(
         path: String?,
         extraArgs: Map<String, String>?,
+        workingDir: File?,
     ): Result<String> {
-        val (options, workingDir) = normalizeExtraArgs(extraArgs, INIT_ALLOWED_OPTIONS)
+        val options = extraArgs.orEmpty()
         val command = mutableListOf("init")
         path?.takeIf { it.isNotEmpty() }?.let { command.add(it) }
 
@@ -146,10 +81,11 @@ open class UVInterface(
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>?,
+        workingDir: File?,
     ): Result<String> =
         runCatching {
             require(dependencies.isNotEmpty()) { "No dependencies specified" }
-            val (options, workingDir) = normalizeExtraArgs(extraArgs, ADD_ALLOWED_OPTIONS)
+            val options = extraArgs.orEmpty()
             val command = mutableListOf("add")
             if (!packageName.isNullOrBlank() && options["package"].isNullOrBlank()) {
                 command.add("--package")
@@ -166,10 +102,11 @@ open class UVInterface(
         packageName: String?,
         dependencies: List<String>,
         extraArgs: Map<String, String>?,
+        workingDir: File?,
     ): Result<String> =
         runCatching {
             require(dependencies.isNotEmpty()) { "No dependencies specified" }
-            val (options, workingDir) = normalizeExtraArgs(extraArgs, REMOVE_ALLOWED_OPTIONS)
+            val options = extraArgs.orEmpty()
             val command = mutableListOf("remove")
             if (!packageName.isNullOrBlank() && options["package"].isNullOrBlank()) {
                 command.add("--package")
@@ -185,9 +122,10 @@ open class UVInterface(
     override suspend fun syncDependencies(
         venvPath: String,
         extraArgs: Map<String, String>?,
+        workingDir: File?,
     ): Result<String> =
         runCatching {
-            val (options, workingDir) = normalizeExtraArgs(extraArgs, SYNC_ALLOWED_OPTIONS)
+            val options = extraArgs.orEmpty()
             val command = mutableListOf("sync")
             appendOptions(command, options)
 
@@ -198,9 +136,10 @@ open class UVInterface(
     override suspend fun showDependencyTree(
         packageName: String?,
         extraArgs: Map<String, String>?,
+        workingDir: File?,
     ): Result<String> =
         runCatching {
-            val (options, workingDir) = normalizeExtraArgs(extraArgs, TREE_ALLOWED_OPTIONS)
+            val options = extraArgs.orEmpty()
             val command = mutableListOf("tree")
             if (!packageName.isNullOrBlank() && options["package"].isNullOrBlank()) {
                 command.add("--package")
@@ -253,28 +192,6 @@ open class UVInterface(
             val success = uv.ensureInstalled()
             require(success) { "Failed to install UV" }
         }
-    }
-
-    private fun normalizeExtraArgs(
-        extraArgs: Map<String, String>?,
-        allowedOptions: Set<String>,
-    ): Pair<Map<String, String>, File?> {
-        if (extraArgs.isNullOrEmpty()) {
-            return emptyMap<String, String>() to null
-        }
-
-        val workingDir =
-            extraArgs[WORKING_DIR_KEY]
-                ?.takeIf { it.isNotBlank() }
-                ?.let { File(it) }
-
-        val options = extraArgs.filterKeys { it != WORKING_DIR_KEY }
-        val unsupported = options.keys.filter { it !in allowedOptions }
-        require(unsupported.isEmpty()) {
-            "Unsupported uv options: ${unsupported.joinToString(", ")}"
-        }
-
-        return options to workingDir
     }
 
     private fun appendOptions(
