@@ -391,14 +391,19 @@ class CrossEnv {
                         }.distinct()
 
                 when {
-                    memberMatch.size == 1 -> memberMatch.single().replace('\\', '/').trimStart('/')
+                    memberMatch.size == 1 -> {
+                        memberMatch.single().replace('\\', '/').trimStart('/')
+                    }
+
                     memberMatch.size > 1 -> {
                         throw IllegalArgumentException(
                             "Package name '$trimmed' is ambiguous. Use one of: ${memberMatch.joinToString(", ")}",
                         )
                     }
 
-                    else -> normalizedInput
+                    else -> {
+                        normalizedInput
+                    }
                 }
             } else {
                 normalizedInput
@@ -443,7 +448,7 @@ class CrossEnv {
         )
 
         writeFileIfMissing(
-            File(packageDir, "src/main/$importName/__init__.py"),
+            File(packageDir, "src/main/__init__.py"),
             "",
         )
 
