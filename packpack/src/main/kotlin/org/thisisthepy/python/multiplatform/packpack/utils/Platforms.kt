@@ -174,72 +174,81 @@ object Platforms {
     fun describeTarget(target: String): TargetDescriptor {
         val canonical = normalizeTarget(target) ?: target
         return when {
-            canonical.contains("windows") ->
+            canonical.contains("windows") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "windows",
                     markerSystem = "Windows",
                     markerMachine = markerMachine(canonical),
                 )
+            }
 
-            canonical.contains("android") ->
+            canonical.contains("android") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "android",
                     markerSystem = "Android",
                     markerMachine = markerMachine(canonical),
                 )
+            }
 
-            canonical.contains("apple-ios") || canonical.contains("ios") ->
+            canonical.contains("apple-ios") || canonical.contains("ios") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "ios",
                     markerSystem = "iOS",
                     markerMachine = markerMachine(canonical),
                 )
+            }
 
-            canonical.startsWith("wasm") || canonical.contains("pyodide") || canonical.contains("emscripten") ->
+            canonical.startsWith("wasm") || canonical.contains("pyodide") || canonical.contains("emscripten") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "wasm",
                     markerSystem = "Emscripten",
                     markerMachine = markerMachine(canonical),
                 )
+            }
 
-            canonical.contains("apple-darwin") || canonical.contains("darwin") ->
+            canonical.contains("apple-darwin") || canonical.contains("darwin") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "macos",
                     markerSystem = "Darwin",
                     markerMachine = markerMachine(canonical),
                 )
+            }
 
-            canonical.contains("manylinux") || canonical.contains("linux") ->
+            canonical.contains("manylinux") || canonical.contains("linux") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "linux",
                     markerSystem = "Linux",
                     markerMachine = markerMachine(canonical),
                 )
+            }
 
-            else -> throw IllegalArgumentException("Unsupported target metadata: $target")
+            else -> {
+                throw IllegalArgumentException("Unsupported target metadata: $target")
+            }
         }
     }
-    
+
     /**
      * Sort platforms by SUPPORTED_TARGETS order.
-     * 
+     *
      * Platforms are sorted according to their position in SUPPORTED_TARGETS.
      * Platforms not found in SUPPORTED_TARGETS are placed at the end.
-     * 
+     *
      * @param platforms Collection of platform names to sort
      * @return Sorted list of platforms
      */
     fun sort(platforms: Collection<String>): List<String> {
-        val orderMap = SUPPORTED_TARGETS
-            .withIndex()
-            .associate { it.value to it.index }
-        
+        val orderMap =
+            SUPPORTED_TARGETS
+                .withIndex()
+                .associate { it.value to it.index }
+
         return platforms.sortedBy { orderMap[it] ?: Int.MAX_VALUE }
     }
 
@@ -284,7 +293,7 @@ object Platforms {
                 " Did you mean: ${suggestions.joinToString(", ")}?"
             }
 
-        return "Unsupported $label: $target.$suggestionText Must be one of $SUPPORTED_TARGETS"
+        return "Unsupported $label: $target.$suggestionText"
     }
 
     fun normalizeTargetsOrThrow(
@@ -297,8 +306,7 @@ object Platforms {
             .map { target ->
                 normalizeTarget(target)
                     ?: throw IllegalArgumentException(unsupportedTargetMessage(target, label))
-            }
-            .distinct()
+            }.distinct()
 
     fun normalizeTargetsOrThrow(
         targets: List<String>?,
