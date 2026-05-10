@@ -1,8 +1,10 @@
 package org.thisisthepy.python.multiplatform.packpack.cli
 
 import com.github.ajalt.clikt.core.*
-import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.option
+import org.thisisthepy.python.multiplatform.packpack.compile.frontend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.compile.frontend.FrontendType
 
 class BuildCommand : CliktCommand(name = "build") {
     override fun help(context: Context) = "Build the project for the specified target(s)."
@@ -12,8 +14,13 @@ class BuildCommand : CliktCommand(name = "build") {
     val target by option("--target", help = "Specify the build target")
 
     override fun run() {
-        TODO("Implement build command with various build options and target specifications.")
-
-        
+        val middleware = BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
+        runBooleanCommand(
+            progressMessage = "Building project with type: $type, level: $level, target: $target...",
+            failureMessage = "Build failed for type: $type, level: $level, target: $target.",
+            successMessage = "Build completed successfully for type: $type, level: $level, target: $target.",
+        ) {
+            middleware.compile("")
+        }
     }
 }
