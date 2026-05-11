@@ -50,7 +50,7 @@ class Meson(
         workingDir: File? = null,
     ): Result<String> =
         runCatching {
-            executeCommand(listOf("install", "-C", buildDir, "--destdir=dist") + options.orEmpty(), workingDir).getOrThrow()
+            executeCommand(listOf("install", "-C", buildDir, "--destdir=$workingDir/dist") + options.orEmpty(), workingDir).getOrThrow()
         }
 
     private fun makeMesonBuild(projectDir: String = System.getProperty("user.dir")): Result<String> =

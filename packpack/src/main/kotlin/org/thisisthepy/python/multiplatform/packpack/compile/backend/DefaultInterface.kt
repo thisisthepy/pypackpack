@@ -18,7 +18,7 @@ class DefaultInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Result<String> =
         runCatching {
-            val buildDir = "build"
+            val buildDir = "build/packpack/single/debug"
             val workingDir = File(System.getProperty("user.dir"))
             meson.setup(buildDir = buildDir, options = null, workingDir = workingDir).getOrThrow()
             meson.compile(buildDir = buildDir, options = null, workingDir = workingDir).getOrThrow()
