@@ -6,11 +6,7 @@ import com.github.ajalt.clikt.parameters.options.*
 
 abstract class BaseDependencyCommand(
     name: String,
-) : CliktCommand(name = name) {
-    init {
-        configureCliTerminal()
-    }
-}
+) : CliktCommand(name = name)
 
 class AddCommand : BaseDependencyCommand(name = "add") {
     override fun help(context: Context) =

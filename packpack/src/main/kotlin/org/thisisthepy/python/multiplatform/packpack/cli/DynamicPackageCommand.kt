@@ -8,6 +8,10 @@ class DynamicPackageCommand(
     private val packageName: String,
     private val operation: String,
 ) : BaseDependencyCommand(name = operation) {
+    init {
+        configureCliTerminal()
+    }
+
     override fun help(context: Context) = "Perform $operation on package '$packageName'"
 
     val dependencies by argument(help = "Dependencies").multiple()
