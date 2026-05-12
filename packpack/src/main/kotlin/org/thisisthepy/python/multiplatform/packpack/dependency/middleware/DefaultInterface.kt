@@ -25,10 +25,7 @@ class DefaultInterface : BaseInterface {
         }
     }
 
-    override fun getToolVersion(): Result<String> =
-        runBlocking {
-            backendInterface().getVersion()
-        }
+    override fun getToolVersion(): Result<String> = runBlocking { backendInterface().getVersion() }
 
     override fun changePythonVersion(pythonVersion: String): Boolean = devEnvService().changePythonVersion(pythonVersion)
 
@@ -73,10 +70,8 @@ class DefaultInterface : BaseInterface {
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")
             }
-        val result =
-            runBlocking {
-                backendInterface().initProject(path, uvArgs)
-            }
+        val result = runBlocking { backendInterface().initProject(path, uvArgs) }
+        if (result.isFailure) return result
 
         val targetPlatforms: List<String>? = targets
         val projectDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
@@ -219,9 +214,7 @@ class DefaultInterface : BaseInterface {
             for (target in normalizedTargets) {
                 val callArgs = options + mapOf("python-platform" to target)
                 val result =
-                    runBlocking {
-                        backend.showDependencyTree(null, callArgs, baseDir)
-                    }
+                    runBlocking { backend.showDependencyTree(null, callArgs, baseDir) }
                 println(result.getOrThrow())
             }
         }.onFailure {
