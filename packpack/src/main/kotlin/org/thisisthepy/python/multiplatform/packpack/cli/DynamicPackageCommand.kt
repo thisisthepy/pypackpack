@@ -26,7 +26,7 @@ class DynamicPackageCommand(
                     failureMessage = "Failed to add dependencies to package '$packageName'",
                     successMessage = "Successfully added dependencies to package '$packageName'",
                 ) {
-                    middleware.addDependencies(packageName, dependencies, targets, getExtraArgs().ifEmpty { null })
+                    middleware.addDependencies(packageName, dependencies, targets, null)
                 }
             }
 
@@ -39,7 +39,7 @@ class DynamicPackageCommand(
                     failureMessage = "Failed to remove dependencies from package '$packageName'",
                     successMessage = "Successfully removed dependencies from package '$packageName'",
                 ) {
-                    middleware.removeDependencies(packageName, dependencies, targets, getExtraArgs().ifEmpty { null })
+                    middleware.removeDependencies(packageName, dependencies, targets, null)
                 }
             }
 
@@ -49,12 +49,12 @@ class DynamicPackageCommand(
                     failureMessage = "Failed to synchronize dependencies for package '$packageName'",
                     successMessage = "Successfully synchronized dependencies for package '$packageName'",
                 ) {
-                    middleware.syncDependencies(packageName, targets, getExtraArgs().ifEmpty { null })
+                    middleware.syncDependencies(packageName, targets, null)
                 }
             }
 
             "tree" -> {
-                if (!middleware.showDependencyTree(packageName, targets, getExtraArgs().ifEmpty { null })) {
+                if (!middleware.showDependencyTree(packageName, targets, null)) {
                     throw PrintMessage("Failed to show dependency tree for package '$packageName'", statusCode = 1)
                 }
             }
