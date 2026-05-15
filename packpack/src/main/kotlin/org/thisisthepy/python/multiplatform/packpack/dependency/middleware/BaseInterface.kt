@@ -5,18 +5,6 @@ interface BaseInterface {
     /** Initialize middleware */
     fun initialize()
 
-    fun getToolVersion(): Result<String>
-
-    fun changePythonVersion(pythonVersion: String): Boolean
-
-    fun listPythonVersions(): Boolean
-
-    fun findPythonVersion(pythonVersion: String): Boolean
-
-    fun installPythonVersion(pythonVersion: String): Boolean
-
-    fun uninstallPythonVersion(pythonVersion: String): Boolean
-
     /** Init Project */
     fun initProject(
         path: String?,
@@ -107,22 +95,40 @@ interface BaseInterface {
     /**
      * Add target platforms to a package
      * @param targets List of target platform identifiers to add
-     * @param path Package directory path (optional, defaults to current directory)
+     * @param packageName Package name (optional, defaults to current directory)
      * @return Result containing success message or error
      */
     fun addTargets(
+        packageName: String? = null,
         targets: List<String>,
-        path: String? = null,
     ): Result<String>
 
     /**
      * Remove target platforms from a package
+     * @param packageName Package name (optional, defaults to current directory)
      * @param targets List of target platform identifiers to remove
-     * @param path Package directory path (optional, defaults to current directory)
      * @return Result containing success message or error
      */
     fun removeTargets(
+        packageName: String? = null,
         targets: List<String>,
-        path: String? = null,
     ): Result<String>
+
+    /** Get the version of the underlying tool (e.g., UV) */
+    fun getToolVersion(): Result<String>
+
+    /** Change the active Python version */
+    fun changePythonVersion(pythonVersion: String): Boolean
+
+    /** List all available Python versions */
+    fun listPythonVersions(): Boolean
+
+    /** Find a specific Python version */
+    fun findPythonVersion(pythonVersion: String): Boolean
+
+    /** Install a Python version */
+    fun installPythonVersion(pythonVersion: String): Boolean
+
+    /** Uninstall a Python version */
+    fun uninstallPythonVersion(pythonVersion: String): Boolean
 }
