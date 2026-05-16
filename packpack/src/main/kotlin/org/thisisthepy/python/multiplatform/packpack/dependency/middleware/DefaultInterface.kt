@@ -7,6 +7,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envir
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
+import java.time.Year
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface as BackendBaseInterface
 
 private const val PYPROJECT_FILE = "pyproject.toml"
@@ -288,7 +289,22 @@ class DefaultInterface : BaseInterface {
 
         writeFileIfMissing(
             File(projectDir, "README.md"),
-            "# $projectName\n",
+            """
+            # $projectName
+
+            A Python project managed by pypackpack.
+
+            Use ppp to manage dependencies, targets, and builds.
+            """.trimIndent() + "\n",
+        )
+
+        writeFileIfMissing(
+            File(projectDir, "LICENSE"),
+            """
+            Copyright (c) ${Year.now().value} $projectName
+
+            All rights reserved.
+            """.trimIndent() + "\n",
         )
 
         pythonVersion?.let { version ->
