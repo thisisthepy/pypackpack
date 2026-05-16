@@ -7,6 +7,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envir
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
+import java.time.Year
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface as BackendBaseInterface
 
 private const val PYPROJECT_FILE = "pyproject.toml"
@@ -25,32 +26,10 @@ class DefaultInterface : BaseInterface {
         }
     }
 
-    override fun getToolVersion(): Result<String> =
-        runBlocking {
-            backendInterface().getVersion()
-        }
-
-    override fun changePythonVersion(pythonVersion: String): Boolean = devEnvService().changePythonVersion(pythonVersion)
-
-    override fun listPythonVersions(): Boolean = devEnvService().listPythonVersions()
-
-    override fun findPythonVersion(pythonVersion: String): Boolean = devEnvService().findPythonVersion(pythonVersion)
-
-    override fun installPythonVersion(pythonVersion: String): Boolean = devEnvService().installPythonVersion(pythonVersion)
-
-    override fun uninstallPythonVersion(pythonVersion: String): Boolean = devEnvService().uninstallPythonVersion(pythonVersion)
-
-    private fun backendInterface(): BackendBaseInterface {
-        if (!::backend.isInitialized) {
-            initialize()
-        }
-        return backend
-    }
-
     private fun devEnvService(): DevEnv {
         if (!::devEnv.isInitialized) {
             devEnv = DevEnv()
-            devEnv.initialize(backendInterface())
+            devEnv.initialize(backend)
         }
         return devEnv
     }
@@ -58,7 +37,7 @@ class DefaultInterface : BaseInterface {
     private fun crossEnvService(): CrossEnv {
         if (!::crossEnv.isInitialized) {
             crossEnv = CrossEnv()
-            crossEnv.initialize(backendInterface())
+            crossEnv.initialize(backend)
         }
         return crossEnv
     }
@@ -73,10 +52,8 @@ class DefaultInterface : BaseInterface {
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")
             }
-        val result =
-            runBlocking {
-                backendInterface().initProject(path, uvArgs)
-            }
+        val result = runBlocking { backend.initProject(path, uvArgs) }
+        if (result.isFailure) return result
 
         val targetPlatforms: List<String>? = targets
         val projectDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
@@ -117,7 +94,7 @@ class DefaultInterface : BaseInterface {
             return false
         }
         if (dependencies.any { it.contains(';') }) {
-            println("Dependency markers in package names are not allowed. Use --target instead.")
+            println("Dependency markers in package names are not allowed.")
             return false
         }
 
@@ -151,7 +128,7 @@ class DefaultInterface : BaseInterface {
             return false
         }
         if (dependencies.any { it.contains(';') }) {
-            println("Dependency markers in package names are not allowed. Use --target instead.")
+            println("Dependency markers in package names are not allowed.")
             return false
         }
 
@@ -213,15 +190,13 @@ class DefaultInterface : BaseInterface {
         val normalizedTargets = normalizeTreeTargets(targets)
 
         return runCatching {
-            val baseDir = findProjectRoot()
+            val baseDir = findWorkspaceProjectRoot()
             val options = extraArgs.orEmpty()
 
             for (target in normalizedTargets) {
                 val callArgs = options + mapOf("python-platform" to target)
                 val result =
-                    runBlocking {
-                        backend.showDependencyTree(null, callArgs, baseDir)
-                    }
+                    runBlocking { backend.showDependencyTree(null, callArgs, baseDir) }
                 println(result.getOrThrow())
             }
         }.onFailure {
@@ -244,15 +219,15 @@ class DefaultInterface : BaseInterface {
 
     /** Add target platforms to a package */
     override fun addTargets(
+        packageName: String?,
         targets: List<String>,
-        path: String?,
-    ): Result<String> = crossEnvService().addTargets(targets, path)
+    ): Result<String> = crossEnvService().addTargets(packageName, targets)
 
     /** Remove target platforms from a package */
     override fun removeTargets(
+        packageName: String?,
         targets: List<String>,
-        path: String?,
-    ): Result<String> = crossEnvService().removeTargets(targets, path)
+    ): Result<String> = crossEnvService().removeTargets(packageName, targets)
 
     private fun addPlatforms(
         tomlEditor: TomlEditor,
@@ -275,7 +250,17 @@ class DefaultInterface : BaseInterface {
         )
     }
 
-    private fun findProjectRoot(): File? = findWorkspaceProjectRoot()
+    override fun getToolVersion(): Result<String> = runBlocking { backend.getVersion() }
+
+    override fun changePythonVersion(pythonVersion: String): Boolean = devEnvService().changePythonVersion(pythonVersion)
+
+    override fun listPythonVersions(): Boolean = devEnvService().listPythonVersions()
+
+    override fun findPythonVersion(pythonVersion: String): Boolean = devEnvService().findPythonVersion(pythonVersion)
+
+    override fun installPythonVersion(pythonVersion: String): Boolean = devEnvService().installPythonVersion(pythonVersion)
+
+    override fun uninstallPythonVersion(pythonVersion: String): Boolean = devEnvService().uninstallPythonVersion(pythonVersion)
 
     private fun normalizeTreeTargets(targets: List<String>?): List<String> {
         val defaults = listOf(Platforms.detectHostTarget())
@@ -304,7 +289,22 @@ class DefaultInterface : BaseInterface {
 
         writeFileIfMissing(
             File(projectDir, "README.md"),
-            "# $projectName\n",
+            """
+            # $projectName
+
+            A Python project managed by pypackpack.
+
+            Use ppp to manage dependencies, targets, and builds.
+            """.trimIndent() + "\n",
+        )
+
+        writeFileIfMissing(
+            File(projectDir, "LICENSE"),
+            """
+            Copyright (c) ${Year.now().value} $projectName
+
+            All rights reserved.
+            """.trimIndent() + "\n",
         )
 
         pythonVersion?.let { version ->

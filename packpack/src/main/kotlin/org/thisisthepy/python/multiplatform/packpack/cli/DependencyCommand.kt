@@ -6,43 +6,7 @@ import com.github.ajalt.clikt.parameters.options.*
 
 abstract class BaseDependencyCommand(
     name: String,
-) : CliktCommand(name = name) {
-    init {
-        configureCliTerminal()
-    }
-
-    val dev by option("--dev", help = "Install as development dependency").flag()
-    val editable by option("--editable", help = "Install in editable mode").flag()
-    val noSync by option("--no-sync", help = "Skip synchronization").flag()
-    
-    val quiet by option("--quiet", help = "Suppress output").flag()
-    val verbose by option("--verbose", help = "Enable verbose output").flag()
-    val upgrade by option("--upgrade", help = "Upgrade dependencies").flag()
-    val reinstall by option("--reinstall", help = "Reinstall dependencies").flag()
-    val refresh by option("--refresh", help = "Refresh cache").flag()
-    val frozen by option("--frozen", help = "Use frozen lockfile").flag()
-    val locked by option("--locked", help = "Use locked dependencies").flag()
-    val preview by option("--preview", help = "Enable preview features").flag()
-    val rawSources by option("--raw-sources", help = "Use raw sources").flag()
-
-    protected fun getExtraArgs(): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        if (dev) map["dev"] = ""
-        if (editable) map["editable"] = ""
-        if (noSync) map["no-sync"] = ""
-        
-        if (quiet) map["quiet"] = ""
-        if (verbose) map["verbose"] = ""
-        if (upgrade) map["upgrade"] = ""
-        if (reinstall) map["reinstall"] = ""
-        if (refresh) map["refresh"] = ""
-        if (frozen) map["frozen"] = ""
-        if (locked) map["locked"] = ""
-        if (preview) map["preview"] = ""
-        if (rawSources) map["raw-sources"] = ""
-        return map
-    }
-}
+) : CliktCommand(name = name)
 
 class AddCommand : BaseDependencyCommand(name = "add") {
     override fun help(context: Context) =
@@ -61,7 +25,7 @@ class AddCommand : BaseDependencyCommand(name = "add") {
             failureMessage = "Failed to add dependencies",
             successMessage = "Successfully added dependencies: ${dependencies.joinToString(", ")}",
         ) {
-            middleware.addDependencies(null, dependencies, null, getExtraArgs().ifEmpty { null })
+            middleware.addDependencies(null, dependencies, null, null)
         }
     }
 }
@@ -78,7 +42,7 @@ class RemoveCommand : BaseDependencyCommand(name = "remove") {
             failureMessage = "Failed to remove dependencies",
             successMessage = "Successfully removed dependencies: ${dependencies.joinToString(", ")}",
         ) {
-            middleware.removeDependencies(null, dependencies, null, getExtraArgs().ifEmpty { null })
+            middleware.removeDependencies(null, dependencies, null, null)
         }
     }
 }
@@ -93,7 +57,7 @@ class SyncCommand : BaseDependencyCommand(name = "sync") {
             failureMessage = "Failed to synchronize dependencies",
             successMessage = "Successfully synchronized dependencies",
         ) {
-            middleware.syncDependencies(null, null, getExtraArgs().ifEmpty { null })
+            middleware.syncDependencies(null, null, null)
         }
     }
 }
@@ -105,7 +69,7 @@ class TreeCommand : BaseDependencyCommand(name = "tree") {
 
     override fun run() {
         val middleware = requireMiddleware()
-        if (!middleware.showDependencyTree(null, targets.ifEmpty { null }, getExtraArgs().ifEmpty { null })) {
+        if (!middleware.showDependencyTree(null, targets.ifEmpty { null }, null)) {
             throw PrintMessage("Failed to show dependency tree", statusCode = 1)
         }
     }

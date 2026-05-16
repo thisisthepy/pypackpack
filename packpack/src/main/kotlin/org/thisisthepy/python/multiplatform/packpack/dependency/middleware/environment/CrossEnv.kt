@@ -73,7 +73,7 @@ class CrossEnv {
             )
 
             "Package '${packageSpec.input}' created successfully at ${packageDir.absolutePath}"
-        } // TOOD: Sync targets when workspace targets are added after package creation
+        }
 
     fun removePackage(
         packageName: String,
@@ -266,58 +266,54 @@ class CrossEnv {
         }
 
     fun addTargets(
+        packageName: String?,
         targets: List<String>,
-        path: String?,
     ): Result<String> =
         runCatching {
             require(targets.isNotEmpty()) { "No targets specified" }
 
-            val packageDir = resolvePackageDir(path)
+            val packageSpec = packageName?.let { resolvePackageSpec(it) }
+            val packageDir = packageSpec?.directory ?: resolveCurrentPackageDir()
+            val workspaceRoot = packageSpec?.workspaceRoot ?: resolveWorkspaceRootFromPath(null)
             val packagePyproject = File(packageDir, PYPROJECT_FILE)
             require(packagePyproject.exists()) {
                 "No pyproject.toml found in ${packageDir.absolutePath}"
             }
 
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets)
-            val editor = TomlEditor(packagePyproject.readText())
-            val tablePath = "tool.ppp.dependencies"
-            if (!editor.hasTable(tablePath)) {
-                editor.createTable(tablePath)
+            addTargetsToPackage(packagePyproject, normalizedTargets)
+            val workspaceMembers = readWorkspaceMembers(packageDir)
+            if (workspaceMembers.isEmpty() && packageDir != workspaceRoot) {
+                createTargetSourceFolders(packageDir, normalizedTargets)
             }
-            editor.addToArray(
-                tablePath = tablePath,
-                key = "platforms",
-                *normalizedTargets.toTypedArray(),
-                sorter = { Platforms.sort(it) },
-            )
-            packagePyproject.writeText(editor.toTomlString())
+            workspaceMembers.forEach { member ->
+                val memberPyproject = File(packageDir, member.replace('\\', '/')).resolve(PYPROJECT_FILE)
+                addTargetsToPackage(memberPyproject, normalizedTargets)
+                createTargetSourceFolders(memberPyproject.parentFile, normalizedTargets)
+            }
 
             "Successfully added targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}"
         }
 
     fun removeTargets(
+        packageName: String?,
         targets: List<String>,
-        path: String?,
     ): Result<String> =
         runCatching {
             require(targets.isNotEmpty()) { "No targets specified" }
 
-            val packageDir = resolvePackageDir(path)
+            val packageSpec = packageName?.let { resolvePackageSpec(it) }
+            val packageDir = packageSpec?.directory ?: resolveCurrentPackageDir()
             val packagePyproject = File(packageDir, PYPROJECT_FILE)
             require(packagePyproject.exists()) {
                 "No pyproject.toml found in ${packageDir.absolutePath}"
             }
 
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets)
-            val editor = TomlEditor(packagePyproject.readText())
-            val tablePath = "tool.ppp.dependencies"
-            if (editor.hasTable(tablePath)) {
-                editor.removeFromArray(
-                    tablePath = tablePath,
-                    key = "platforms",
-                    *normalizedTargets.toTypedArray(),
-                )
-                packagePyproject.writeText(editor.toTomlString())
+            removeTargetsFromPackage(packagePyproject, normalizedTargets)
+            readWorkspaceMembers(packageDir).forEach { member ->
+                val memberPyproject = File(packageDir, member.replace('\\', '/')).resolve(PYPROJECT_FILE)
+                removeTargetsFromPackage(memberPyproject, normalizedTargets)
             }
 
             "Successfully removed targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}"
@@ -358,8 +354,8 @@ class CrossEnv {
         }
     }
 
-    private fun resolvePackageDir(path: String?): File {
-        val packageDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
+    private fun resolveCurrentPackageDir(): File {
+        val packageDir = File(System.getProperty("user.dir"))
         require(packageDir.exists() && packageDir.isDirectory) {
             "Invalid path: ${packageDir.absolutePath}"
         }
@@ -506,21 +502,69 @@ class CrossEnv {
         }
 
         val packageEditor = TomlEditor(packagePyproject.readText())
+        val existingTargets = packageEditor.getArray("tool.ppp.dependencies", "platforms")
+        if (existingTargets.isEmpty()) {
+            addTargetsToPackage(packagePyproject, workspaceTargets)
+            createTargetSourceFolders(packagePyproject.parentFile, workspaceTargets)
+        }
+    }
+
+    private fun addTargetsToPackage(
+        packagePyproject: File,
+        targets: List<String>,
+    ) {
+        if (!packagePyproject.exists()) {
+            return
+        }
+
+        val packageEditor = TomlEditor(packagePyproject.readText())
         val tablePath = "tool.ppp.dependencies"
         if (!packageEditor.hasTable(tablePath)) {
             packageEditor.createTable(tablePath)
         }
 
-        val existingTargets = packageEditor.getArray(tablePath, "platforms")
-        if (existingTargets.isNotEmpty()) {
-            return
-        }
-
         packageEditor.addToArray(
             tablePath = tablePath,
             key = "platforms",
-            *workspaceTargets.toTypedArray(),
+            *targets.toTypedArray(),
             sorter = { Platforms.sort(it) },
+        )
+        packagePyproject.writeText(packageEditor.toTomlString())
+    }
+
+    private fun createTargetSourceFolders(
+        packageDir: File?,
+        targets: List<String>,
+    ) {
+        if (packageDir == null) {
+            return
+        }
+        targets
+            .map { Platforms.getPlatformFamily(it) }
+            .distinct()
+            .forEach { family ->
+                writeFileIfMissing(File(packageDir, "src/$family/__init__.py"), "")
+            }
+    }
+
+    private fun removeTargetsFromPackage(
+        packagePyproject: File,
+        targets: List<String>,
+    ) {
+        if (!packagePyproject.exists()) {
+            return
+        }
+
+        val packageEditor = TomlEditor(packagePyproject.readText())
+        val tablePath = "tool.ppp.dependencies"
+        if (!packageEditor.hasTable(tablePath)) {
+            return
+        }
+
+        packageEditor.removeFromArray(
+            tablePath = tablePath,
+            key = "platforms",
+            *targets.toTypedArray(),
         )
         packagePyproject.writeText(packageEditor.toTomlString())
     }

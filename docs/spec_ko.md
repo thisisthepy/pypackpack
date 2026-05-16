@@ -220,7 +220,6 @@ pypackpack init [<path>] [--python <python version>] [--name <project name>] [--
 Limitation
 
 - 기존 `pyproject.toml`의 ppp 여부 검사와 타 패키징 도구 충돌 판별은 아직 없다.
-- `LICENSE` 생성과 `.venv` 자동 생성 보장은 아직 구현되어 있지 않다.
 
 #### 프로젝트 파이썬 버전 변경 (`부분 구현`)
 
@@ -271,18 +270,16 @@ Limitation
 
 ```bash
 pypackpack target list
-pypackpack target add <target name>... [--path <package dir>]
-pypackpack target remove <target name>... [--path <package dir>]
+pypackpack target add <target name>...
+pypackpack target remove <target name>...
+pypackpack <package> target add <target name>...
+pypackpack <package> target remove <target name>...
 ```
 
 - `target list`는 `Platforms.SUPPORTED_TARGETS`를 별칭과 플랫폼 패밀리 단위로 묶어 출력한다.
-- `target add/remove`는 지정한 패키지 디렉토리 또는 현재 디렉토리의 `pyproject.toml`에 있는 `[tool.ppp.dependencies].platforms` 배열만 수정한다.
+- `target add/remove`는 현재 디렉토리의 `pyproject.toml`에 있는 `[tool.ppp.dependencies].platforms` 배열을 수정한다.
+- `pypackpack <package> target add/remove`는 워크스페이스 멤버 패키지를 패키지명 또는 경로로 찾아 해당 패키지에 타겟을 추가/제거한다.
 - 타겟은 `Platforms.normalizeTargetsOrThrow`로 정규화한다.
-
-Limitation
-
-- 모든 패키지 일괄 수정 기능은 아직 없다.
-- 잘못된 타겟 입력에 대한 유사 타겟 추천은 아직 없다.
 
 ### 의존성 관리 기능
 
@@ -381,10 +378,16 @@ pypackpack <package name> tree [--target <target1> <target2> ...] [<etcs>]
 
 - CrossEnv 의존성을 위한 target별 전용 venv 생성 및 유지
 - `sync` 단계에서 target별 설치 결과를 별도 환경으로 보존하는 기능
-- `init` 시 기존 프로젝트 상태 검사와 ppp 프로젝트 판별 강화
 - `python use` 시 하위 패키지 build 디렉토리 정리
 
 ### 빌드, 번들링, 배포
+
+ppp는 `build`, `compile`, `bundle`, `deploy` 네 단계를 구분한다.
+
+- `compile`: source를 실행 가능한 중간 산출물로 변환한다.
+- `bundle`: compile 산출물과 resource/dependency/runtime metadata를 하나의 배포 단위로 묶는다.
+- `build`: dependency 확인, compile, bundle을 조율하는 상위 orchestration 단계다.
+- `deploy`: bundle 산출물을 PyPI, FastTrack, ResourceHub 등 외부 대상으로 업로드한다.
 
 #### 패키지 빌드
 
@@ -398,6 +401,21 @@ pypackpack build <package name> resource [--target <target name>] [<etcs>]
 - 단일 파일로 전부 다 묶는건지 따로 따로 빌드할건지 기술 필요 (메타 데이터)
 - 번들 압축 (.whl) + 변경된 부분만 업데이트 가능하도록 (.whl.patch) 지원 필요
   - 어느 프라이메리 버전을 기준으로 업데이트 하는건지, 몇번째 패치인건지 고려 필요
+
+#### Build Level
+
+- `instant`: Python source를 거의 그대로 bundle한다.
+- `bytecode`: Python source를 `.pyc`로 변환해 bundle한다.
+- `native`: Python/native source를 native artifact로 변환한다.
+- `mixed`: 일부 모듈만 native로 변환하고 나머지는 source 또는 bytecode로 유지한다.
+
+#### Bundle Type
+
+- `binary`: 실행 또는 앱 내장에 적합한 target-specific binary layout을 생성한다.
+- `fat`: 현재 package와 dependency를 함께 포함한 wheel-like archive를 생성한다.
+- `single`: 현재 package만 포함한 wheel-like archive를 생성한다.
+- `patch`: 기존 primary bundle 대비 변경분만 포함한 patch archive를 생성한다.
+- `resource`: python-multiplatform/toolchain이 소비할 수 있는 resource layout을 생성한다.
 
 #### 패키지 배포
 

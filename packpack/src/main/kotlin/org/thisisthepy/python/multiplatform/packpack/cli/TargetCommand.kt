@@ -2,21 +2,24 @@ package org.thisisthepy.python.multiplatform.packpack.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.findOrSetObject
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
-import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.option
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 
-class TargetCommand : CliktCommand(name = "target") {
+class TargetCommand(
+    packageName: String? = null,
+) : CliktCommand(name = "target") {
     override fun help(context: Context) = "Manage target platforms for packages."
 
     init {
-        subcommands(TargetListCommand(), TargetAddCommand(), TargetRemoveCommand())
+        subcommands(TargetListCommand(), TargetAddCommand(packageName), TargetRemoveCommand(packageName))
     }
 
-    override fun run() = Unit
+    override fun run() {
+        currentContext.findOrSetObject { createCliMiddleware() }
+    }
 }
 
 class TargetListCommand : CliktCommand(name = "list") {
@@ -63,11 +66,12 @@ class TargetListCommand : CliktCommand(name = "list") {
     }
 }
 
-class TargetAddCommand : CliktCommand(name = "add") {
+class TargetAddCommand(
+    private val packageName: String? = null,
+) : CliktCommand(name = "add") {
     override fun help(context: Context) = "Add target platforms to a package."
 
     val targets by argument(help = "Target platform names").multiple(required = true)
-    val path by option("--path", help = "Package directory path").default("")
 
     override fun run() {
         val middleware = requireMiddleware()
@@ -75,16 +79,17 @@ class TargetAddCommand : CliktCommand(name = "add") {
             progressMessage = "Adding targets: ${targets.joinToString(", ")}...",
             failurePrefix = "Failed to add targets",
         ) {
-            middleware.addTargets(targets, path.ifEmpty { null })
+            middleware.addTargets(packageName, targets)
         }
     }
 }
 
-class TargetRemoveCommand : CliktCommand(name = "remove") {
+class TargetRemoveCommand(
+    private val packageName: String? = null,
+) : CliktCommand(name = "remove") {
     override fun help(context: Context) = "Remove target platforms from a package."
 
     val targets by argument(help = "Target platform names").multiple(required = true)
-    val path by option("--path", help = "Package directory path").default("")
 
     override fun run() {
         val middleware = requireMiddleware()
@@ -92,7 +97,7 @@ class TargetRemoveCommand : CliktCommand(name = "remove") {
             progressMessage = "Removing targets: ${targets.joinToString(", ")}...",
             failurePrefix = "Failed to remove targets",
         ) {
-            middleware.removeTargets(targets, path.ifEmpty { null })
+            middleware.removeTargets(packageName, targets)
         }
     }
 }

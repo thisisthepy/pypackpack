@@ -26,7 +26,7 @@ class PackageAddCommand : BaseDependencyCommand(name = "add") {
             progressMessage = "Creating package '$packageName'...",
             failurePrefix = "Failed to create package",
         ) {
-            middleware.addPackage(packageName, path.ifEmpty { null }, getExtraArgs().ifEmpty { null })
+            middleware.addPackage(packageName, path.ifEmpty { null }, null)
         }
     }
 }
@@ -61,7 +61,7 @@ class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
             failureMessage = "Failed to synchronize dependencies for package '$packageName'",
             successMessage = "Successfully synchronized dependencies for package '$packageName'",
         ) {
-            middleware.syncDependencies(packageName, targets, getExtraArgs().ifEmpty { null })
+            middleware.syncDependencies(packageName, targets, null)
         }
     }
 }
@@ -74,7 +74,7 @@ class PackageTreeCommand : BaseDependencyCommand(name = "tree") {
 
     override fun run() {
         val middleware = requireMiddleware()
-        if (!middleware.showDependencyTree(packageName, targets, getExtraArgs().ifEmpty { null })) {
+        if (!middleware.showDependencyTree(packageName, targets, null)) {
             throw PrintMessage("Failed to show dependency tree for package '$packageName'", statusCode = 1)
         }
     }

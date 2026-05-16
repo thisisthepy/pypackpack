@@ -4,9 +4,116 @@ import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import java.io.File
 import java.nio.file.Files
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.Test
 
 class CrossEnvTest {
+    @Test
+    fun addTargetsSyncsWorkspaceMemberPackages() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core", "packages/utils"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            File(workspaceRoot, "packages/utils").mkdirs()
+            File(workspaceRoot, "packages/utils/pyproject.toml").writeText(
+                """
+                [project]
+                name = "utils"
+
+                [tool.ppp.dependencies]
+                platforms = ["aarch64-apple-darwin"]
+                """.trimIndent(),
+            )
+
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.addTargets(null, listOf("windows")).getOrThrow()
+
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc"),
+                readTargets(File(workspaceRoot, "src/core/pyproject.toml")),
+            )
+            assertFalse(File(workspaceRoot, "src/windows/__init__.py").exists())
+            assertTrue(File(workspaceRoot, "src/core/src/windows/__init__.py").exists())
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc", "aarch64-apple-darwin"),
+                readTargets(File(workspaceRoot, "packages/utils/pyproject.toml")),
+            )
+            assertTrue(File(workspaceRoot, "packages/utils/src/windows/__init__.py").exists())
+        }
+    }
+
+    @Test
+    fun addPackageCreatesSourceFoldersForInheritedWorkspaceTargets() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.ppp.dependencies]
+            platforms = ["x86_64-pc-windows-msvc"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.addPackage("src/core", null, null).getOrThrow()
+
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc"),
+                readTargets(File(workspaceRoot, "src/core/pyproject.toml")),
+            )
+            assertTrue(File(workspaceRoot, "src/core/src/windows/__init__.py").exists())
+        }
+    }
+
+    @Test
+    fun removeTargetsSyncsWorkspaceMemberPackages() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.ppp.dependencies]
+            platforms = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+
+                [tool.ppp.dependencies]
+                platforms = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
+                """.trimIndent(),
+            )
+
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.removeTargets(null, listOf("windows")).getOrThrow()
+
+            assertEquals(
+                listOf("aarch64-apple-darwin"),
+                readTargets(File(workspaceRoot, "src/core/pyproject.toml")),
+            )
+        }
+    }
+
     @Test
     fun printResolvedPackageSpecContents() {
         withWorkspace(
@@ -32,6 +139,72 @@ class CrossEnvTest {
                 println(packageSpec)
             }
         }
+    }
+
+    @Test
+    fun addTargetsUsesPackageNameInsteadOfPackagePath() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.addTargets("core", listOf("windows")).getOrThrow()
+
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc"),
+                readTargets(File(workspaceRoot, "src/core/pyproject.toml")),
+            )
+            assertTrue(File(workspaceRoot, "src/core/src/windows/__init__.py").exists())
+            assertFalse(File(workspaceRoot, "src/windows/__init__.py").exists())
+        }
+    }
+
+    @Test
+    fun removeTargetsUsesPackageNameInsteadOfPackagePath() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+
+                [tool.ppp.dependencies]
+                platforms = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
+                """.trimIndent(),
+            )
+
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.removeTargets("core", listOf("windows")).getOrThrow()
+
+            assertEquals(
+                listOf("aarch64-apple-darwin"),
+                readTargets(File(workspaceRoot, "src/core/pyproject.toml")),
+            )
+        }
+    }
+
+    private fun readTargets(pyproject: File): List<String> {
+        return TomlEditor(pyproject.readText()).getArray("tool.ppp.dependencies", "platforms")
     }
 
     private fun withWorkspace(

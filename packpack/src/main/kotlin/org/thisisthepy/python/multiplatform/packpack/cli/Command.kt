@@ -65,7 +65,7 @@ private val KNOWN_COMMANDS =
         "--version",
     )
 
-private val DYNAMIC_PACKAGE_OPERATIONS = setOf("add", "remove", "sync", "tree")
+private val DYNAMIC_PACKAGE_OPERATIONS = setOf("add", "remove", "sync", "tree", "target")
 
 fun main(args: Array<String>) {
     if (args.size >= 2) {
@@ -74,8 +74,10 @@ fun main(args: Array<String>) {
 
         if (firstArg !in KNOWN_COMMANDS && secondArg in DYNAMIC_PACKAGE_OPERATIONS) {
             val remainingArgs = args.drop(2)
-
-            return DynamicPackageCommand(firstArg, secondArg).main(remainingArgs)
+            return when (secondArg) {
+                "target" -> TargetCommand(firstArg).main(remainingArgs)
+                else -> DynamicPackageCommand(firstArg, secondArg).main(remainingArgs)
+            }
         }
     }
 
