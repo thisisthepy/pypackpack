@@ -532,43 +532,6 @@ class CrossEnv {
         packagePyproject.writeText(packageEditor.toTomlString())
     }
 
-    private fun createTargetSourceFolders(
-        packageDir: File?,
-        targets: List<String>,
-    ) {
-        if (packageDir == null) {
-            return
-        }
-        targets
-            .map { Platforms.getPlatformFamily(it) }
-            .distinct()
-            .forEach { family ->
-                writeFileIfMissing(File(packageDir, "src/$family/__init__.py"), "")
-            }
-    }
-
-    private fun removeTargetsFromPackage(
-        packagePyproject: File,
-        targets: List<String>,
-    ) {
-        if (!packagePyproject.exists()) {
-            return
-        }
-
-        val packageEditor = TomlEditor(packagePyproject.readText())
-        val tablePath = "tool.ppp.dependencies"
-        if (!packageEditor.hasTable(tablePath)) {
-            return
-        }
-
-        packageEditor.removeFromArray(
-            tablePath = tablePath,
-            key = "platforms",
-            *targets.toTypedArray(),
-        )
-        packagePyproject.writeText(packageEditor.toTomlString())
-    }
-
     private fun extractDependencyName(spec: String): String {
         val requirement = spec.substringBefore(';').trim()
         val match =

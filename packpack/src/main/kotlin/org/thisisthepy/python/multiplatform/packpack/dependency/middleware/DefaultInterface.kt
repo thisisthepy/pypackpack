@@ -190,13 +190,15 @@ class DefaultInterface : BaseInterface {
         val normalizedTargets = normalizeTreeTargets(targets)
 
         return runCatching {
-            val baseDir = findWorkspaceProjectRoot()
+            val baseDir = findProjectRoot()
             val options = extraArgs.orEmpty()
 
             for (target in normalizedTargets) {
                 val callArgs = options + mapOf("python-platform" to target)
                 val result =
-                    runBlocking { backend.showDependencyTree(null, callArgs, baseDir) }
+                    runBlocking {
+                        backend.showDependencyTree(null, callArgs, baseDir)
+                    }
                 println(result.getOrThrow())
             }
         }.onFailure {
