@@ -95,8 +95,12 @@ class Meson(
         return buildString {
             appendLine("project(")
             appendLine("  ${projectName.toMesonString()},")
-            if (extensionModules.isNotEmpty()) {
-                appendLine("  'c',")
+            extensionModules
+                .map { it.language }
+                .distinct()
+                .sortedWith(compareBy { if (it == "c") 0 else 1 })
+                .forEach { language ->
+                    appendLine("  ${language.toMesonString()},")
             }
             appendLine("  version: ${version.toMesonString()},")
             appendLine("  meson_version: '>=1.0.0',")
@@ -170,12 +174,14 @@ class Meson(
             .flatMap { packageDir ->
                 packageDir
                     .walkTopDown()
-                    .filter { it.isFile && it.extension == "c" }
-                    .map { source ->
+                    .filter { it.isFile }
+                    .mapNotNull { source ->
+                        val language = source.extensionLanguage() ?: return@mapNotNull null
                         ExtensionModule(
                             name = source.nameWithoutExtension,
                             path = project.relativePath(source),
                             subdir = packageDir.installSubdir(source.parentFile),
+                            language = language,
                         )
                     }
             }.sortedWith(compareBy<ExtensionModule> { it.subdir }.thenBy { it.name })
@@ -198,6 +204,13 @@ class Meson(
 
     private fun File.isPythonInstallSource(): Boolean = extension == "py" || extension == "pyi" || name == "py.typed"
 
+    private fun File.extensionLanguage(): String? =
+        when (extension.lowercase()) {
+            "c" -> "c"
+            "cc", "cpp", "cxx" -> "cpp"
+            else -> null
+        }
+
     private fun String.toMesonString(): String = "'${replace("\\", "\\\\").replace("'", "\\'")}'"
 
     private data class InstallSourceGroup(
@@ -209,6 +222,7 @@ class Meson(
         val name: String,
         val path: String,
         val subdir: String,
+        val language: String,
     )
 
     suspend fun executeCommand(

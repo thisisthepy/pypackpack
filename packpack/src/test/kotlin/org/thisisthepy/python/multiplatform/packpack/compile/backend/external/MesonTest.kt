@@ -76,6 +76,35 @@ class MesonTest {
     }
 
     @Test
+    fun makeMesonBuild_generatesCppExtensionTargets() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "cpp-only"
+                version = "0.1.0"
+                """.trimIndent(),
+            )
+
+            val packageDir = File(this, "src/main/cpp_only")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "_cppcalc.cpp").writeText("/* cpp extension */\n")
+
+            val result = Meson().makeMesonBuild(absolutePath)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
+            val content = result.getOrThrow()
+            assertTrue(content.contains("  'cpp',"), content)
+            assertFalse(content.contains("  'c',"), content)
+            assertTrue(content.contains("py.extension_module("), content)
+            assertTrue(content.contains("  '_cppcalc',"), content)
+            assertTrue(content.contains("  files('src/main/cpp_only/_cppcalc.cpp'),"), content)
+            assertTrue(content.contains("  subdir: 'cpp_only',"), content)
+        }
+    }
+
+    @Test
     fun makeMesonBuild_doesNotOverwriteExistingMesonBuild() {
         withWorkspace {
             File(this, "pyproject.toml").writeText(
