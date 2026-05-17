@@ -5,6 +5,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendT
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.time.Year
@@ -190,7 +191,7 @@ class DefaultInterface : BaseInterface {
         val normalizedTargets = normalizeTreeTargets(targets)
 
         return runCatching {
-            val baseDir = findWorkspaceProjectRoot()
+            val baseDir = findProjectRoot()
             val options = extraArgs.orEmpty()
 
             for (target in normalizedTargets) {
@@ -328,35 +329,5 @@ internal object MarkerPolicy {
         val system = descriptor.markerSystem
         val machine = descriptor.markerMachine
         return "platform_system == '$system' and platform_machine == '$machine'"
-    }
-}
-
-internal fun findWorkspaceProjectRoot(startDir: File = File(System.getProperty("user.dir"))): File? {
-    var dir = startDir
-    while (true) {
-        if (File(dir, PYPROJECT_FILE).exists()) {
-            return dir
-        }
-        val parent = dir.parentFile ?: return null
-        dir = parent
-    }
-}
-
-internal fun resolveWorkspaceRootForPackage(
-    packageName: String,
-    startDir: File = File(System.getProperty("user.dir")),
-): File {
-    var dir = startDir
-    while (true) {
-        val pyproject = File(dir, PYPROJECT_FILE)
-        val packageDir = File(dir, packageName)
-        if (pyproject.exists() && packageDir.exists() && packageDir.isDirectory) {
-            return dir
-        }
-
-        val parent =
-            dir.parentFile
-                ?: throw IllegalStateException("Unable to resolve workspace root for package '$packageName'")
-        dir = parent
     }
 }

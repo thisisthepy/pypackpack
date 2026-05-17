@@ -1,7 +1,8 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend
 
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
-import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
+import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import java.io.File
 
 /**
@@ -24,7 +25,7 @@ class DefaultInterface : BaseInterface {
             val buildDir = "build/packpack/single/debug"
             val overwrite = extraArgs?.get("overwrite")?.toBooleanStrictOrNull() ?: false
             val workspaceRoot = findWorkspaceRoot(File(System.getProperty("user.dir")))
-            val packageDir = resolveWorkspacePackage(workspaceRoot, packageName)
+            val packageDir = resolveWorkspacePackageDir(workspaceRoot, packageName)
 
             if (overwrite) {
                 File(packageDir, buildDir).deleteRecursively()
@@ -37,27 +38,11 @@ class DefaultInterface : BaseInterface {
             "Package '$packageName' compiled successfully."
         }
 
-    private fun findWorkspaceRoot(startDir: File): File {
-        var current: File? = startDir.canonicalFile
-        while (current != null) {
-            val pyproject = File(current, "pyproject.toml")
-            if (pyproject.isFile) {
-                val members = TomlEditor(pyproject.readText()).getArray("tool.uv.workspace", "members")
-                if (members.isNotEmpty()) {
-                    return current
-                }
-            }
-            current = current.parentFile
-        }
-
-        throw IllegalStateException("Workspace root not found. Run ppp build <package> inside a workspace.")
-    }
-
-    private fun resolveWorkspacePackage(
+    private fun resolveWorkspacePackageDir(
         workspaceRoot: File,
         packageName: String,
     ): File {
-        val members = TomlEditor(File(workspaceRoot, "pyproject.toml").readText()).getArray("tool.uv.workspace", "members")
+        val members = readWorkspaceMembers(workspaceRoot)
         val member =
             members.firstOrNull { it == packageName || File(it).name == packageName }
                 ?: throw IllegalArgumentException("Package '$packageName' is not a workspace member")

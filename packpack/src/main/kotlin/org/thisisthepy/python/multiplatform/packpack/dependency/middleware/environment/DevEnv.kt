@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.findWorkspaceProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot as findProjectRootDir
 import java.io.File
 
 /** Development environment management Handles dev dependencies for the project root */
@@ -23,7 +23,7 @@ class DevEnv {
      * @return Project root directory or null if not found
      */
     private fun findProjectRoot(): File? {
-        return findWorkspaceProjectRoot()
+        return findProjectRootDir()
     }
 
     /**
