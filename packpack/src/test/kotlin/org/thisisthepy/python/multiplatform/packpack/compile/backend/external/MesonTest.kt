@@ -97,6 +97,28 @@ class MesonTest {
         }
     }
 
+    @Test
+    fun makeMesonBuild_overwritesExistingMesonBuildWhenRequested() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                """.trimIndent(),
+            )
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(this, "meson.build").writeText("existing")
+
+            val result = Meson().makeMesonBuild(absolutePath, overwrite = true)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
+            assertEquals(result.getOrThrow(), File(this, "meson.build").readText())
+            assertTrue(File(this, "meson.build").readText().contains("'core'"))
+        }
+    }
+
     private fun withWorkspace(block: File.() -> Unit) {
         val testWorkDir = File("build/tmp/meson-test")
         testWorkDir.mkdirs()

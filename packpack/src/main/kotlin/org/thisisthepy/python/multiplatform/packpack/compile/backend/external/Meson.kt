@@ -29,10 +29,12 @@ class Meson(
         buildDir: String,
         options: List<String>?,
         workingDir: File? = null,
+        overwrite: Boolean = false,
     ): Result<String> =
         runCatching {
-            makeMesonBuild().getOrThrow()
-            executeCommand(listOf("setup", buildDir) + options.orEmpty(), workingDir).getOrThrow()
+            val projectDir = workingDir ?: File(System.getProperty("user.dir"))
+            makeMesonBuild(projectDir.absolutePath, overwrite).getOrThrow()
+            executeCommand(listOf("setup", buildDir) + options.orEmpty(), projectDir).getOrThrow()
         }
 
     suspend fun compile(
@@ -53,7 +55,10 @@ class Meson(
             executeCommand(listOf("install", "-C", buildDir, "--destdir=$workingDir/dist") + options.orEmpty(), workingDir).getOrThrow()
         }
 
-    private fun makeMesonBuild(projectDir: String = System.getProperty("user.dir")): Result<String> =
+    internal fun makeMesonBuild(
+        projectDir: String = System.getProperty("user.dir"),
+        overwrite: Boolean = false,
+    ): Result<String> =
         runCatching {
             val project = File(projectDir).absoluteFile
             require(project.isDirectory) { "Project directory not found: ${project.absolutePath}" }
@@ -62,7 +67,9 @@ class Meson(
             require(pyproject.isFile) { "pyproject.toml not found in ${project.absolutePath}" }
 
             val mesonBuild = File(project, "meson.build")
-            require(!mesonBuild.exists()) { "meson.build already exists: ${mesonBuild.absolutePath}" }
+            require(overwrite || !mesonBuild.exists()) {
+                "meson.build already exists: ${mesonBuild.absolutePath}. Use --overwrite to regenerate it."
+            }
 
             val content = buildMesonBuildContent(project, pyproject)
             mesonBuild.writeText(content)

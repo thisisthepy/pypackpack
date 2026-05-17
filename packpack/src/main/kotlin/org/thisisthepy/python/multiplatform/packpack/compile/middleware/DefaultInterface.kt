@@ -16,6 +16,7 @@ class DefaultInterface : BaseInterface {
         extraArgs: Map<String, String>?,
     ): Boolean {
         val backend = BackendDefaultInterface()
+
         return runBlocking {
             backend.compile(packageName, extraArgs)
         }.onFailure {
