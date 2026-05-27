@@ -26,18 +26,7 @@ class Downloader(
             socketTimeoutMillis = 300_000
         }
     },
-) {
-    init {
-        Runtime.getRuntime().addShutdownHook(object : Thread("Downloader-Shutdown") {
-            override fun run() {
-                try {
-                    httpClient.close()
-                } catch (_: Exception) {
-                }
-            }
-        })
-    }
-
+) : AutoCloseable {
     suspend fun download(spec: DownloadSpec): DownloadResult {
         return try {
             val tempDir = File(System.getProperty("java.io.tmpdir"), "pypackpack")
@@ -50,7 +39,7 @@ class Downloader(
             val response: HttpResponse = httpClient.get(spec.url)
             val statusCode = response.status.value
 
-            if (statusCode < 200 || statusCode > 299) {
+            if (statusCode !in 200..299) {
                 return DownloadResult(
                     false,
                     "",
@@ -67,7 +56,7 @@ class Downloader(
         }
     }
 
-    fun close() {
+    override fun close() {
         httpClient.close()
     }
 }

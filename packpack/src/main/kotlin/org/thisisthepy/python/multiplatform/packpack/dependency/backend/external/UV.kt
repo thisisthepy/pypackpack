@@ -5,10 +5,8 @@ import kotlinx.coroutines.withContext
 import org.thisisthepy.python.multiplatform.packpack.utils.DownloadSpec
 import org.thisisthepy.python.multiplatform.packpack.utils.Downloader
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.extractArchive
 import java.io.File
-import java.net.URL
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 
 /**
@@ -128,9 +126,11 @@ class UV {
 
             // Download the archive
             println("Downloading from: $downloadUrl")
-            val downloader = Downloader()
             val downloadSpec = DownloadSpec(downloadUrl, binaryName)
-            val downloadResult = downloader.download(downloadSpec)
+            val downloadResult =
+                Downloader().use { downloader ->
+                    downloader.download(downloadSpec)
+                }
 
             if (!downloadResult.success) {
                 throw RuntimeException("Download failed: ${downloadResult.error}")
@@ -139,7 +139,7 @@ class UV {
             val tempFile = File(downloadResult.filePath)
             try {
                 // Extract the archive
-                extractUvBinary(tempFile, installDir, binaryName.endsWith(".zip"))
+                extractArchive(tempFile, installDir, stripComponents = 1)
 
                 // Make binary executable on Unix systems
                 val uvBinary = getUVBinaryPath()
@@ -152,68 +152,6 @@ class UV {
                 tempFile.delete()
             }
         }
-
-    /**
-     * Extract UV binary from downloaded archive
-     */
-    private fun extractUvBinary(
-        archiveFile: File,
-        targetDir: File,
-        isZip: Boolean,
-    ) {
-        if (isZip) {
-            extractFromZip(archiveFile, targetDir)
-        } else {
-            extractFromTarGz(archiveFile, targetDir)
-        }
-    }
-
-    /**
-     * Extract UV binary from ZIP archive (Windows)
-     */
-    private fun extractFromZip(
-        zipFile: File,
-        targetDir: File,
-    ) {
-        val process =
-            ProcessBuilder("unzip", "-j", zipFile.absolutePath, "*/uv.exe", "-d", targetDir.absolutePath)
-                .redirectErrorStream(true)
-                .start()
-
-        val exitCode = process.waitFor()
-        if (exitCode != 0) {
-            // Fallback: try with Java's built-in ZIP support
-            java.util.zip.ZipInputStream(zipFile.inputStream()).use { zis ->
-                var entry = zis.nextEntry
-                while (entry != null) {
-                    if (entry.name.endsWith("uv.exe")) {
-                        val outputFile = File(targetDir, "uv.exe")
-                        Files.copy(zis, outputFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                        break
-                    }
-                    entry = zis.nextEntry
-                }
-            }
-        }
-    }
-
-    /**
-     * Extract UV binary from TAR.GZ archive (Unix systems)
-     */
-    private fun extractFromTarGz(
-        tarGzFile: File,
-        targetDir: File,
-    ) {
-        val process =
-            ProcessBuilder("tar", "-xzf", tarGzFile.absolutePath, "--strip-components=1", "-C", targetDir.absolutePath)
-                .redirectErrorStream(true)
-                .start()
-
-        val exitCode = process.waitFor()
-        if (exitCode != 0) {
-            throw RuntimeException("Failed to extract UV binary from archive")
-        }
-    }
 
     /**
      * Execute UV command with given arguments
