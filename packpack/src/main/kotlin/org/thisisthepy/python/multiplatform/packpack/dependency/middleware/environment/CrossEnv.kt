@@ -3,8 +3,9 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.findWorkspaceProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 
@@ -349,7 +350,7 @@ class CrossEnv {
         return if (pyproject.exists()) {
             baseDir
         } else {
-            findWorkspaceProjectRoot(baseDir)
+            findProjectRoot(baseDir)
                 ?: throw IllegalStateException("No pyproject.toml found in current directory or parent directories")
         }
     }
@@ -369,7 +370,7 @@ class CrossEnv {
     ): PackageSpec {
         val resolvedWorkspaceRoot =
             workspaceRoot
-                ?: findWorkspaceProjectRoot()
+                ?: findProjectRoot()
                 ?: throw IllegalStateException("No pyproject.toml found in current directory or parent directories")
         val trimmed = packageInput.trim()
         require(trimmed.isNotEmpty()) { "Package name cannot be blank" }
@@ -422,16 +423,6 @@ class CrossEnv {
             directory = packageDir,
             workspaceRoot = resolvedWorkspaceRoot,
         )
-    }
-
-    private fun readWorkspaceMembers(workspaceRoot: File): List<String> {
-        val workspacePyproject = File(workspaceRoot, PYPROJECT_FILE)
-        if (!workspacePyproject.exists()) {
-            return emptyList()
-        }
-
-        val editor = TomlEditor(workspacePyproject.readText())
-        return editor.getArray("tool.uv.workspace", "members")
     }
 
     private fun createPackageScaffold(packageSpec: PackageSpec) {
