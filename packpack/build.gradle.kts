@@ -19,6 +19,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    runtimeOnly("org.slf4j:slf4j-nop:2.0.17")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
