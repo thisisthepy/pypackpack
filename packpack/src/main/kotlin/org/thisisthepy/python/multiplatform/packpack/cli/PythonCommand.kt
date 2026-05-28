@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.PrintMessage
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 
 class PythonCommand : CliktCommand(name = "python") {
     override fun help(context: Context) = "Manage Python versions using UV."
@@ -78,6 +79,7 @@ class PythonInstallCommand : CliktCommand(name = "install") {
     override fun help(context: Context) = "Install a specific Python version via UV."
 
     val version by argument(help = "Python version to install")
+    val targetPlatform by argument(help = "Target platform for the Python version (Default: Host Platform)").optional()
 
     override fun run() {
         if (!validatePythonVersion(version)) {
@@ -90,7 +92,7 @@ class PythonInstallCommand : CliktCommand(name = "install") {
             failureMessage = "Failed to install Python version $version",
             successMessage = "Successfully installed Python $version",
         ) {
-            middleware.installPythonVersion(version)
+            middleware.installPythonVersion(version, targetPlatform)
         }
     }
 }

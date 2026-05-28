@@ -96,12 +96,15 @@ class DefaultInterfaceInitTest {
 
         override suspend fun lockDependencies(projectRoot: String): Result<String> = Result.success("ok")
 
-        override suspend fun listPython(): Result<String> = Result.success("ok")
+        override fun listPython(): Result<String> = Result.success("ok")
 
-        override suspend fun findPython(pythonVersion: String): Result<String> = Result.success("ok")
+        override fun findPython(pythonVersion: String): Result<String> = Result.success("ok")
 
-        override suspend fun installPython(pythonVersion: String): Result<String> = Result.success("ok")
+        override suspend fun installPython(
+            pythonVersion: String,
+            targetPlatform: String,
+        ): Result<String> = Result.success("ok")
 
-        override suspend fun uninstallPython(pythonVersion: String): Result<String> = Result.success("ok")
+        override fun uninstallPython(pythonVersion: String): Result<String> = Result.success("ok")
     }
 }

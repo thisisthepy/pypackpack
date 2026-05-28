@@ -1,9 +1,10 @@
 package org.thisisthepy.python.multiplatform.packpack.utils
 
+import com.github.luben.zstd.ZstdInputStream
 import java.io.EOFException
 import java.io.File
 import java.util.zip.GZIPInputStream
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
 
 fun extractArchive(
     archiveFile: File,
@@ -17,9 +18,8 @@ fun extractArchive(
 
     when {
         fileName.endsWith(".zip") -> {
-            ZipInputStream(archiveFile.inputStream().buffered()).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
+            ZipFile(archiveFile).use { zip ->
+                zip.entries().asSequence().forEach { entry ->
                     val entryName = stripArchivePath(entry.name, stripComponents)
                     if (entryName != null) {
                         val outputFile = outputFileForArchiveEntry(destDir, entryName)
@@ -27,57 +27,74 @@ fun extractArchive(
                             outputFile.mkdirs()
                         } else {
                             outputFile.parentFile?.mkdirs()
-                            outputFile.outputStream().use { output -> zip.copyTo(output) }
+                            zip.getInputStream(entry).use { input ->
+                                outputFile.outputStream().use { output -> input.copyTo(output) }
+                            }
                         }
                     }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
                 }
             }
         }
 
-        fileName.endsWith(".tar.gz") -> {
-            GZIPInputStream(archiveFile.inputStream().buffered()).use { tar ->
-                while (true) {
-                    val header = tar.readNBytes(512)
-                    if (header.isEmpty()) break
-                    if (header.size < 512) throw EOFException("Incomplete tar header in ${archiveFile.absolutePath}")
-                    if (header.all { it == 0.toByte() }) break
-
-                    val entryName = stripArchivePath(tarEntryName(header), stripComponents)
-                    val size = tarEntrySize(header)
-                    val typeFlag = header[156].toInt().toChar()
-
-                    if (entryName == null) {
-                        tar.skipNBytes(size)
+        fileName.endsWith(".tar.gz") || fileName.endsWith(".tar.zst") -> {
+            archiveFile.inputStream().buffered().use { input ->
+                val tarInput =
+                    if (fileName.endsWith(".tar.gz")) {
+                        GZIPInputStream(input)
                     } else {
-                        val outputFile = outputFileForArchiveEntry(destDir, entryName)
-                        when (typeFlag) {
-                            '5' -> outputFile.mkdirs()
-                            '0', '\u0000' -> {
-                                outputFile.parentFile?.mkdirs()
-                                outputFile.outputStream().use { output ->
-                                    var remaining = size
-                                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                                    while (remaining > 0) {
-                                        val read = tar.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                                        if (read == -1) throw EOFException("Incomplete tar entry $entryName")
-                                        output.write(buffer, 0, read)
-                                        remaining -= read
+                        ZstdInputStream(input)
+                    }
+
+                tarInput.use { tar ->
+                    while (true) {
+                        val header = tar.readNBytes(512)
+                        if (header.isEmpty()) break
+                        if (header.size < 512) throw EOFException("Incomplete tar header in ${archiveFile.absolutePath}")
+                        if (header.all { it == 0.toByte() }) break
+
+                        val entryName = stripArchivePath(tarEntryName(header), stripComponents)
+                        val size = tarEntrySize(header)
+                        val typeFlag = header[156].toInt().toChar()
+
+                        if (entryName == null) {
+                            tar.skipNBytes(size)
+                        } else {
+                            val outputFile = outputFileForArchiveEntry(destDir, entryName)
+                            when (typeFlag) {
+                                '5' -> {
+                                    outputFile.mkdirs()
+                                }
+
+                                '0', '\u0000' -> {
+                                    outputFile.parentFile?.mkdirs()
+                                    outputFile.outputStream().use { output ->
+                                        var remaining = size
+                                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                        while (remaining > 0) {
+                                            val read = tar.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                                            if (read == -1) throw EOFException("Incomplete tar entry $entryName")
+                                            output.write(buffer, 0, read)
+                                            remaining -= read
+                                        }
                                     }
                                 }
-                            }
-                            else -> tar.skipNBytes(size)
-                        }
-                    }
 
-                    val padding = (512 - size % 512) % 512
-                    if (padding > 0) tar.skipNBytes(padding)
+                                else -> {
+                                    tar.skipNBytes(size)
+                                }
+                            }
+                        }
+
+                        val padding = (512 - size.mod(512)).mod(512)
+                        if (padding > 0) tar.skipNBytes(padding.toLong())
+                    }
                 }
             }
         }
 
-        else -> throw IllegalArgumentException("Unsupported archive format: ${archiveFile.name}")
+        else -> {
+            throw IllegalArgumentException("Unsupported archive format: ${archiveFile.name}")
+        }
     }
 }
 

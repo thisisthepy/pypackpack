@@ -10,6 +10,7 @@ import java.io.File
 data class DownloadSpec(
     val url: String,
     val fileName: String,
+    val destDir: File = File(System.getProperty("java.io.tmpdir"), "pypackpack"),
 )
 
 data class DownloadResult(
@@ -29,12 +30,11 @@ class Downloader(
 ) : AutoCloseable {
     suspend fun download(spec: DownloadSpec): DownloadResult {
         return try {
-            val tempDir = File(System.getProperty("java.io.tmpdir"), "pypackpack")
-            if (!tempDir.exists() && !tempDir.mkdirs()) {
-                return DownloadResult(false, "", "Failed to create temporary directory")
+            if (!spec.destDir.exists() && !spec.destDir.mkdirs()) {
+                return DownloadResult(false, "", "Failed to create destination directory")
             }
 
-            val outputFile = File(tempDir, spec.fileName)
+            val outputFile = File(spec.destDir, spec.fileName)
 
             val response: HttpResponse = httpClient.get(spec.url)
             val statusCode = response.status.value

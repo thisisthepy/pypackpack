@@ -6,7 +6,7 @@ import java.io.File
 /** UV implementation of backend interface */
 open class UVInterface(
     private val uv: UV = UV(),
-) : BaseInterface {
+) : DefaultInterface() {
     /** Initialize UV backend */
     override fun initialize() {
         // UV initialization is handled by the UV class
@@ -159,18 +159,18 @@ open class UVInterface(
             return executeCommand(command, workingDir)
         }
 
-    /** List available Python versions */
-    override suspend fun listPython(): Result<String> = executeCommand(listOf("python", "list"))
+    // /** List available Python versions */
+    // override suspend fun listPython(): Result<String> = executeCommand(listOf("python", "list"))
 
-    /** Find a specific Python version */
-    override suspend fun findPython(pythonVersion: String): Result<String> = executeCommand(listOf("python", "find", pythonVersion))
+    // /** Find a specific Python version */
+    // override suspend fun findPython(pythonVersion: String): Result<String> = executeCommand(listOf("python", "find", pythonVersion))
 
-    /** Install a specific Python version */
-    override suspend fun installPython(pythonVersion: String): Result<String> = executeCommand(listOf("python", "install", pythonVersion))
+    // /** Install a specific Python version */
+    // override suspend fun installPython(pythonVersion: String): Result<String> = executeCommand(listOf("python", "install", pythonVersion))
 
-    /** Uninstall a specific Python version */
-    override suspend fun uninstallPython(pythonVersion: String): Result<String> =
-        executeCommand(listOf("python", "uninstall", pythonVersion))
+    // /** Uninstall a specific Python version */
+    // override suspend fun uninstallPython(pythonVersion: String): Result<String> =
+    //     executeCommand(listOf("python", "uninstall", pythonVersion))
 
     /** ExecuteCommand to use UV class */
     open suspend fun executeCommand(
