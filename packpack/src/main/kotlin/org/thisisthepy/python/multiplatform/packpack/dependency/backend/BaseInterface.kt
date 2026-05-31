@@ -127,28 +127,31 @@ interface BaseInterface {
      * List available Python versions
      * @return Result containing Python versions
      */
-    suspend fun listPython(): Result<String>
+    fun listPython(): Result<String>
 
     /**
      * Find a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version search
      */
-    suspend fun findPython(pythonVersion: String): Result<String>
+    fun findPython(pythonVersion: String): Result<String>
 
     /**
      * Install a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version installation
      */
-    suspend fun installPython(pythonVersion: String): Result<String>
+    suspend fun installPython(
+        pythonVersion: String,
+        targetPlatform: String?,
+    ): Result<String>
 
     /**
      * Uninstall a specific Python version
      * @param pythonVersion Python version
      * @return Result of Python version uninstallation
      */
-    suspend fun uninstallPython(pythonVersion: String): Result<String>
+    fun uninstallPython(pythonVersion: String): Result<String>
 
     /**
      * Helper method to execute command

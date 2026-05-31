@@ -259,7 +259,7 @@ class DefaultInterface : BaseInterface {
 
     override fun findPythonVersion(pythonVersion: String): Boolean = devEnvService().findPythonVersion(pythonVersion)
 
-    override fun installPythonVersion(pythonVersion: String): Boolean = devEnvService().installPythonVersion(pythonVersion)
+    override fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Result<String> = devEnvService().installPythonVersion(pythonVersion, targetPlatform)
 
     override fun uninstallPythonVersion(pythonVersion: String): Boolean = devEnvService().uninstallPythonVersion(pythonVersion)
 

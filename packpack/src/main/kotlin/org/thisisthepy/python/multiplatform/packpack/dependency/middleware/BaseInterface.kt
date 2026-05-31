@@ -127,7 +127,7 @@ interface BaseInterface {
     fun findPythonVersion(pythonVersion: String): Boolean
 
     /** Install a Python version */
-    fun installPythonVersion(pythonVersion: String): Boolean
+    fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Result<String>
 
     /** Uninstall a Python version */
     fun uninstallPythonVersion(pythonVersion: String): Boolean

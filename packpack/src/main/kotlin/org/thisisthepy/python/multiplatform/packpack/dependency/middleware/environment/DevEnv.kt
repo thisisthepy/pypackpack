@@ -2,7 +2,8 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
-import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot as findProjectRootDir
+import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 
 /** Development environment management Handles dev dependencies for the project root */
@@ -16,14 +17,6 @@ class DevEnv {
      */
     fun initialize(backend: BaseInterface) {
         this.backend = backend
-    }
-
-    /**
-     * Find project root directory
-     * @return Project root directory or null if not found
-     */
-    private fun findProjectRoot(): File? {
-        return findProjectRootDir()
     }
 
     /**
@@ -177,15 +170,15 @@ class DevEnv {
      * @param pythonVersion Python version
      * @return Success status
      */
-    fun installPythonVersion(pythonVersion: String): Boolean =
+    fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Result<String> =
         runBlocking {
+            val targetPlatform = targetPlatform ?: Platforms.detectHostTarget()
+
             backend
-                .installPython(pythonVersion)
+                .installPython(pythonVersion, targetPlatform)
                 .onSuccess {
                     println("Installed Python version $pythonVersion")
-                }.onFailure { error ->
-                    println("Failed to install Python version $pythonVersion: ${error.message}")
-                }.isSuccess
+                }
         }
 
     /**
