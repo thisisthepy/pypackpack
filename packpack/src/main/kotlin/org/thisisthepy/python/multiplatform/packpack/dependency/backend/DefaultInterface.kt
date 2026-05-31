@@ -22,11 +22,15 @@ abstract class DefaultInterface : BaseInterface {
         targetPlatform: String?,
     ): Result<String> {
         if (pythonVersion != "3.13") {
-            throw RuntimeException("Only Python 3.13 is supported due to python-mutliplatform limitations")
+            return Result.failure(IllegalArgumentException("Only Python 3.13 is supported due to python-mutliplatform limitations"))
         } // TODO: Remove when python-multiplatform supports more versions
 
+        val targetPlatform =
+            Platforms.normalizeTarget(targetPlatform ?: Platforms.detectHostTarget())
+                ?: return Result.failure(IllegalArgumentException("Unsupported target platform '$targetPlatform'"))
+
         val (downloadFileName, fileName) =
-            when (val targetPlatform = Platforms.normalizeTarget(targetPlatform ?: Platforms.detectHostTarget())!!) {
+            when (targetPlatform) {
                 "windows", "x86_64-pc-windows-msvc" -> {
                     "cpython-3.13.0+20241008-x86_64-pc-windows-msvc-shared-pgo-full.tar.zst" to "x86_64-pc-windows-msvc"
                 }
@@ -64,7 +68,7 @@ abstract class DefaultInterface : BaseInterface {
                 }
 
                 else -> {
-                    return Result.failure(IllegalArgumentException("Unsupported target platform: $targetPlatform"))
+                    return Result.failure(IllegalArgumentException("Unsupported target platform '$targetPlatform'"))
                 }
             }
         val baseUrl = "https://github.com/thisisthepy/python-multiplatform/raw/release/binary"
@@ -87,7 +91,7 @@ abstract class DefaultInterface : BaseInterface {
                         "arm64-apple-ios" -> "ios_arm64"
                         "arm64-apple-ios-simulator" -> "ios_simulator_arm64"
                         "x86_64-apple-ios-simulator" -> "ios_simulator_x86_64"
-                        else -> return Result.failure(IllegalArgumentException("Unsupported target platform: $targetPlatform"))
+                        else -> return Result.failure(IllegalArgumentException("Unsupported target platform '$targetPlatform'"))
                     }
                 File(findProjectRoot(), dirName)
             }

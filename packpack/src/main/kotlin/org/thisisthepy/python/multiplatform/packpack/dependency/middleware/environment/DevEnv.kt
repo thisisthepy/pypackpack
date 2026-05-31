@@ -170,7 +170,7 @@ class DevEnv {
      * @param pythonVersion Python version
      * @return Success status
      */
-    fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Boolean =
+    fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Result<String> =
         runBlocking {
             val targetPlatform = targetPlatform ?: Platforms.detectHostTarget()
 
@@ -178,9 +178,7 @@ class DevEnv {
                 .installPython(pythonVersion, targetPlatform)
                 .onSuccess {
                     println("Installed Python version $pythonVersion")
-                }.onFailure { error ->
-                    println("Failed to install Python version $pythonVersion: ${error.message}")
-                }.isSuccess
+                }
         }
 
     /**

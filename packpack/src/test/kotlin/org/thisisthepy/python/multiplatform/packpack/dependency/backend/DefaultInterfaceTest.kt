@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,6 +58,31 @@ class DefaultInterfaceTest {
     }
 
     @Test
+    fun installPython_returnsFailureForUnsupportedPythonVersion() =
+        runBlocking {
+            val backend = TestDefaultInterface(tempDir)
+
+            val result = backend.installPython("3.12", "macos")
+
+            assertTrue(result.isFailure)
+            assertEquals(
+                "Only Python 3.13 is supported due to python-mutliplatform limitations",
+                result.exceptionOrNull()?.message,
+            )
+        }
+
+    @Test
+    fun installPython_returnsFailureForUnsupportedTargetPlatform() =
+        runBlocking {
+            val backend = TestDefaultInterface(tempDir)
+
+            val result = backend.installPython("3.13", "unknown-target")
+
+            assertTrue(result.isFailure)
+            assertEquals("Unsupported target platform: unknown-target", result.exceptionOrNull()?.message)
+        }
+
+    @Test
     fun uninstallPython_removesInstalledVersion() {
         val pythonDir = File(tempDir, "3.12")
         File(pythonDir, "bin").mkdirs()
@@ -73,11 +99,6 @@ class DefaultInterfaceTest {
         private val root: File,
     ) : DefaultInterface() {
         override fun pythonInstallRoot(): File = root
-
-        override suspend fun installPython(
-            pythonVersion: String,
-            targetPlatform: String,
-        ): Result<String> = Result.success("ok")
 
         override fun initialize() = Unit
 

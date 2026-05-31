@@ -35,7 +35,7 @@ class PythonUseCommand : CliktCommand(name = "use") {
 
         val middleware = requireMiddleware()
         runBooleanCommand(
-            progressMessage = "Changing Python version to $version...",
+            progressMessage = "Changing Python version to $version",
             failureMessage = "Failed to change Python version to $version",
             successMessage = "Changed Python version to $version",
         ) {
@@ -50,7 +50,7 @@ class PythonListCommand : CliktCommand(name = "list") {
     override fun run() {
         val middleware = requireMiddleware()
         runBooleanCommand(
-            progressMessage = "Fetching available Python versions...",
+            progressMessage = "Fetching available Python versions",
             failureMessage = "Failed to list Python versions",
         ) {
             middleware.listPythonVersions()
@@ -87,10 +87,10 @@ class PythonInstallCommand : CliktCommand(name = "install") {
         }
 
         val middleware = requireMiddleware()
-        runBooleanCommand(
-            progressMessage = "Installing Python $version...",
-            failureMessage = "Failed to install Python version $version",
-            successMessage = "Successfully installed Python $version",
+        runResultCommand(
+            progressMessage = "Installing Python $version",
+            failurePrefix = "Failed to install Python version $version",
+            onSuccess = { echo("Successfully installed Python $version") },
         ) {
             middleware.installPythonVersion(version, targetPlatform)
         }
@@ -109,7 +109,7 @@ class PythonUninstallCommand : CliktCommand(name = "uninstall") {
 
         val middleware = requireMiddleware()
         runBooleanCommand(
-            progressMessage = "Uninstalling Python $version...",
+            progressMessage = "Uninstalling Python $version",
             failureMessage = "Failed to uninstall Python version $version",
             successMessage = "Successfully uninstalled Python $version",
         ) {
