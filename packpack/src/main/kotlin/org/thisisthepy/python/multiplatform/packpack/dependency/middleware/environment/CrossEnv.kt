@@ -13,7 +13,6 @@ private const val PYPROJECT_FILE = "pyproject.toml"
 
 class CrossEnv {
     private lateinit var backend: BaseInterface
-    private val targetWheelInspector = TargetWheelInspector()
 
     private data class PackageSpec(
         val input: String,
@@ -129,32 +128,6 @@ class CrossEnv {
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = resolveCrossTargets(packageSpec, targets)
             val options = extraArgs.orEmpty()
-            val wheelAvailabilityResult =
-                runBlocking {
-                    targetWheelInspector.inspectDependencies(
-                        workspaceRoot = workspaceRoot,
-                        packageRelativePath = packageSpec.relativePath,
-                        dependencies = dependencies,
-                        targets = normalizedTargets,
-                    )
-                }
-
-            wheelAvailabilityResult.exceptionOrNull()?.let { error ->
-                println("Warning: failed to inspect target wheel availability: ${error.message}")
-            }
-
-            val wheelAvailability = wheelAvailabilityResult.getOrDefault(emptyList())
-
-            wheelAvailability.forEach { report ->
-                val missingTargets = report.targets.filterNot { it.hasWheel }.map { it.target }
-                if (missingTargets.isNotEmpty()) {
-                    println(
-                        "Warning: '${report.dependencySpec}' has no compatible wheel on PyPI for targets: ${missingTargets.joinToString(
-                            ", ",
-                        )}",
-                    )
-                }
-            }
 
             for (target in normalizedTargets) {
                 val marker = MarkerPolicy.markerForTarget(target)
