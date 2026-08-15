@@ -3,6 +3,11 @@ plugins {
     kotlin("plugin.serialization") version "2.3.0"
     application
     id("org.graalvm.buildtools.native")
+    // `toolchain` is meant to delegate to this project rather than reimplement it, and until this
+    // is published nothing outside this repository can resolve it at all -- which is what has been
+    // blocking that delegation. `application` and the native-image plugin stay: the CLI binary and
+    // the library are the same code, and `docs/SPEC.md` calls for both.
+    `maven-publish`
 }
 
 group = "org.thisisthepy.python.multiplatform"
@@ -193,4 +198,35 @@ graalvmNative {
     // This avoids Gradle selecting a cached GraalVM toolchain that may not have a
     // working native-image binary.
     toolchainDetection.set(false)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Publishing
+//
+// `toolchain` consumes this as an ordinary Maven dependency. `docs/SPEC.md` names the coordinate,
+// and `group`/`version` above already carry it, so the publication only has to name the component.
+//
+// `from(components["java"])` and not the shadow/native artefacts: what a consumer needs is the
+// library, and the CLI binary is a different deliverable of the same source. Publishing the
+// application distribution here would put a launcher script and every runtime jar on the
+// consumer's compile classpath.
+//
+// The CLI's own dependencies do reach a consumer, because they are declared `implementation` and
+// that maps to POM scope `runtime`. Clikt is the visible one -- a library consumer resolves an
+// argument parser it never calls. Narrowing that means splitting the CLI out of this module, which
+// is a larger change than this, so it is recorded rather than done.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "packpack"
+            from(components["java"])
+            pom {
+                name.set("packpack")
+                description.set(
+                    "Python packaging for Kotlin Multiplatform: distribution management, " +
+                        "dependency resolution, cross-compilation environments and bundling."
+                )
+            }
+        }
+    }
 }
