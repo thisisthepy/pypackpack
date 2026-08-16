@@ -47,20 +47,35 @@ data class BundleRequest(
     val overwrite: Boolean = false,
 )
 
-/** What a bundler produced, in terms a caller (CLI, Gradle plugin, toolchain) can act on. */
+/**
+ * What a bundler produced, in terms a caller (CLI, Gradle plugin, toolchain) can act on.
+ *
+ * @param outputDir the conventional bundle output directory (`<package>/build/packpack/<type>/<buildType>/<buildLevel>`
+ *   unless [BundleRequest.outputDir] overrode it).
+ * @param manifestFile a machine-readable description of the bundle contents (JSON, TOML, ...). For
+ *   directory-shaped bundles ([BundleType.RESOURCE]) this is the whole story. For archive-shaped
+ *   bundles it still points at a file inside [outputDir] that a caller can inspect without opening the
+ *   archive; see [artifactFile] for the archive itself.
+ * @param fileCount count of payload files (the thing a human means by "how many files did this
+ *   bundle"), not counting bundler-internal metadata such as a `.dist-info` directory.
+ * @param artifactFile the single-file archive this bundle produced (e.g. the `.whl` for
+ *   [BundleType.SINGLE]), when the bundle shape is "one file" rather than "a directory tree". `null`
+ *   for directory-shaped bundles such as [BundleType.RESOURCE].
+ */
 data class BundleResult(
     val bundleType: BundleType,
     val outputDir: File,
     val manifestFile: File,
     val fileCount: Int,
+    val artifactFile: File? = null,
 )
 
 /**
  * Factory pattern base interface for bundling.
  *
- * Only [BundleType.RESOURCE] has an implementation today; the other four return a failed [Result]
- * naming themselves rather than throwing or silently succeeding, so a caller that asks for one gets
- * an actionable message instead of an empty directory.
+ * [BundleType.RESOURCE] and [BundleType.SINGLE] are implemented; the other three return a failed
+ * [Result] naming themselves rather than throwing or silently succeeding, so a caller that asks for
+ * one gets an actionable message instead of an empty directory.
  */
 interface BundlerInterface {
     fun bundle(request: BundleRequest): Result<BundleResult>
@@ -89,7 +104,7 @@ abstract class UnimplementedBundler(
     override fun bundle(request: BundleRequest): Result<BundleResult> =
         Result.failure(
             NotImplementedError(
-                "Bundle type '${type.id}' is not implemented yet. Only 'resource' is available today.",
+                "Bundle type '${type.id}' is not implemented yet. Only 'resource' and 'single' are available today.",
             ),
         )
 }

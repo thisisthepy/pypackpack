@@ -293,7 +293,8 @@ class ResourceBundlerTest {
 
     @Test
     fun create_reportsUnimplementedBundleTypesInsteadOfPretendingToWork() {
-        listOf(BundleType.BINARY, BundleType.FAT, BundleType.SINGLE, BundleType.PATCH).forEach { type ->
+        // BundleType.SINGLE is implemented (SingleWheelBundlerTest); only these three remain stubs.
+        listOf(BundleType.BINARY, BundleType.FAT, BundleType.PATCH).forEach { type ->
             val result =
                 BundlerInterface.create(type).bundle(
                     BundleRequest(packageDir = packageDir(name = "p-${type.name.lowercase()}"), target = "macos"),
