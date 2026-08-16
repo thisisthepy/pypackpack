@@ -95,10 +95,79 @@ class DefaultInterfaceTest {
         assertFalse(pythonDir.exists())
     }
 
+    // The following tests cover the install<->list/find/uninstall destination-mismatch fix:
+    // installPython may place the interpreter outside pythonInstallRoot() (e.g. a project's
+    // .venv), so it registers that location in a small registry file that find/list/uninstall
+    // now consult before falling back to scanning pythonInstallRoot() directly.
+
+    @Test
+    fun findPython_findsVersionRegisteredOutsideInstallRoot() {
+        val projectVenv = File(tempDir, "project/.venv")
+        projectVenv.mkdirs()
+        val registryRoot = File(tempDir, "registry")
+        val backend = TestDefaultInterface(registryRoot)
+        backend.register("3.13", projectVenv)
+
+        val result = backend.findPython("3.13")
+
+        assertTrue(result.isSuccess)
+        assertEquals(projectVenv.absolutePath, result.getOrThrow())
+    }
+
+    @Test
+    fun listPython_includesVersionsRegisteredOutsideInstallRoot() {
+        val projectVenv = File(tempDir, "project/.venv")
+        projectVenv.mkdirs()
+        val registryRoot = File(tempDir, "registry")
+        File(registryRoot, "3.11").mkdirs()
+        val backend = TestDefaultInterface(registryRoot)
+        backend.register("3.13", projectVenv)
+
+        val result = backend.listPython()
+
+        assertTrue(result.isSuccess)
+        assertEquals("3.11${System.lineSeparator()}3.13", result.getOrThrow())
+    }
+
+    @Test
+    fun uninstallPython_removesVersionRegisteredOutsideInstallRoot() {
+        val projectVenv = File(tempDir, "project/.venv")
+        projectVenv.mkdirs()
+        val registryRoot = File(tempDir, "registry")
+        val backend = TestDefaultInterface(registryRoot)
+        backend.register("3.13", projectVenv)
+
+        val result = backend.uninstallPython("3.13")
+
+        assertTrue(result.isSuccess)
+        assertFalse(projectVenv.exists())
+        // A subsequent find must fail cleanly instead of resurrecting a stale registry entry.
+        assertTrue(backend.findPython("3.13").isFailure)
+    }
+
+    @Test
+    fun findPython_fallsBackToInstallRootWhenNotRegistered() {
+        // No registry entry exists for this version; a directory placed straight under
+        // pythonInstallRoot() (as e.g. manual setup would do) must still be found.
+        val pythonDir = File(tempDir, "3.12")
+        pythonDir.mkdirs()
+        val backend = TestDefaultInterface(tempDir)
+
+        val result = backend.findPython("3.12")
+
+        assertTrue(result.isSuccess)
+        assertEquals(pythonDir.absolutePath, result.getOrThrow())
+    }
+
     private class TestDefaultInterface(
         private val root: File,
     ) : DefaultInterface() {
         override fun pythonInstallRoot(): File = root
+
+        fun register(
+            pythonVersion: String,
+            installDir: File,
+        ) = registerInstalledVersion(pythonVersion, installDir)
 
         override fun initialize() = Unit
 

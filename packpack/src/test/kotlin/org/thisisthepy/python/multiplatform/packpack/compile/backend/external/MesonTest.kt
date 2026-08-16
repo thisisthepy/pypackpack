@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend.external
 
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -145,6 +146,83 @@ class MesonTest {
             assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
             assertEquals(result.getOrThrow(), File(this, "meson.build").readText())
             assertTrue(File(this, "meson.build").readText().contains("'core'"))
+        }
+    }
+
+    // Regression coverage for: Meson.installMeson() existed but setup() never called it, so a
+    // build failed outright whenever `meson`/`ninja` weren't already on PATH. setup() must now
+    // install them first when isMesonInstalled() reports they are missing, and must skip that
+    // step entirely when they are already present.
+
+    @Test
+    fun setup_installsMesonWhenNotAlreadyInstalled() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                version = "0.1.0"
+                """.trimIndent(),
+            )
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+
+            val meson = RecordingMeson(mesonInstalled = false)
+
+            val projectDir = this
+            val result = runBlocking { meson.setup(buildDir = "build", options = null, workingDir = projectDir) }
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
+            assertTrue(meson.installMesonCalled, "installMeson() should have been called")
+            assertEquals(listOf("setup", "build"), meson.executedCommands.single())
+        }
+    }
+
+    @Test
+    fun setup_skipsInstallWhenMesonAlreadyInstalled() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                version = "0.1.0"
+                """.trimIndent(),
+            )
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+
+            val meson = RecordingMeson(mesonInstalled = true)
+
+            val projectDir = this
+            val result = runBlocking { meson.setup(buildDir = "build", options = null, workingDir = projectDir) }
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
+            assertFalse(meson.installMesonCalled, "installMeson() should not have been called")
+        }
+    }
+
+    private class RecordingMeson(
+        private val mesonInstalled: Boolean,
+    ) : Meson() {
+        var installMesonCalled = false
+            private set
+        val executedCommands = mutableListOf<List<String>>()
+
+        override fun isMesonInstalled(): Boolean = mesonInstalled
+
+        override suspend fun installMeson(): Result<String> {
+            installMesonCalled = true
+            return Result.success("installed")
+        }
+
+        override suspend fun executeCommand(
+            command: List<String>,
+            workingDir: File?,
+        ): Result<String> {
+            executedCommands.add(command)
+            return Result.success("ok")
         }
     }
 

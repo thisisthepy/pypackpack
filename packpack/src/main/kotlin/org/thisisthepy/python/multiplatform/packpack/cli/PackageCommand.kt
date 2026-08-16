@@ -51,17 +51,26 @@ class PackageRemoveCommand : BaseDependencyCommand(name = "remove") {
 class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
     override fun help(context: Context) = "Synchronize dependencies for a specific package."
 
+    // Unrecognized `--flag [value]` tokens are routed into rawArgs instead of erroring, so they
+    // can be forwarded to the underlying `uv` call. See parsePassthroughArgs' doc comment.
+    override val treatUnknownOptionsAsArgs: Boolean = true
+
     val packageName by argument(help = "Package name")
     val targets by option("--target", help = "Target platforms (--target windows linux macos)").varargValues().default(emptyList())
+    val rawArgs by argument(help = "Passthrough options for `uv sync` (must come before --target)").multiple()
 
     override fun run() {
         val middleware = requireMiddleware()
+        val (positionals, extraArgs) = parsePassthroughArgs(rawArgs)
+        if (positionals.isNotEmpty()) {
+            throw PrintMessage("Unexpected argument(s): ${positionals.joinToString(", ")}", statusCode = 1)
+        }
         runBooleanCommand(
             progressMessage = "Synchronizing dependencies for package '$packageName'...",
             failureMessage = "Failed to synchronize dependencies for package '$packageName'",
             successMessage = "Successfully synchronized dependencies for package '$packageName'",
         ) {
-            middleware.syncDependencies(packageName, targets, null)
+            middleware.syncDependencies(packageName, targets, extraArgs.ifEmpty { null })
         }
     }
 }
@@ -69,12 +78,21 @@ class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
 class PackageTreeCommand : BaseDependencyCommand(name = "tree") {
     override fun help(context: Context) = "Show the dependency tree for a specific package."
 
+    // Unrecognized `--flag [value]` tokens are routed into rawArgs instead of erroring, so they
+    // can be forwarded to the underlying `uv` call. See parsePassthroughArgs' doc comment.
+    override val treatUnknownOptionsAsArgs: Boolean = true
+
     val packageName by argument(help = "Package name")
     val targets by option("--target", help = "Target platforms (--target windows linux macos)").varargValues().default(emptyList())
+    val rawArgs by argument(help = "Passthrough options for `uv tree` (must come before --target)").multiple()
 
     override fun run() {
         val middleware = requireMiddleware()
-        if (!middleware.showDependencyTree(packageName, targets, null)) {
+        val (positionals, extraArgs) = parsePassthroughArgs(rawArgs)
+        if (positionals.isNotEmpty()) {
+            throw PrintMessage("Unexpected argument(s): ${positionals.joinToString(", ")}", statusCode = 1)
+        }
+        if (!middleware.showDependencyTree(packageName, targets, extraArgs.ifEmpty { null })) {
             throw PrintMessage("Failed to show dependency tree for package '$packageName'", statusCode = 1)
         }
     }
