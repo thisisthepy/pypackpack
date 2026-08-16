@@ -412,8 +412,6 @@ pypackpack <package name> tree [--target <target1> <target2> ...]
 
 #### Not yet implemented (target)
 
-- Creating and maintaining a dedicated venv per target for CrossEnv dependencies
-- A feature to preserve per-target install results in separate environments during the `sync` step
 - Cleaning up subpackage build directories on `python use`
 
 ### Build, bundling, deployment
@@ -459,15 +457,27 @@ Not yet implemented (target)
 
 - These are design targets; the current `build` command does not yet select between them (the `--level` CLI option is accepted but ignored).
 
-#### Bundle Type (`Not yet implemented (target)`)
+#### Bundle Type
 
-- `binary`: Produces a target-specific binary layout suitable for execution or embedding in an app.
-- `fat`: Produces a wheel-like archive that includes the current package together with its dependencies.
-- `single`: Produces a wheel-like archive that includes only the current package.
-- `patch`: Produces a patch archive containing only the changes relative to the existing primary bundle.
-- `resource`: Produces a resource layout consumable by python-multiplatform/toolchain.
+- `binary`: Produces a target-specific binary layout suitable for execution or embedding in an app. (**Not yet implemented**)
+- `fat`: Produces a wheel-like archive that includes the current package together with its dependencies. (**Implemented**)
+  - Depends on `pypackpack <package> sync --target <target>` having been run first to populate `<package>/build/crossenv/<target>` with vendored dependencies.
+  - Vendors workspace-local dependencies by name (matched against `tool.uv.workspace.members` entries) from their own built `dist/site-packages`.
+  - Vendors third-party dependencies from `<package>/build/crossenv/<target>`, where `sync` installs them via `uv pip install --target --python-platform`.
+  - Only the `instant` build level is currently supported.
+- `single`: Produces a wheel-like archive that includes only the current package. (**Implemented**)
+- `patch`: Produces a patch archive containing only the changes relative to the existing primary bundle. (**Implemented**)
+  - Reads the baseline wheel from `<package>/build/packpack/single/<buildType>/<buildLevel>`.
+  - Compares current package files (from `dist/site-packages`) against baseline entries by path and SHA-256.
+  - Records added and modified files in full; removed files in a text manifest (`PATCH-MANIFEST`).
+  - Only the `instant` build level is currently supported.
+  - Patch *version tracking* (base version, patch number) is still a design target, not yet implemented.
+- `resource`: Produces a resource layout consumable by python-multiplatform/toolchain. (**Implemented**)
+  - `bundle/resource/ResourceBundler.kt` is 413 lines and is dispatched from `BundlerInterface.kt:97`. It is the one bundle type another repository already consumes: `toolchain` calls it, and the payload it writes reaches the desktop jar's root and the APK's `assets/python/`.
+  - Excludes native extension modules deliberately, unlike the wheel bundlers.
+  - Validates a declared `minSdk` and records it in the manifest. It does not select a CPython build by API level, because no target-aware download exists here.
 
-- `bundle/binary/BinaryBundler.kt`, `bundle/fat/FatWheelBundler.kt`, `bundle/single/SingleWheelBundler.kt`, and `bundle/patch/WheelPatchBundler.kt` exist as empty placeholder classes; none are called from any command yet.
+- `bundle/binary/BinaryBundler.kt` remains an empty placeholder. `bundle/fat/FatWheelBundler.kt`, `bundle/single/SingleWheelBundler.kt`, `bundle/patch/WheelPatchBundler.kt` and `bundle/resource/ResourceBundler.kt` have real implementations.
 
 #### Package deployment (`Not yet implemented (target)`)
 
