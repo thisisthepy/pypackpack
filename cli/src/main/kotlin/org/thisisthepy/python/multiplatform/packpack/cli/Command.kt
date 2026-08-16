@@ -1,11 +1,11 @@
 package org.thisisthepy.python.multiplatform.packpack.cli
 
 import com.github.ajalt.clikt.core.*
-import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendType
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MiddlewareInterface
 
-internal fun createCliMiddleware(): MiddlewareInterface = BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
+internal fun createCliMiddleware(): MiddlewareInterface = FrontendInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
 
 class PyPackPackCommand : CliktCommand(name = "pypackpack") {
     override fun help(context: Context) =

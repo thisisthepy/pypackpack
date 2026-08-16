@@ -15,7 +15,7 @@ enum class BackendType {
  * Base interface for dependency management backend
  * Factory pattern for creating backend instances
  */
-interface BaseInterface {
+interface BackendInterface {
     /**
      * Initialize backend
      */
@@ -183,9 +183,9 @@ interface BaseInterface {
          * @param type Backend type
          * @return Backend instance
          */
-        fun create(type: BackendType): BaseInterface =
+        fun create(type: BackendType): BackendInterface =
             when (type) {
-                BackendType.UV -> UVInterface()
+                BackendType.UV -> UVBackend()
             }
     }
 }

@@ -3,7 +3,7 @@ package org.thisisthepy.python.multiplatform.packpack.cli
 import com.github.ajalt.clikt.core.*
 import com.github.ajalt.mordant.rendering.TextColors.*
 import com.github.ajalt.mordant.terminal.Terminal
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MiddlewareInterface
 
 private const val DEFAULT_TERMINAL_WIDTH = 100
 
@@ -28,7 +28,7 @@ internal fun CliktCommand.requireMiddleware(): MiddlewareInterface = currentCont
  * `override val treatUnknownOptionsAsArgs = true` plus an `argument().multiple()`) into the plain
  * positional values and the `--flag [value]` style options meant to be forwarded verbatim to the
  * underlying tool (`uv`), which already accepts an arbitrary `extraArgs` map and turns each entry
- * into `--key [value]` (see `UVInterface.appendOptions`).
+ * into `--key [value]` (see `UVBackend.appendOptions`).
  *
  * Assumption (documented here because the CLI-passthrough shape is not pinned down by
  * docs/SPEC.md beyond a list of example flag names): every flag every earlier draft of the spec

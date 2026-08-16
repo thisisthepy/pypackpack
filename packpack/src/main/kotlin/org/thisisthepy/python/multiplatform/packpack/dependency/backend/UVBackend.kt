@@ -4,9 +4,9 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external
 import java.io.File
 
 /** UV implementation of backend interface */
-open class UVInterface(
+open class UVBackend(
     private val uv: UV = UV(),
-) : DefaultInterface() {
+) : DefaultBackend() {
     /** Initialize UV backend */
     override fun initialize() {
         // UV initialization is handled by the UV class

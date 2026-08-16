@@ -1,6 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.resource
 
-import org.thisisthepy.python.multiplatform.packpack.bundle.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
@@ -57,7 +57,7 @@ import java.security.MessageDigest
  * The bundle is a *directory*, not an archive. Compressing it is `toolchain`'s business (it already
  * has a `Zip` task) and leaving it uncompressed keeps incremental staging cheap.
  */
-class ResourceBundler : BaseInterface {
+class ResourceBundler : BundlerInterface {
     private companion object {
         const val MANIFEST_FILE_NAME = "resource-manifest.json"
         const val PYTHON_ROOT = "python"

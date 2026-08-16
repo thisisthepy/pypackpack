@@ -1,12 +1,12 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.middleware
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.compile.backend.DefaultInterface as BackendDefaultInterface
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.DefaultBackend
 
 /**
  * Decorator pattern default interface for compilation middleware
  */
-class DefaultInterface : BaseInterface {
+class DefaultMiddleware : MiddlewareInterface {
     override fun initialize() {
         // Default initialization logic for compilation middleware
     }
@@ -15,7 +15,7 @@ class DefaultInterface : BaseInterface {
         packageName: String,
         extraArgs: Map<String, String>?,
     ): Boolean {
-        val backend = BackendDefaultInterface()
+        val backend = DefaultBackend()
 
         return runBlocking {
             backend.compile(packageName, extraArgs)

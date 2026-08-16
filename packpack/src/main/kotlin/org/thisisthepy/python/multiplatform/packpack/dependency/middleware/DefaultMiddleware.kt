@@ -9,20 +9,20 @@ import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.time.Year
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface as BackendBaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 
 private const val PYPROJECT_FILE = "pyproject.toml"
 
 /** Default middleware implementation */
-class DefaultInterface : BaseInterface {
-    private lateinit var backend: BackendBaseInterface
+class DefaultMiddleware : MiddlewareInterface {
+    private lateinit var backend: BackendInterface
     private lateinit var devEnv: DevEnv
     private lateinit var crossEnv: CrossEnv
 
     /** Initialize middleware */
     override fun initialize() {
         if (!::backend.isInitialized) {
-            backend = BackendBaseInterface.create(BackendType.UV)
+            backend = BackendInterface.create(BackendType.UV)
             backend.initialize()
         }
     }

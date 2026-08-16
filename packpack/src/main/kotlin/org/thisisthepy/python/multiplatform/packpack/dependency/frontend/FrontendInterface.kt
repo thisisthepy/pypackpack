@@ -1,6 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.frontend
 
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareBaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MiddlewareInterface
 
 /**
  * Frontend type enum
@@ -13,7 +13,7 @@ enum class FrontendType {
 /**
  * Base interface for frontend
  */
-interface BaseInterface {
+interface FrontendInterface {
     /**
      * Initialize frontend
      */
@@ -22,7 +22,7 @@ interface BaseInterface {
     /**
      * Get middleware interface
      */
-    fun getMiddleware(): MiddlewareBaseInterface
+    fun getMiddleware(): MiddlewareInterface
 
     companion object {
         /**
@@ -30,7 +30,7 @@ interface BaseInterface {
          * @param type Frontend type
          * @return Frontend instance
          */
-        fun create(type: FrontendType): BaseInterface =
+        fun create(type: FrontendType): FrontendInterface =
             when (type) {
                 FrontendType.CLI -> Cli()
                 FrontendType.GRADLE -> Gradle()

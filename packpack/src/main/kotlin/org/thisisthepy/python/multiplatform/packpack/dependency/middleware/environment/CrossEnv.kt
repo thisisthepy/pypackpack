@@ -1,7 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
@@ -12,7 +12,7 @@ import java.io.File
 private const val PYPROJECT_FILE = "pyproject.toml"
 
 class CrossEnv {
-    private lateinit var backend: BaseInterface
+    private lateinit var backend: BackendInterface
 
     private data class PackageSpec(
         val input: String,
@@ -22,7 +22,7 @@ class CrossEnv {
         val workspaceRoot: File,
     )
 
-    fun initialize(backend: BaseInterface) {
+    fun initialize(backend: BackendInterface) {
         this.backend = backend
     }
 

@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.compile.backend.external
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVBackend
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
@@ -11,7 +11,7 @@ import java.io.File
  * Meson build system wrapper (adapter pattern for Clang, MSVC, NDK, XCode)
  */
 open class Meson(
-    private val uv: UVInterface = UVInterface(),
+    private val uv: UVBackend = UVBackend(),
 ) {
     open suspend fun installMeson(): Result<String> {
         uv.executeCommand(listOf("tool", "install", "meson"))

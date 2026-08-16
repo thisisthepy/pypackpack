@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 /**
  * Covers the CLI-layer gap documented in docs/SPEC.md: `add`/`remove`/`sync`/`tree` used to
  * hardcode `extraArgs = null`, so there was no way to forward flags like `--dev` to the
- * underlying `uv` call even though the backend (UVInterface.appendOptions) already accepts an
+ * underlying `uv` call even though the backend (UVBackend.appendOptions) already accepts an
  * arbitrary extraArgs map. These tests exercise the passthrough wiring end to end through the
  * real Clikt parser, not just the parsePassthroughArgs helper in isolation
  * (see CommandExtensionTest for that).

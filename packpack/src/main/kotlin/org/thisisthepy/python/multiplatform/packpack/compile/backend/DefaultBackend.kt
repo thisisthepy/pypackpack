@@ -8,7 +8,7 @@ import java.io.File
 /**
  * Strategy pattern default interface for compilation backend
  */
-class DefaultInterface : BaseInterface {
+class DefaultBackend : BackendInterface {
     val meson = Meson()
 
     override fun initialize() {

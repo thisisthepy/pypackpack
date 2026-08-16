@@ -7,7 +7,7 @@ enum class BackendType {
 /**
  * Factory pattern base interface for compilation backend
  */
-interface BaseInterface {
+interface BackendInterface {
     fun initialize()
 
     suspend fun compile(

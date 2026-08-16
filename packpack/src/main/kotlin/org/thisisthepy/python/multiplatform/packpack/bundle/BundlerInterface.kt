@@ -62,11 +62,11 @@ data class BundleResult(
  * naming themselves rather than throwing or silently succeeding, so a caller that asks for one gets
  * an actionable message instead of an empty directory.
  */
-interface BaseInterface {
+interface BundlerInterface {
     fun bundle(request: BundleRequest): Result<BundleResult>
 
     companion object {
-        fun create(type: BundleType): BaseInterface =
+        fun create(type: BundleType): BundlerInterface =
             when (type) {
                 BundleType.BINARY -> BinaryBundler()
                 BundleType.FAT -> FatWheelBundler()
@@ -85,7 +85,7 @@ interface BaseInterface {
  */
 abstract class UnimplementedBundler(
     private val type: BundleType,
-) : BaseInterface {
+) : BundlerInterface {
     override fun bundle(request: BundleRequest): Result<BundleResult> =
         Result.failure(
             NotImplementedError(

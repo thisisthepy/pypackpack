@@ -5,7 +5,7 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
-import org.thisisthepy.python.multiplatform.packpack.compile.frontend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.compile.frontend.FrontendInterface
 import org.thisisthepy.python.multiplatform.packpack.compile.frontend.FrontendType
 
 class BuildCommand : CliktCommand(name = "build") {
@@ -19,7 +19,7 @@ class BuildCommand : CliktCommand(name = "build") {
     val overwrite by option("--overwrite", help = "Overwrite generated Meson files and build directory").flag()
 
     override fun run() {
-        val middleware = BaseInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
+        val middleware = FrontendInterface.create(FrontendType.CLI).apply { initialize() }.getMiddleware()
         runBooleanCommand(
             progressMessage = "Building package: $packageName with type: $type, level: $level, target: $target...",
             failureMessage = "Build failed for package: $packageName",

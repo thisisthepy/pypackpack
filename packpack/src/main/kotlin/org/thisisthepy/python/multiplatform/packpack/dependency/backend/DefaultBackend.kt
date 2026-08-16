@@ -7,7 +7,7 @@ import org.thisisthepy.python.multiplatform.packpack.utils.extractArchive
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
 import java.io.File
 
-abstract class DefaultInterface : BaseInterface {
+abstract class DefaultBackend : BackendInterface {
     protected open fun pythonInstallRoot(): File = File(System.getProperty("user.home"), ".pypackpack/python")
 
     /**

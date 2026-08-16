@@ -1,19 +1,19 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.frontend
 
-import org.thisisthepy.python.multiplatform.packpack.compile.middleware.DefaultInterface
-import org.thisisthepy.python.multiplatform.packpack.compile.middleware.BaseInterface as MiddlewareInterface
+import org.thisisthepy.python.multiplatform.packpack.compile.middleware.DefaultMiddleware
+import org.thisisthepy.python.multiplatform.packpack.compile.middleware.MiddlewareInterface
 
 /**
  * CLI interface for compilation process
  */
-class Cli : BaseInterface {
+class Cli : FrontendInterface {
     private lateinit var middleware: MiddlewareInterface
 
     /**
      * Initialize CLI interface
      */
     override fun initialize() {
-        middleware = DefaultInterface()
+        middleware = DefaultMiddleware()
         middleware.initialize()
     }
 

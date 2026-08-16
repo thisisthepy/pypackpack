@@ -1,7 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
 /** Base interface for middleware */
-interface BaseInterface {
+interface MiddlewareInterface {
     /** Initialize middleware */
     fun initialize()
 

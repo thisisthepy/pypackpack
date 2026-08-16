@@ -8,7 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
-class DefaultInterfaceTest {
+class DefaultBackendTest {
     @TempDir
     lateinit var tempDir: File
 
@@ -17,7 +17,7 @@ class DefaultInterfaceTest {
         File(tempDir, "3.12").mkdirs()
         File(tempDir, "3.11").mkdirs()
         File(tempDir, "README.txt").writeText("ignore")
-        val backend = TestDefaultInterface(tempDir)
+        val backend = TestDefaultBackend(tempDir)
 
         val result = backend.listPython()
 
@@ -29,7 +29,7 @@ class DefaultInterfaceTest {
     fun findPython_returnsInstalledVersionPath() {
         val pythonDir = File(tempDir, "3.12")
         pythonDir.mkdirs()
-        val backend = TestDefaultInterface(tempDir)
+        val backend = TestDefaultBackend(tempDir)
 
         val result = backend.findPython("3.12")
 
@@ -39,7 +39,7 @@ class DefaultInterfaceTest {
 
     @Test
     fun findPython_failsWhenVersionIsMissing() {
-        val backend = TestDefaultInterface(tempDir)
+        val backend = TestDefaultBackend(tempDir)
 
         val result = backend.findPython("3.12")
 
@@ -49,7 +49,7 @@ class DefaultInterfaceTest {
 
     @Test
     fun findPython_rejectsPathLikeVersion() {
-        val backend = TestDefaultInterface(tempDir)
+        val backend = TestDefaultBackend(tempDir)
 
         val result = backend.findPython("../3.12")
 
@@ -60,7 +60,7 @@ class DefaultInterfaceTest {
     @Test
     fun installPython_returnsFailureForUnsupportedPythonVersion() =
         runBlocking {
-            val backend = TestDefaultInterface(tempDir)
+            val backend = TestDefaultBackend(tempDir)
 
             val result = backend.installPython("3.12", "macos")
 
@@ -74,7 +74,7 @@ class DefaultInterfaceTest {
     @Test
     fun installPython_returnsFailureForUnsupportedTargetPlatform() =
         runBlocking {
-            val backend = TestDefaultInterface(tempDir)
+            val backend = TestDefaultBackend(tempDir)
 
             val result = backend.installPython("3.13", "unknown-target")
 
@@ -87,7 +87,7 @@ class DefaultInterfaceTest {
         val pythonDir = File(tempDir, "3.12")
         File(pythonDir, "bin").mkdirs()
         File(pythonDir, "bin/python").writeText("")
-        val backend = TestDefaultInterface(tempDir)
+        val backend = TestDefaultBackend(tempDir)
 
         val result = backend.uninstallPython("3.12")
 
@@ -105,7 +105,7 @@ class DefaultInterfaceTest {
         val projectVenv = File(tempDir, "project/.venv")
         projectVenv.mkdirs()
         val registryRoot = File(tempDir, "registry")
-        val backend = TestDefaultInterface(registryRoot)
+        val backend = TestDefaultBackend(registryRoot)
         backend.register("3.13", projectVenv)
 
         val result = backend.findPython("3.13")
@@ -120,7 +120,7 @@ class DefaultInterfaceTest {
         projectVenv.mkdirs()
         val registryRoot = File(tempDir, "registry")
         File(registryRoot, "3.11").mkdirs()
-        val backend = TestDefaultInterface(registryRoot)
+        val backend = TestDefaultBackend(registryRoot)
         backend.register("3.13", projectVenv)
 
         val result = backend.listPython()
@@ -134,7 +134,7 @@ class DefaultInterfaceTest {
         val projectVenv = File(tempDir, "project/.venv")
         projectVenv.mkdirs()
         val registryRoot = File(tempDir, "registry")
-        val backend = TestDefaultInterface(registryRoot)
+        val backend = TestDefaultBackend(registryRoot)
         backend.register("3.13", projectVenv)
 
         val result = backend.uninstallPython("3.13")
@@ -151,7 +151,7 @@ class DefaultInterfaceTest {
         // pythonInstallRoot() (as e.g. manual setup would do) must still be found.
         val pythonDir = File(tempDir, "3.12")
         pythonDir.mkdirs()
-        val backend = TestDefaultInterface(tempDir)
+        val backend = TestDefaultBackend(tempDir)
 
         val result = backend.findPython("3.12")
 
@@ -159,9 +159,9 @@ class DefaultInterfaceTest {
         assertEquals(pythonDir.absolutePath, result.getOrThrow())
     }
 
-    private class TestDefaultInterface(
+    private class TestDefaultBackend(
         private val root: File,
-    ) : DefaultInterface() {
+    ) : DefaultBackend() {
         override fun pythonInstallRoot(): File = root
 
         fun register(

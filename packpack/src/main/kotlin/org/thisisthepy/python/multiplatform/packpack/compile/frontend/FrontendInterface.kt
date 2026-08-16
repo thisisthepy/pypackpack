@@ -1,6 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.frontend
 
-import org.thisisthepy.python.multiplatform.packpack.compile.middleware.BaseInterface as MiddlewareInterface
+import org.thisisthepy.python.multiplatform.packpack.compile.middleware.MiddlewareInterface
 
 /**
  * Frontend type enum
@@ -13,7 +13,7 @@ enum class FrontendType {
 /**
  * Factory pattern base interface for compilation frontend
  */
-interface BaseInterface {
+interface FrontendInterface {
     fun initialize()
 
     fun getMiddleware(): MiddlewareInterface
@@ -24,7 +24,7 @@ interface BaseInterface {
          * @param type Frontend type
          * @return Frontend instance
          */
-        fun create(type: FrontendType): BaseInterface =
+        fun create(type: FrontendType): FrontendInterface =
             when (type) {
                 FrontendType.CLI -> Cli()
                 FrontendType.GRADLE -> Gradle()

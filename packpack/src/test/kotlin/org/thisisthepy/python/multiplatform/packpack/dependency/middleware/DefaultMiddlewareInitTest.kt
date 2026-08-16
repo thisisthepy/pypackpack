@@ -1,17 +1,17 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-class DefaultInterfaceInitTest {
+class DefaultMiddlewareInitTest {
     @Test
     fun initProjectCreatesDefaultReadmeAndLicense() {
         val tempRoot = Files.createTempDirectory("ppp-init-").toFile()
         try {
-            val middleware = DefaultInterface().withBackend(FakeBackend())
+            val middleware = DefaultMiddleware().withBackend(FakeBackend())
 
             middleware
                 .initProject(
@@ -33,15 +33,15 @@ class DefaultInterfaceInitTest {
         }
     }
 
-    private fun DefaultInterface.withBackend(backend: BaseInterface): DefaultInterface {
-        DefaultInterface::class.java
+    private fun DefaultMiddleware.withBackend(backend: BackendInterface): DefaultMiddleware {
+        DefaultMiddleware::class.java
             .getDeclaredField("backend")
             .apply { isAccessible = true }
             .set(this, backend)
         return this
     }
 
-    private class FakeBackend : BaseInterface {
+    private class FakeBackend : BackendInterface {
         override fun initialize() = Unit
 
         override suspend fun getVersion(): Result<String> = Result.success("uv 0.0.0")

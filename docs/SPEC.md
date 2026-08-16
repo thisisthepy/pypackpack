@@ -71,24 +71,24 @@ Must be fast (build speed matters)
           - TomlValue.kt   # TOML value type hierarchy
       - dependency
         - frontend
-          - BaseInterface.kt  # factory pattern
+          - FrontendInterface.kt  # factory pattern
           - Cli.kt  # CLI interface
           - Gradle.kt  # Gradle interface
         - middleware
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # strategy pattern
+          - MiddlewareInterface.kt  # factory pattern
+          - DefaultMiddleware.kt  # strategy pattern
           - environment
             - DevEnv.kt  # manages dev/build environment venv
             - CrossEnv.kt  # manages cross environment venv
         - backend
           - external
             - UV.kt  # uv downloader
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # shared Python-version install/list/find/uninstall logic
-          - UVInterface.kt
+          - BackendInterface.kt  # factory pattern
+          - DefaultBackend.kt  # shared Python-version install/list/find/uninstall logic
+          - UVBackend.kt
       - compile
         - frontend
-          - BaseInterface.kt  # factory pattern
+          - FrontendInterface.kt  # factory pattern
           - Cli.kt
           - Gradle.kt
         - middleware
@@ -96,8 +96,8 @@ Must be fast (build speed matters)
             - Nuitka.kt  # nuitka downloader (c++ converter)
             - Cython.kt  # cython downloader (c converter)
             - Lpython.kt  # lpython downloader (llvm converter)
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # decorator pattern
+          - MiddlewareInterface.kt  # factory pattern
+          - DefaultMiddleware.kt  # decorator pattern
           - transcompile
             - BaseTransInterface.kt  # strategy pattern
             - NuitkaTransInterface.kt
@@ -114,11 +114,11 @@ Must be fast (build speed matters)
             - Emscripten.kt  # adapter pattern (Clang.kt or MSVC.kt)
             - Cargo.kt  # adapter pattern (Clang.kt, MSVC.kt, NDK.kt, XCode.kt)
             - Meson.kt  # adapter pattern (Clang.kt, MSVC.kt, NDK.kt, XCode.kt)
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # strategy pattern
+          - BackendInterface.kt  # factory pattern
+          - DefaultBackend.kt  # strategy pattern
       - bundle
-        - BaseInterface.kt  # factory pattern
-        - DefaultInterface.kt  # strategy pattern
+        - BundlerInterface.kt  # factory pattern
+        - DefaultBundler.kt  # strategy pattern placeholder
         - binary
           - BinaryBundler.kt  # .exe, etcs
         - fat
@@ -128,17 +128,17 @@ Must be fast (build speed matters)
         - patch
           - WheelPatchBundler.kt  # .whl.patch
       - deploy
-        - BaseInterface.kt  # factory pattern
-        - DefaultInterface.kt  # decorator pattern
+        - DeployInterface.kt  # factory pattern
+        - DefaultDeployer.kt  # decorator pattern
         - resource
-          - BaseAPI.kt
+          - ResourceAPI.kt
           - ResourceHubAPI.kt  # deploy client
         - code
-          - BaseAPI.kt
+          - CodeAPI.kt
           - PyPIPublishAPI.kt  (uv publish)
           - FastTrackAPI.kt  # deploy client
         - weight
-          - BaseAPI.kt  # factory pattern
+          - WeightAPI.kt  # factory pattern
           - BrainWaveAPI.kt  # deploy client
 
   - usage-example
@@ -327,7 +327,7 @@ pypackpack add <pypi name>...
 ```
 
 - Finds the project root, then runs `uv add` in the root working directory.
-- `add`/`remove`/`sync`/`tree` (and their per-package equivalents, `pypackpack <package> add/remove/sync/tree` and `pypackpack package sync/tree <name>`) now accept unrecognized `--flag [value]` tokens and forward them as `extraArgs` to the backend (`UVInterface.appendOptions`, which already turned an arbitrary map into `--key [value]`). E.g. `pypackpack add requests --dev` and `pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple` both work.
+- `add`/`remove`/`sync`/`tree` (and their per-package equivalents, `pypackpack <package> add/remove/sync/tree` and `pypackpack package sync/tree <name>`) now accept unrecognized `--flag [value]` tokens and forward them as `extraArgs` to the backend (`UVBackend.appendOptions`, which already turned an arbitrary map into `--key [value]`). E.g. `pypackpack add requests --dev` and `pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple` both work.
 - The split between "dependency name" and "passthrough flag" is heuristic: every flag an earlier draft of this spec named (`--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`) is boolean in real `uv`, so any `--flag` defaults to a bare flag (no value) unless it is in a small value-taking allowlist (`--extra-index-url`, `--index-url`, `--index-strategy`, `--python`, `--resolution`) hardcoded in `parsePassthroughArgs` (`cli/CommandExtension.kt`).
 
 Limitation
@@ -477,7 +477,7 @@ pypackpack deploy <package name> resource [--target <target name>] [<etcs>]
 ```
 
 - `DeployCommand` is an empty placeholder class and is not registered as a CLI subcommand, so `pypackpack deploy` does not run at all today.
-- The `deploy` backend (`BaseInterface`/`DefaultInterface` and the `code`/`resource`/`weight` `BaseAPI`/`PyPIPublishAPI`/`FastTrackAPI`/`ResourceHubAPI`/`BrainWaveAPI` classes) are all empty placeholder files.
+- The `deploy` backend (`DeployInterface`/`DefaultDeployer` and the `code`/`resource`/`weight` `CodeAPI`/`ResourceAPI`/`WeightAPI`/`PyPIPublishAPI`/`FastTrackAPI`/`ResourceHubAPI`/`BrainWaveAPI` classes) are all empty placeholder files.
 - Need to specify the target deploy server (PyPI or FastTrack)
 - Implement patch feature
   - Let's go with a git-like concept for patch uploads (the concern is speed, parallel processing)

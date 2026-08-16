@@ -6,10 +6,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
-class UVInterfaceTest {
+class UVBackendTest {
     @Test
     fun createVirtualEnvironment_buildsVenvCommandWithoutPythonFlag() {
-        val backend = RecordingUVInterface()
+        val backend = RecordingUVBackend()
 
         val result =
             runBlocking {
@@ -27,7 +27,7 @@ class UVInterfaceTest {
 
     @Test
     fun createVirtualEnvironment_includesPythonFlagWhenProvided() {
-        val backend = RecordingUVInterface()
+        val backend = RecordingUVBackend()
 
         val result =
             runBlocking {
@@ -44,7 +44,7 @@ class UVInterfaceTest {
 
     @Test
     fun createVirtualEnvironment_passesExtraArgsAsUvOptions() {
-        val backend = RecordingUVInterface()
+        val backend = RecordingUVBackend()
 
         val result =
             runBlocking {
@@ -59,7 +59,7 @@ class UVInterfaceTest {
         assertEquals(listOf("venv", "--bad-option", "1", ".venv-test"), backend.lastCommand)
     }
 
-    private class RecordingUVInterface : UVInterface() {
+    private class RecordingUVBackend : UVBackend() {
         var lastCommand: List<String> = emptyList()
         var lastWorkingDir: File? = null
 

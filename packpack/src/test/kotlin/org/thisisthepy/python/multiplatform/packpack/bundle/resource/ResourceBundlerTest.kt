@@ -1,7 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.resource
 
 import org.junit.jupiter.api.io.TempDir
-import org.thisisthepy.python.multiplatform.packpack.bundle.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import java.io.File
@@ -61,11 +61,11 @@ class ResourceBundlerTest {
             .digest(text.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
-    private fun bundler() = BaseInterface.create(BundleType.RESOURCE)
+    private fun bundler() = BundlerInterface.create(BundleType.RESOURCE)
 
     @Test
     fun create_returnsResourceBundlerForResourceType() {
-        assertTrue(BaseInterface.create(BundleType.RESOURCE) is ResourceBundler)
+        assertTrue(BundlerInterface.create(BundleType.RESOURCE) is ResourceBundler)
     }
 
     @Test
@@ -295,7 +295,7 @@ class ResourceBundlerTest {
     fun create_reportsUnimplementedBundleTypesInsteadOfPretendingToWork() {
         listOf(BundleType.BINARY, BundleType.FAT, BundleType.SINGLE, BundleType.PATCH).forEach { type ->
             val result =
-                BaseInterface.create(type).bundle(
+                BundlerInterface.create(type).bundle(
                     BundleRequest(packageDir = packageDir(name = "p-${type.name.lowercase()}"), target = "macos"),
                 )
             assertTrue(result.isFailure, "$type must not report success while unimplemented")

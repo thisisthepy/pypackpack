@@ -1,6 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.cli
 
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MiddlewareInterface
 
 /**
  * Shared fake middleware for CLI-layer tests: records the arguments a command passed through so

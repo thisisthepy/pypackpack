@@ -1,21 +1,21 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 
 /** Development environment management Handles dev dependencies for the project root */
 class DevEnv {
-    private lateinit var backend: BaseInterface
+    private lateinit var backend: BackendInterface
     private val venvPath = ".venv"
 
     /**
      * Initialize development environment
      * @param backend Backend interface
      */
-    fun initialize(backend: BaseInterface) {
+    fun initialize(backend: BackendInterface) {
         this.backend = backend
     }
 
