@@ -349,4 +349,65 @@ class SingleWheelBundlerTest {
             )
         }
     }
+
+    /**
+     * `BundleRequest.minSdk` is `toolchain`'s per-variant Android min SDK/API level
+     * (`f60bc3b` in `toolchain`), which had nowhere to go before this field existed. The Android PEP
+     * 738 wheel tag (`android_<api-level>_<abi>`) is where it now lands: previously the api-level
+     * segment was hardcoded to `21` because `Platforms.kt`'s `TARGET_ALIASES` collapses
+     * `android_21_*`/`android_24_*` onto one canonical target, so no finer distinction survived the
+     * target string. This is the actual, behavior-changing consumer of the field.
+     */
+    @Test
+    fun bundle_androidPlatformTagUsesDeclaredMinSdkWhenProvided() {
+        val pkg = packageDir(name = "minsdk-declared")
+        writeDestdir(pkg, "core/__init__.py")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android", minSdk = 24))
+                .also { assertTrue(it.isSuccess, it.exceptionOrNull()?.stackTraceToString()) }
+                .getOrThrow()
+
+        assertTrue(
+            result.artifactFile!!.name.endsWith("-android_24_arm64_v8a.whl"),
+            "expected declared minSdk 24 in tag, got '${result.artifactFile!!.name}'",
+        )
+    }
+
+    @Test
+    fun bundle_androidPlatformTagFallsBackToThePep738FloorWhenMinSdkIsNotDeclared() {
+        val pkg = packageDir(name = "minsdk-undeclared")
+        writeDestdir(pkg, "core/__init__.py")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android"))
+                .getOrThrow()
+
+        assertTrue(result.artifactFile!!.name.endsWith("-android_21_arm64_v8a.whl"))
+    }
+
+    @Test
+    fun bundle_rejectsMinSdkBelowThePep738Floor() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py")
+
+        val result =
+            bundler().bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android", minSdk = 16))
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("21"), result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun bundle_rejectsMinSdkDeclaredForANonAndroidTarget() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", minSdk = 24))
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("macos"), result.exceptionOrNull()?.message)
+    }
 }

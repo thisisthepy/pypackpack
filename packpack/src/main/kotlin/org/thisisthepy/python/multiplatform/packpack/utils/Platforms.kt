@@ -341,4 +341,36 @@ object Platforms {
     }
 
     private fun markerMachine(target: String): String = target.substringBefore('-').replace("aarch64", "arm64")
+
+    /**
+     * Validates a `BundleRequest.minSdk` (Android min SDK / API level) against the [family] it was
+     * declared alongside.
+     *
+     * This is where `toolchain`'s per-variant min SDK -- read, validated and logged since `f60bc3b`,
+     * but with "nowhere to send it" because `BundleRequest` had no API-level field -- gets an actual
+     * consumer-side contract: `null` (undeclared) is always valid, but a *declared* value is only
+     * meaningful for the `android` family, because PEP 738 is the only wheel tag scheme this project
+     * implements that carries an API level (`android_<api-level>_<abi>`, see
+     * `SingleWheelBundler.androidPlatformTag`). Declaring one for, say, a `windows` target is a
+     * configuration mistake and fails loudly rather than being silently ignored, matching this
+     * codebase's convention elsewhere (`Platforms.normalizeTarget`, `ResourceBundler`'s `require`s).
+     *
+     * A declared value must also be positive: `toolchain`'s own DSL contract treats `0` as
+     * "undeclared" and maps it to `null` before it ever reaches `BundleRequest`
+     * (`PythonPlugin.normalizeMinSdk`), so a `0` or negative value reaching here is already a
+     * violation of that contract, not a legitimate API level.
+     */
+    fun requireValidMinSdk(
+        minSdk: Int?,
+        family: String,
+    ) {
+        if (minSdk == null) return
+        require(family == "android") {
+            "minSdk ($minSdk) was declared for a '$family' target, but a min SDK / API level is only " +
+                "meaningful for 'android' targets (PEP 738 is the only wheel tag scheme here that carries one)."
+        }
+        require(minSdk > 0) {
+            "minSdk must be a positive Android API level, was $minSdk."
+        }
+    }
 }

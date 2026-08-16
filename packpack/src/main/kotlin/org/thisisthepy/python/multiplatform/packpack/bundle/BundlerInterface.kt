@@ -37,6 +37,12 @@ enum class BundleType(
  * @param buildLevel `instant` / `bytecode` / `native` / `mixed`, per SPEC's `--level`.
  * @param outputDir overrides the conventional output path when non-null.
  * @param overwrite clears an existing output directory instead of failing.
+ * @param minSdk the declared Android min SDK / API level, or `null` when undeclared. This is
+ *   `toolchain`'s per-variant `platforms { android { androidSdk = ... } } }` value (see `toolchain`'s
+ *   `f60bc3b`, which added the read/validate/log path but had "nowhere to send it" because this field
+ *   did not exist yet). Only meaningful for an `android`-family [target]; validated by
+ *   [org.thisisthepy.python.multiplatform.packpack.utils.Platforms.requireValidMinSdk], which every
+ *   bundler that accepts it calls before using it.
  */
 data class BundleRequest(
     val packageDir: File,
@@ -45,6 +51,7 @@ data class BundleRequest(
     val buildLevel: String = "instant",
     val outputDir: File? = null,
     val overwrite: Boolean = false,
+    val minSdk: Int? = null,
 )
 
 /**

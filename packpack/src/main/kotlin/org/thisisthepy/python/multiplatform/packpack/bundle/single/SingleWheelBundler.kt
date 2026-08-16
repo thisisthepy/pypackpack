@@ -83,10 +83,12 @@ import java.util.zip.ZipOutputStream
  *   assumed as the floor -- `SUPPORTED_TARGETS`' `*-unknown-linux-musl` entries carry no musl version,
  *   and musl's own stable-ABI guarantee (cited in PEP 656) makes an old floor safe to assume rather than
  *   measure per build.
- * - **Android** (PEP 738, accepted): `android_<api-level>_<abi>`, e.g. `android_21_arm64_v8a`. API
- *   level `21` is assumed as the floor -- it is PEP 738's own minimum supported Android version, and
- *   `Platforms.kt`'s `TARGET_ALIASES` already collapses `android_21_*` and `android_24_*` onto the same
- *   canonical target, so no finer distinction is recoverable from the target string today.
+ * - **Android** (PEP 738, accepted): `android_<api-level>_<abi>`, e.g. `android_21_arm64_v8a`. The
+ *   api-level segment is [BundleRequest.minSdk] when the caller declares one (validated against
+ *   [ANDROID_MIN_SDK_FLOOR] by `bundle`), and falls back to `21` -- PEP 738's own minimum supported
+ *   Android version -- otherwise. `Platforms.kt`'s `TARGET_ALIASES` still collapses `android_21_*` and
+ *   `android_24_*` onto the same canonical target, so the target string alone still carries no api
+ *   level; `minSdk` is the field that recovers the distinction the target string cannot.
  * - **iOS** (PEP 730, accepted): `ios_<major>_<minor>_<arch>_<iphoneos|iphonesimulator>`, e.g.
  *   `ios_13_0_arm64_iphoneos`. `13.0` is assumed as the floor -- it is literally PEP 730's own worked
  *   example tag, and `SUPPORTED_TARGETS` carries no iOS version of its own.
@@ -133,6 +135,11 @@ class SingleWheelBundler : BundlerInterface {
         const val WHEEL_VERSION = "1.0"
         const val GENERATOR = "pypackpack 0.1.0"
 
+        // PEP 738's own minimum supported Android version; see class KDoc §2. `androidPlatformTag`
+        // falls back to this when `BundleRequest.minSdk` is undeclared, and rejects any declared
+        // value below it (checked in `bundle`, not here, so the failure names the actual request).
+        const val ANDROID_MIN_SDK_FLOOR = 21
+
         // 1980-01-01T00:00:00Z -- the DOS/ZIP timestamp epoch floor; see class KDoc "Determinism".
         const val DETERMINISTIC_ZIP_TIME_MS = 315532800000L
 
@@ -159,6 +166,11 @@ class SingleWheelBundler : BundlerInterface {
                 Platforms.normalizeTarget(request.target)
                     ?: throw IllegalArgumentException(Platforms.unsupportedTargetMessage(request.target))
             val descriptor = Platforms.describeTarget(canonicalTarget)
+            Platforms.requireValidMinSdk(request.minSdk, descriptor.family)
+            require(request.minSdk == null || request.minSdk >= ANDROID_MIN_SDK_FLOOR) {
+                "Android wheel tag (PEP 738) requires minSdk >= $ANDROID_MIN_SDK_FLOOR (its own floor), " +
+                    "was ${request.minSdk}."
+            }
 
             val editor = TomlEditor(pyproject.readText())
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
@@ -176,7 +188,7 @@ class SingleWheelBundler : BundlerInterface {
             }
 
             val escapedName = packageName.wheelEscaped()
-            val platformTag = platformTag(canonicalTarget, descriptor.family)
+            val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
             val distInfoDir = "$escapedName-$version.dist-info"
             val wheelFileName = "$escapedName-$version-$PYTHON_TAG-$ABI_TAG-$platformTag.whl"
             val rootIsPurelib = payload.keys.none { it.substringAfterLast('.', "") in NATIVE_EXTENSION_EXTENSIONS }
@@ -284,12 +296,13 @@ class SingleWheelBundler : BundlerInterface {
     private fun platformTag(
         canonicalTarget: String,
         family: String,
+        minSdk: Int?,
     ): String =
         when (family) {
             "windows" -> windowsPlatformTag(canonicalTarget)
             "macos" -> macosPlatformTag(canonicalTarget)
             "ios" -> iosPlatformTag(canonicalTarget)
-            "android" -> androidPlatformTag(canonicalTarget)
+            "android" -> androidPlatformTag(canonicalTarget, minSdk)
             "wasm" -> wasmPlatformTag(canonicalTarget)
             "linux" -> linuxPlatformTag(canonicalTarget)
             else -> throw IllegalArgumentException("No wheel platform tag scheme for target family '$family' ($canonicalTarget)")
@@ -316,14 +329,18 @@ class SingleWheelBundler : BundlerInterface {
         return "ios_13_0_${arch}_$sdk"
     }
 
-    private fun androidPlatformTag(canonicalTarget: String): String {
+    private fun androidPlatformTag(
+        canonicalTarget: String,
+        minSdk: Int?,
+    ): String {
         val abi =
             when (val arch = rawArch(canonicalTarget)) {
                 "aarch64" -> "arm64_v8a"
                 "x86_64" -> "x86_64"
                 else -> throw IllegalArgumentException("Unsupported Android arch in target: $canonicalTarget ($arch)")
             }
-        return "android_21_$abi"
+        val apiLevel = minSdk ?: ANDROID_MIN_SDK_FLOOR
+        return "android_${apiLevel}_$abi"
     }
 
     private fun wasmPlatformTag(canonicalTarget: String): String {
