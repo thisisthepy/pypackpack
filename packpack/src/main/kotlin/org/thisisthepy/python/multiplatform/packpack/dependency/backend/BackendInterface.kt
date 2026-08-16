@@ -105,6 +105,24 @@ interface BackendInterface {
     ): Result<String>
 
     /**
+     * Install a project's dependencies for a specific target platform into a plain directory
+     * (not a runnable venv -- a cross target's wheels generally cannot execute on the host, so
+     * this only unpacks wheels rather than creating an activatable environment).
+     *
+     * @param targetDir Directory to install into (created by the backend if it does not exist)
+     * @param pythonPlatform `--python-platform` value (a [org.thisisthepy.python.multiplatform.packpack.utils.Platforms] canonical target triple or alias)
+     * @param extraArgs Extra arguments (optional)
+     * @param workingDir Directory containing the `pyproject.toml` whose dependencies are installed
+     * @return Result of the install
+     */
+    suspend fun installDependenciesToTarget(
+        targetDir: String,
+        pythonPlatform: String,
+        extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
+    ): Result<String>
+
+    /**
      * Show dependency tree
      * @param venvPath Virtual environment path
      * @param extraArgs Extra arguments (optional)

@@ -330,4 +330,66 @@ internal object MarkerPolicy {
         val machine = descriptor.markerMachine
         return "platform_system == '$system' and platform_machine == '$machine'"
     }
+
+    /**
+     * `sys.platform`-style spelling for each `platform.system()`-style
+     * [Platforms.TargetDescriptor.markerSystem] value.
+     *
+     * `uv add --marker "<text from [markerForTarget]>"` does not persist that text verbatim into
+     * `pyproject.toml`: it rewrites the `platform_system == '<value>'` clause into an equivalent
+     * `sys_platform == '<value>'` clause and reorders the clauses alphabetically (verified by hand
+     * against uv 0.12.3 -- `platform_system == 'Windows' and platform_machine == 'x86_64'` round-trips
+     * as `platform_machine == 'x86_64' and sys_platform == 'win32'`; likewise Linux/Darwin/Android/
+     * Emscripten). `iOS` was the one family that round-tripped unchanged in that same check, so
+     * [targetKeyFor] treats both spellings as equivalent for every family rather than special-casing
+     * iOS -- a future uv version normalizing it the same way should not silently break matching again.
+     *
+     * This is what made `removeDependencies` fail to find a target-scoped dependency it had itself
+     * added (docs/SPEC.md's "remove --target" limitation, docs/KNOWN_ISSUES.md): it compared the
+     * literal text [markerForTarget] recomputes against whatever uv actually wrote, and those two
+     * strings disagree.
+     */
+    private val SYS_PLATFORM_BY_MARKER_SYSTEM: Map<String, String> =
+        mapOf(
+            "Windows" to "win32",
+            "Linux" to "linux",
+            "Darwin" to "darwin",
+            "Android" to "android",
+            "Emscripten" to "emscripten",
+            "iOS" to "ios",
+        )
+
+    private val MARKER_SYSTEM_BY_SYS_PLATFORM: Map<String, String> =
+        SYS_PLATFORM_BY_MARKER_SYSTEM.entries.associate { (markerSystemValue, sysPlatformValue) ->
+            sysPlatformValue to markerSystemValue
+        }
+
+    /**
+     * Parses a persisted PEP 508 marker string (as read back from `project.dependencies`) into the
+     * (family, machine) pair it constrains -- tolerant of both the `platform_system`/
+     * `platform_machine` spelling [markerForTarget] writes and the `sys_platform`/`platform_machine`
+     * spelling `uv add` actually persists (see [SYS_PLATFORM_BY_MARKER_SYSTEM]), and tolerant of
+     * clause order. Returns null when the marker does not contain a recognizable system clause and
+     * machine clause (e.g. hand-written markers outside this codebase's own convention).
+     */
+    fun targetKeyFor(markerText: String): Pair<String, String>? {
+        val clauses =
+            Regex("(platform_system|sys_platform|platform_machine)\\s*==\\s*'([^']*)'")
+                .findAll(markerText)
+                .associate { it.groupValues[1] to it.groupValues[2] }
+
+        val machine = clauses["platform_machine"] ?: return null
+        val system =
+            clauses["platform_system"]
+                ?: clauses["sys_platform"]?.let { MARKER_SYSTEM_BY_SYS_PLATFORM[it] }
+                ?: return null
+
+        return system to machine
+    }
+
+    /** The (family, machine) key [targetKeyFor] would parse back out of [markerForTarget]'s own output. */
+    fun targetKeyForTarget(target: String): Pair<String, String> {
+        val descriptor = Platforms.describeTarget(target)
+        return descriptor.markerSystem to descriptor.markerMachine
+    }
 }

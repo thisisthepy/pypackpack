@@ -164,13 +164,14 @@ class CrossEnv {
             val editor = TomlEditor(packagePyproject.readText())
             val entries = editor.getArray("project", "dependencies")
             val requested = dependencies.map { extractDependencyName(it) }.toSet()
-            val markers = normalizedTargets.map { MarkerPolicy.markerForTarget(it) }.toSet()
+            val targetKeys = normalizedTargets.map { MarkerPolicy.targetKeyForTarget(it) }.toSet()
 
             val filtered =
                 entries.filterNot { entry ->
                     val depName = extractDependencyName(entry)
                     val marker = extractDependencyMarker(entry)
-                    depName in requested && marker != null && marker in markers
+                    val markerTargetKey = marker?.let { MarkerPolicy.targetKeyFor(it) }
+                    depName in requested && markerTargetKey != null && markerTargetKey in targetKeys
                 }
 
             if (filtered.size == entries.size) {
@@ -203,10 +204,25 @@ class CrossEnv {
                 backend.syncDependencies("", syncArgs + mapOf("package" to packageSpec.name), workspaceRoot)
             }.getOrThrow()
 
+            val installArgs = options.filterKeys { it != "python-platform" && it != "package" }
             for (target in normalizedTargets) {
                 val treeArgs = options + mapOf("package" to packageSpec.name, "python-platform" to target)
                 runBlocking {
                     backend.showDependencyTree(packageSpec.name, treeArgs, workspaceRoot)
+                }.getOrThrow()
+
+                // Preserve this target's install result in its own directory rather than only
+                // verifying resolvability via `uv tree` above -- see docs/SPEC.md's "Not yet
+                // implemented (target)" list ("A feature to preserve per-target install results in
+                // separate environments during the sync step").
+                val targetDir = crossEnvTargetDir(packageSpec.directory, target)
+                runBlocking {
+                    backend.installDependenciesToTarget(
+                        targetDir.absolutePath,
+                        target,
+                        installArgs,
+                        packageSpec.directory,
+                    )
                 }.getOrThrow()
             }
 
@@ -292,6 +308,20 @@ class CrossEnv {
 
             "Successfully removed targets: ${Platforms.sort(normalizedTargets).joinToString(", ")}"
         }
+
+    /**
+     * Where a target's dedicated dependency install directory lives: `<package>/build/crossenv/<canonical
+     * target triple>`. The user-facing directory tree sketched in `docs/SPEC.md` (`build/crossenv/android_21_arm64`,
+     * `windows_amd64`, ...) is illustrative, not a byte-exact contract -- those are legacy aliases
+     * [Platforms] itself now maps away from (`TARGET_ALIASES`) -- so this uses the canonical triple
+     * directly. That keeps the name collision-free (two targets can share a [Platforms.getPlatformFamily]
+     * without sharing a triple, e.g. two Windows architectures) and traceable straight back to the
+     * `--python-platform` value that produced it.
+     */
+    private fun crossEnvTargetDir(
+        packageDir: File,
+        target: String,
+    ): File = File(packageDir, "build/crossenv/$target")
 
     private fun resolveCrossTargets(
         packageSpec: PackageSpec,

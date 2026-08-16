@@ -132,6 +132,38 @@ open class UVBackend(
             return executeCommand(command, workingDir)
         }
 
+    /**
+     * Install a project's dependencies for a foreign target into a plain directory via
+     * `uv pip install -r pyproject.toml --target <dir> --python-platform <platform>`. Reading
+     * straight from `pyproject.toml` (rather than a separately exported requirements file) reuses
+     * this project's existing per-target marker convention (`uv add --marker`, see `MarkerPolicy`)
+     * for free: uv resolves and installs only the entries whose marker matches `pythonPlatform`.
+     */
+    override suspend fun installDependenciesToTarget(
+        targetDir: String,
+        pythonPlatform: String,
+        extraArgs: Map<String, String>?,
+        workingDir: File?,
+    ): Result<String> =
+        runCatching {
+            require(targetDir.isNotBlank()) { "Target directory cannot be blank" }
+            require(pythonPlatform.isNotBlank()) { "Python platform cannot be blank" }
+            val options = extraArgs.orEmpty()
+            val command = mutableListOf("pip", "install", "-r", "pyproject.toml")
+
+            if (options["target"].isNullOrBlank()) {
+                command.add("--target")
+                command.add(targetDir)
+            }
+            if (options["python-platform"].isNullOrBlank()) {
+                command.add("--python-platform")
+                command.add(pythonPlatform)
+            }
+            appendOptions(command, options)
+
+            return executeCommand(command, workingDir)
+        }
+
     /** Show dependency tree */
     override suspend fun showDependencyTree(
         packageName: String?,

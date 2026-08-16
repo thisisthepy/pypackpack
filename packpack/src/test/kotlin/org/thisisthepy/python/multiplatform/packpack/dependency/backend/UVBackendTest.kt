@@ -59,6 +59,67 @@ class UVBackendTest {
         assertEquals(listOf("venv", "--bad-option", "1", ".venv-test"), backend.lastCommand)
     }
 
+    @Test
+    fun installDependenciesToTarget_buildsPipInstallCommandFromPyprojectToml() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installDependenciesToTarget(
+                    targetDir = "build/crossenv/x86_64-pc-windows-msvc",
+                    pythonPlatform = "x86_64-pc-windows-msvc",
+                    workingDir = File("/tmp/project/core"),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf(
+                "pip",
+                "install",
+                "-r",
+                "pyproject.toml",
+                "--target",
+                "build/crossenv/x86_64-pc-windows-msvc",
+                "--python-platform",
+                "x86_64-pc-windows-msvc",
+            ),
+            backend.lastCommand,
+        )
+        assertEquals(File("/tmp/project/core").absolutePath, backend.lastWorkingDir?.absolutePath)
+    }
+
+    @Test
+    fun installDependenciesToTarget_passesExtraArgsAsUvOptions() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installDependenciesToTarget(
+                    targetDir = "build/crossenv/win",
+                    pythonPlatform = "windows",
+                    extraArgs = mapOf("python-version" to "3.13"),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf(
+                "pip",
+                "install",
+                "-r",
+                "pyproject.toml",
+                "--target",
+                "build/crossenv/win",
+                "--python-platform",
+                "windows",
+                "--python-version",
+                "3.13",
+            ),
+            backend.lastCommand,
+        )
+    }
+
     private class RecordingUVBackend : UVBackend() {
         var lastCommand: List<String> = emptyList()
         var lastWorkingDir: File? = null

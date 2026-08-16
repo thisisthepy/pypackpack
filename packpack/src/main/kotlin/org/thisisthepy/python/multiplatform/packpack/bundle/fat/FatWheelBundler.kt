@@ -27,36 +27,28 @@ import java.util.zip.ZipOutputStream
  *
  * ## Where "dependencies" comes from -- the part the SPEC does not say
  *
- * This codebase has no mechanism to vendor a *third-party* (PyPI) dependency into a directory that a
- * bundler could then copy from. Concretely, none of these exist:
+ * A dependency listed in the package's `pyproject.toml` `project.dependencies` is vendored from one
+ * of two places:
  *
- * - A per-target virtual environment for CrossEnv dependencies. `docs/SPEC.md` -> "Per-package
- *   target dependency management" -> "Not yet implemented (target)" names this explicitly:
- *   "Creating and maintaining a dedicated venv per target for CrossEnv dependencies". `CrossEnv.kt`
- *   only ever calls `uv add`/`uv remove`/`uv sync`/`uv tree` against the *shared* `pyproject.toml` --
- *   `syncDependencies` runs `uv sync --package <name>` (no `--target <dir>`) and then only verifies
- *   resolvability via `uv tree`; it never installs anything to a directory bundle code could read.
- * - Any call to `uv pip install --target` or an equivalent "unpack this wheel into a directory" step
- *   anywhere in `dependency/backend` (grepped; the only `site-packages`/`crossenv`/`.venv` hits in
- *   `packpack/src/main` are `SingleWheelBundler`'s own Meson-destdir lookup, `ResourceBundler`'s
- *   `<project>/.venv` bytecode-compiler lookup, and `DevEnv`'s `.venv` for the *dev* environment --
- *   none of which is a per-target dependency install).
- *
- * Inventing that subsystem here (e.g. quietly shelling out to `uv pip install --target`) would be
- * new, unspecified, untested infrastructure smuggled into "implement one bundler" -- exactly what
- * this task was told not to do. So `FatWheelBundler` scopes "dependencies" to what this codebase can
- * already, truthfully answer: **workspace-local** Python dependencies. A dependency listed in the
- * package's `pyproject.toml` `project.dependencies` is vendored when (and only when) its declared
- * name matches another package in the same workspace (`tool.uv.workspace.members`, read via
- * [readWorkspaceMembers], matched against each member's own declared `project.name` --
- * `CrossEnv.resolvePackageSpec` already does very similar member matching for `pypackpack <package>`
- * commands, this is the read-only analogue for `bundle`). That matched sibling package must already
- * have been built (`pypackpack build <sibling>`), exactly like this package itself.
- *
- * A dependency name that does **not** match a workspace member is a PyPI dependency this class
- * cannot vendor -- `bundle` fails, naming every such dependency and pointing at the missing
- * subsystem above, rather than silently shipping a "fat" wheel that is missing part of what it
- * claims to include.
+ * - **Workspace-local**: its declared name matches another package in the same workspace
+ *   (`tool.uv.workspace.members`, read via [readWorkspaceMembers], matched against each member's own
+ *   declared `project.name` -- `CrossEnv.resolvePackageSpec` already does very similar member
+ *   matching for `pypackpack <package>` commands, this is the read-only analogue for `bundle`). That
+ *   matched sibling package must already have been built (`pypackpack build <sibling>`), exactly
+ *   like this package itself.
+ * - **Third-party**: found as a `<name>-<version>.dist-info` directory under
+ *   `<package>/build/crossenv/<canonicalTarget>`, the per-target install directory
+ *   `CrossEnv.syncDependencies` (`dependency/middleware/environment/CrossEnv.kt`) populates via
+ *   `UVBackend.installDependenciesToTarget` (`uv pip install -r pyproject.toml --target ...
+ *   --python-platform ...`). That subsystem did not exist when this class was first written -- this
+ *   KDoc used to say so, and `docs/SPEC.md`'s "Per-package target dependency management" -> "Not yet
+ *   implemented (target)" list named it explicitly -- but it is real now (see `CrossEnv`,
+ *   `UVBackend`, `BackendInterface.installDependenciesToTarget`), so this bundler consumes it rather
+ *   than continuing to refuse every non-workspace dependency. `pypackpack <package> sync --target
+ *   <target>` must have been run first; if the crossenv directory for the requested target is
+ *   missing (or missing a specific dependency), `bundle` fails naming it and pointing at that
+ *   command, rather than silently shipping a "fat" wheel that is missing part of what it claims to
+ *   include.
  *
  * ## Everything else
  *
@@ -125,7 +117,7 @@ class FatWheelBundler : BundlerInterface {
             val version = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
 
             val ownPayload = collectPayload(locateSitePackages(packageDir, packageName))
-            val dependencyPayload = collectDependencyPayload(packageDir, editor)
+            val dependencyPayload = collectDependencyPayload(packageDir, editor, packageName, canonicalTarget)
 
             val payload = mergePayloads(ownPayload, dependencyPayload)
             require(payload.isNotEmpty()) {
@@ -161,17 +153,38 @@ class FatWheelBundler : BundlerInterface {
             )
         }
 
-    // --- Dependency resolution (workspace-local only; see class KDoc) -----------------------------
+    // --- Dependency resolution (workspace-local + crossenv-installed third-party; see class KDoc) -
 
     /**
-     * Reads `project.dependencies`, matches each declared name against a workspace member's own
-     * `project.name`, and collects that member's already-built payload. Fails naming every
-     * dependency that is not a workspace member (cannot be vendored -- see class KDoc) and every
-     * matched member that has not been built yet.
+     * Reads `project.dependencies` and vendors each entry from one of two sources:
+     *
+     * - A **workspace-local** dependency (its declared name matches another package in the same
+     *   `tool.uv.workspace.members`, matched via [readWorkspaceMembers] against each member's own
+     *   `project.name`) is vendored from that sibling's own already-built payload, exactly as
+     *   before this method grew a second source.
+     * - A **third-party** dependency is vendored from `<package>/build/crossenv/<canonicalTarget>`,
+     *   the per-target install directory [CrossEnv.syncDependencies][org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv.syncDependencies]
+     *   now populates via `uv pip install -r pyproject.toml --target ... --python-platform ...`
+     *   (this is the subsystem the class KDoc used to say did not exist). That directory holds one
+     *   `<name>-<version>.dist-info/` per installed distribution, **declared or transitive** --
+     *   `requests` pulls in `urllib3`/`certifi`/etc. without any of those appearing in
+     *   `project.dependencies` itself -- so once at least one declared dependency resolves to a
+     *   third-party name, every dist-info found there (other than one matching a workspace member
+     *   or this package's own name) is vendored, not just the ones named directly. Each
+     *   distribution's own file list comes from its `RECORD` (excluding the dist-info directory's
+     *   own entries), which is how `pip`/`uv` themselves know which installed files belong to which
+     *   distribution -- an install-directory-wide file walk would not have that attribution, since
+     *   directories are flat and unprefixed by owning package.
+     *
+     * Fails naming every declared dependency that is neither a workspace member nor found in the
+     * target's crossenv directory (including when that directory does not exist at all, which
+     * likely means `pypackpack <package> sync --target <target>` was never run).
      */
     private fun collectDependencyPayload(
         packageDir: File,
         editor: TomlEditor,
+        ownPackageName: String,
+        canonicalTarget: String,
     ): Map<String, File> {
         val dependencyNames = editor.getArray("project", "dependencies").map { extractDependencyName(it) }
         if (dependencyNames.isEmpty()) return emptyMap()
@@ -190,41 +203,111 @@ class FatWheelBundler : BundlerInterface {
                 }
             }.orEmpty()
 
+        val crossenvDir = File(packageDir, "build/crossenv/$canonicalTarget")
+        val thirdPartyDistInfos: Map<String, File> =
+            if (crossenvDir.isDirectory) {
+                crossenvDir
+                    .listFiles()
+                    .orEmpty()
+                    .filter { it.isDirectory && it.name.endsWith(".dist-info") }
+                    .associateBy { distInfoPackageName(it.name).normalizedForMatch() }
+            } else {
+                emptyMap()
+            }
+
         val unresolved = mutableListOf<String>()
         val payload = sortedMapOf<String, File>()
+        var usesThirdParty = false
 
         for (depName in dependencyNames) {
             val match = members.firstOrNull { (memberName, _) -> memberName.normalizedForMatch() == depName.normalizedForMatch() }
-            if (match == null) {
-                unresolved += depName
+            if (match != null) {
+                val (memberName, memberDir) = match
+                val memberPayload = collectPayload(locateSitePackages(memberDir, memberName))
+                require(memberPayload.isNotEmpty()) {
+                    "Dependency '$memberName' (workspace member at ${memberDir.absolutePath}) has no compiled " +
+                        "output. Run `pypackpack build $memberName` first."
+                }
+                mergeInto(payload, memberPayload, memberName)
                 continue
             }
-            val (memberName, memberDir) = match
-            val memberPayload = collectPayload(locateSitePackages(memberDir, memberName))
-            require(memberPayload.isNotEmpty()) {
-                "Dependency '$memberName' (workspace member at ${memberDir.absolutePath}) has no compiled " +
-                    "output. Run `pypackpack build $memberName` first."
+
+            if (depName.normalizedForMatch() in thirdPartyDistInfos) {
+                usesThirdParty = true
+                continue
             }
-            for ((path, file) in memberPayload) {
-                require(!payload.containsKey(path)) {
-                    "File path collision while vendoring dependency '$memberName': '$path' is already provided " +
-                        "by another source in this fat bundle."
-                }
-                payload[path] = file
-            }
+
+            unresolved += depName
         }
 
         require(unresolved.isEmpty()) {
             "Cannot bundle type 'fat': ${unresolved.joinToString(", ")} " +
                 (if (unresolved.size == 1) "is" else "are") +
-                " not workspace-local package(s), and this codebase has no mechanism to vendor a " +
-                "third-party dependency yet (no per-target dependency install/venv exists -- see " +
-                "`docs/SPEC.md`'s 'Per-package target dependency management' -> 'Not yet implemented " +
-                "(target)'). Only dependencies that are also workspace members can be vendored into a " +
-                "'fat' bundle today."
+                " not workspace-local package(s) and " +
+                (if (unresolved.size == 1) "was" else "were") +
+                " not found under ${crossenvDir.absolutePath}. Run `pypackpack $ownPackageName sync " +
+                "--target $canonicalTarget` first to install third-party dependencies for this target, " +
+                "or make ${if (unresolved.size == 1) "it" else "them"} a workspace member instead."
+        }
+
+        if (usesThirdParty) {
+            val excludedNames = (members.map { (name, _) -> name } + ownPackageName).map { it.normalizedForMatch() }.toSet()
+            for ((normalizedName, distInfoDir) in thirdPartyDistInfos) {
+                if (normalizedName in excludedNames) continue
+                val depPayload = collectThirdPartyPayload(crossenvDir, distInfoDir)
+                require(depPayload.isNotEmpty()) {
+                    "Distribution at ${distInfoDir.absolutePath} has no files listed in its RECORD outside " +
+                        "its own dist-info; refusing to vendor an empty payload."
+                }
+                mergeInto(payload, depPayload, distInfoDir.name)
+            }
         }
 
         return payload
+    }
+
+    /** The package name portion of a `<name>-<version>.dist-info` directory name. */
+    private fun distInfoPackageName(distInfoDirName: String): String =
+        distInfoDirName.removeSuffix(".dist-info").substringBeforeLast('-')
+
+    /**
+     * A distribution's own files per its `RECORD` (paths relative to the crossenv target
+     * directory, i.e. the install root), excluding the entries that belong to the dist-info
+     * directory itself.
+     */
+    private fun collectThirdPartyPayload(
+        crossenvDir: File,
+        distInfoDir: File,
+    ): Map<String, File> {
+        val record = File(distInfoDir, "RECORD")
+        require(record.isFile) {
+            "Missing RECORD in ${distInfoDir.absolutePath}; cannot determine which installed files belong " +
+                "to this distribution."
+        }
+        val distInfoPrefix = "${distInfoDir.name}/"
+
+        return record
+            .readLines()
+            .mapNotNull { line -> line.substringBefore(',').trim().takeIf { it.isNotEmpty() } }
+            .filterNot { it.startsWith(distInfoPrefix) }
+            .map { relativePath -> relativePath to File(crossenvDir, relativePath) }
+            .filter { (_, file) -> file.isFile && !file.isExcludedFile() }
+            .toMap()
+            .toSortedMap()
+    }
+
+    private fun mergeInto(
+        payload: MutableMap<String, File>,
+        additions: Map<String, File>,
+        sourceLabel: String,
+    ) {
+        for ((path, file) in additions) {
+            require(!payload.containsKey(path)) {
+                "File path collision while vendoring dependency '$sourceLabel': '$path' is already provided " +
+                    "by another source in this fat bundle."
+            }
+            payload[path] = file
+        }
     }
 
     private fun findWorkspaceRootOrNull(startDir: File): File? {

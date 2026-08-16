@@ -472,12 +472,22 @@ class TomlEditor(
         val content = match.groupValues[1]
         if (content.isBlank()) return emptyList()
 
-        // Split by comma and remove quotes
+        // Split by comma and remove the outer wrapping quotes (exactly one leading + one matching
+        // trailing quote char, not every quote char at the edges -- `String.trim(vararg)` strips a
+        // whole run, which corrupts a value like `"... sys_platform == 'win32'"` by also eating the
+        // `'` that closes `'win32'`; PEP 508 dependency marker strings have exactly this shape).
         return content
             .split(',')
-            .map { it.trim().trim('\"', '\'') }
+            .map { it.trim().unwrapOuterQuotes() }
             .filter { it.isNotEmpty() }
     }
+
+    private fun String.unwrapOuterQuotes(): String =
+        if (length >= 2 && (first() == '"' || first() == '\'') && last() == first()) {
+            substring(1, length - 1)
+        } else {
+            this
+        }
 
     /**
      * Build a multi-line array string with proper formatting.

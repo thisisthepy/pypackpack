@@ -116,6 +116,123 @@ class CrossEnvTest {
     }
 
     @Test
+    fun removeDependenciesMatchesUvNormalizedMarkerText() {
+        // `MarkerPolicy.markerForTarget("windows")` writes `platform_system == 'Windows' and
+        // platform_machine == 'x86_64'` via `uv add --marker <text>`. Real uv (0.12.3, verified
+        // by hand) does not persist that text verbatim: it rewrites the `platform_system` clause
+        // into an equivalent `sys_platform` clause and reorders the clauses alphabetically, so
+        // pyproject.toml ends up holding `platform_machine == 'x86_64' and sys_platform ==
+        // 'win32'` -- exactly what this fixture pre-seeds below. `removeDependencies` must still
+        // find this entry when asked to remove the same target it was added for (see
+        // docs/SPEC.md's "remove --target" limitation and docs/KNOWN_ISSUES.md).
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                dependencies = [
+                    "requests>=2.34.2 ; platform_machine == 'x86_64' and sys_platform == 'win32'",
+                ]
+                """.trimIndent(),
+            )
+
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.removeDependencies("core", listOf("requests"), listOf("windows"), null).getOrThrow()
+
+            val remaining =
+                TomlEditor(File(workspaceRoot, "src/core/pyproject.toml").readText())
+                    .getArray("project", "dependencies")
+            assertTrue(remaining.isEmpty())
+        }
+    }
+
+    @Test
+    fun removeDependenciesDoesNotMatchAWrongTargetsNormalizedMarker() {
+        // Companion to the test above: a marker that normalizes to a *different* target (macOS)
+        // must still be left alone when removing for "windows", so the fix can't just accept any
+        // sys_platform-shaped marker -- it has to compare the actual (family, machine) pair.
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                dependencies = [
+                    "requests>=2.34.2 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+                ]
+                """.trimIndent(),
+            )
+
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            val result = crossEnv.removeDependencies("core", listOf("requests"), listOf("windows"), null)
+            assertTrue(result.isFailure)
+
+            val remaining =
+                TomlEditor(File(workspaceRoot, "src/core/pyproject.toml").readText())
+                    .getArray("project", "dependencies")
+            assertEquals(1, remaining.size)
+        }
+    }
+
+    @Test
+    fun syncDependenciesInstallsPerTargetCrossenvDirectories() {
+        // docs/SPEC.md's "Not yet implemented (target)" list names two related gaps: no dedicated
+        // venv/install-directory per CrossEnv target, and no step during `sync` that preserves
+        // per-target install results. This is the `sync`-side half: for each resolved target,
+        // `syncDependencies` should also install that target's dependencies into a dedicated
+        // directory under `<package>/build/crossenv/<target>`, not just verify resolvability via
+        // `uv tree` as it did before.
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            crossEnv.syncDependencies("core", listOf("windows"), null).getOrThrow()
+
+            assertEquals(1, backend.targetInstallCalls.size)
+            val call = backend.targetInstallCalls.single()
+            assertEquals(
+                File(workspaceRoot, "src/core/build/crossenv/x86_64-pc-windows-msvc").absolutePath,
+                File(call.targetDir).absolutePath,
+            )
+            assertEquals("x86_64-pc-windows-msvc", call.pythonPlatform)
+            assertEquals(File(workspaceRoot, "src/core").absolutePath, call.workingDir?.absolutePath)
+        }
+    }
+
+    @Test
     fun printResolvedPackageSpecContents() {
         withWorkspace(
             """
@@ -232,6 +349,14 @@ class CrossEnvTest {
             var lastInitExtraArgs: Map<String, String> = emptyMap()
         }
 
+        data class TargetInstallCall(
+            val targetDir: String,
+            val pythonPlatform: String,
+            val workingDir: File?,
+        )
+
+        val targetInstallCalls = mutableListOf<TargetInstallCall>()
+
         override fun initialize() = Unit
 
         override suspend fun getVersion(): Result<String> = Result.success("uv 0.0.0")
@@ -287,6 +412,16 @@ class CrossEnvTest {
             extraArgs: Map<String, String>?,
             workingDir: File?,
         ): Result<String> = Result.success("ok")
+
+        override suspend fun installDependenciesToTarget(
+            targetDir: String,
+            pythonPlatform: String,
+            extraArgs: Map<String, String>?,
+            workingDir: File?,
+        ): Result<String> {
+            targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir)
+            return Result.success("ok")
+        }
 
         override suspend fun showDependencyTree(
             packageName: String?,

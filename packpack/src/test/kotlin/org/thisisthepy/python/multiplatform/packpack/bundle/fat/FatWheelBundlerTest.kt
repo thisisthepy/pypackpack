@@ -89,6 +89,35 @@ class FatWheelBundlerTest {
         file.writeBytes(content)
     }
 
+    /**
+     * Writes a `<pkg>/build/crossenv/<target>/<distInfoName>.dist-info/RECORD` plus the files it
+     * lists, mirroring what `CrossEnv.syncDependencies` (via `uv pip install -r pyproject.toml
+     * --target ... --python-platform ...`) leaves behind for a target: a plain directory holding
+     * one `.dist-info` per installed distribution (declared or transitive) next to that
+     * distribution's own files, with no venv/executable involved.
+     */
+    private fun writeCrossenvDistInfo(
+        pkg: File,
+        target: String,
+        distInfoName: String,
+        packageFiles: Map<String, String>,
+    ) {
+        val crossenvDir = File(pkg, "build/crossenv/$target")
+        val distInfoDir = File(crossenvDir, "$distInfoName.dist-info")
+        distInfoDir.mkdirs()
+        val recordLines = mutableListOf<String>()
+        packageFiles.forEach { (relPath, content) ->
+            val file = File(crossenvDir, relPath)
+            file.parentFile.mkdirs()
+            file.writeText(content)
+            recordLines += "$relPath,sha256=deadbeef,${content.toByteArray().size}"
+        }
+        recordLines += "$distInfoName.dist-info/METADATA,sha256=deadbeef,10"
+        recordLines += "$distInfoName.dist-info/RECORD,,"
+        File(distInfoDir, "RECORD").writeText(recordLines.joinToString("\n"))
+        File(distInfoDir, "METADATA").writeText("Metadata-Version: 2.1\n")
+    }
+
     private fun bundler() = BundlerInterface.create(BundleType.FAT)
 
     private fun zipEntryNames(whl: File): Set<String> = ZipFile(whl).use { zf -> zf.entries().asSequence().map { it.name }.toSet() }
@@ -176,6 +205,56 @@ class FatWheelBundlerTest {
         assertTrue(result.isFailure)
         val message = result.exceptionOrNull()?.message.orEmpty()
         assertTrue(message.contains("helper"), message)
+    }
+
+    @Test
+    fun bundle_vendorsThirdPartyDependencyInstalledUnderCrossenvTargetDirectory() {
+        val core = packageDir("core", "core", dependencies = listOf("requests"))
+        writeDestdir(core, "core/__init__.py")
+        writeCrossenvDistInfo(
+            core,
+            target = "aarch64-apple-darwin",
+            distInfoName = "requests-2.34.2",
+            packageFiles = mapOf("requests/__init__.py" to "REQUESTS = 1\n"),
+        )
+
+        val result = bundler().bundle(BundleRequest(packageDir = core, target = "macos")).getOrThrow()
+        val entries = zipEntryNames(result.artifactFile!!)
+
+        assertTrue(entries.contains("core/__init__.py"), entries.toString())
+        assertTrue(entries.contains("requests/__init__.py"), entries.toString())
+        assertFalse(entries.any { it.startsWith("requests-2.34.2.dist-info/") }, entries.toString())
+    }
+
+    @Test
+    fun bundle_vendorsTransitiveThirdPartyDependenciesFoundInCrossenvDirectory() {
+        // "requests" is the only declared dependency, but the crossenv directory also holds
+        // urllib3 (a transitive dependency `uv pip install` resolved and installed alongside it).
+        // A "fat" bundle needs the whole closure, not just the directly-declared names.
+        val core = packageDir("core", "core", dependencies = listOf("requests"))
+        writeDestdir(core, "core/__init__.py")
+        writeCrossenvDistInfo(core, "aarch64-apple-darwin", "requests-2.34.2", mapOf("requests/__init__.py" to "x"))
+        writeCrossenvDistInfo(core, "aarch64-apple-darwin", "urllib3-2.7.0", mapOf("urllib3/__init__.py" to "y"))
+
+        val result = bundler().bundle(BundleRequest(packageDir = core, target = "macos")).getOrThrow()
+        val entries = zipEntryNames(result.artifactFile!!)
+
+        assertTrue(entries.contains("urllib3/__init__.py"), entries.toString())
+    }
+
+    @Test
+    fun bundle_failsNamingAThirdPartyDependencyMissingFromAnExistingCrossenvDirectory() {
+        // The crossenv directory exists for this target (sync ran) but never installed "requests"
+        // into it -- e.g. sync ran for a different target, or the dependency was added after the
+        // last sync. This must still fail loudly rather than silently omit it.
+        val core = packageDir("core", "core", dependencies = listOf("requests"))
+        writeDestdir(core, "core/__init__.py")
+        File(core, "build/crossenv/aarch64-apple-darwin").mkdirs()
+
+        val result = bundler().bundle(BundleRequest(packageDir = core, target = "macos"))
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("requests"))
     }
 
     @Test

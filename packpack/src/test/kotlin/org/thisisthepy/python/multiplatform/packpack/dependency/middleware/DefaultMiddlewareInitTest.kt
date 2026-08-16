@@ -88,6 +88,13 @@ class DefaultMiddlewareInitTest {
             workingDir: File?,
         ): Result<String> = Result.success("ok")
 
+        override suspend fun installDependenciesToTarget(
+            targetDir: String,
+            pythonPlatform: String,
+            extraArgs: Map<String, String>?,
+            workingDir: File?,
+        ): Result<String> = Result.success("ok")
+
         override suspend fun showDependencyTree(
             packageName: String?,
             extraArgs: Map<String, String>?,
