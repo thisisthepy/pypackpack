@@ -449,8 +449,11 @@ class ResourceBundlerTest {
 
     @Test
     fun create_reportsUnimplementedBundleTypesInsteadOfPretendingToWork() {
-        // BundleType.SINGLE is implemented (SingleWheelBundlerTest); only these three remain stubs.
-        listOf(BundleType.BINARY, BundleType.FAT, BundleType.PATCH).forEach { type ->
+        // SINGLE (SingleWheelBundlerTest), FAT (FatWheelBundlerTest) and PATCH (WheelPatchBundlerTest)
+        // are all implemented now; only BINARY remains a stub (see `BinaryBundler`'s own KDoc -- it is
+        // blocked on every compiler backend under `compile/backend/external` still being an empty
+        // placeholder file).
+        listOf(BundleType.BINARY).forEach { type ->
             val result =
                 BundlerInterface.create(type).bundle(
                     BundleRequest(packageDir = packageDir(name = "p-${type.name.lowercase()}"), target = "macos"),
@@ -461,6 +464,28 @@ class ResourceBundlerTest {
                 "$type: ${result.exceptionOrNull()?.message}",
             )
         }
+    }
+
+    /**
+     * `FAT` and `PATCH` are now real bundlers (see `FatWheelBundlerTest`/`WheelPatchBundlerTest` for
+     * their full specs), so they must fail for *their own* reasons -- not the generic "not
+     * implemented" stub message -- when given a package with no compiled output at all.
+     */
+    @Test
+    fun create_fatAndPatchFailForTheirOwnReasonsNotTheStubMessage() {
+        val fatResult =
+            BundlerInterface.create(BundleType.FAT).bundle(
+                BundleRequest(packageDir = packageDir(name = "p-fat"), target = "macos"),
+            )
+        assertTrue(fatResult.isFailure)
+        assertFalse(fatResult.exceptionOrNull()?.message.orEmpty().contains("not implemented", ignoreCase = true))
+
+        val patchResult =
+            BundlerInterface.create(BundleType.PATCH).bundle(
+                BundleRequest(packageDir = packageDir(name = "p-patch"), target = "macos"),
+            )
+        assertTrue(patchResult.isFailure)
+        assertFalse(patchResult.exceptionOrNull()?.message.orEmpty().contains("not implemented", ignoreCase = true))
     }
 
     /** Cheap structural check: quotes, braces and brackets balance outside of strings. */
