@@ -16,10 +16,13 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention").version("0.8.0")
 }
 
-// Include the `app` and `utils` subprojects in the build.
+// Include the subprojects in the build.
 // If there are changes in only one of the projects, Gradle will rebuild only the one that has changed.
 // Learn more about structuring projects with Gradle - https://docs.gradle.org/8.7/userguide/multi_project_builds.html
 include(":packpack")
+// The CLI (Clikt, `application`, GraalVM native-image) is a separate subproject from the library
+// so that a consumer of `:packpack` (e.g. `toolchain`) never resolves Clikt on its classpath.
+include(":cli")
 include(":usage-example")
 
 rootProject.name = "PyPackPack"

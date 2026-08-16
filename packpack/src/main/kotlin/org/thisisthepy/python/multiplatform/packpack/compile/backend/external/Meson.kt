@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.compile.backend.external
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVBackend
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
@@ -10,20 +10,35 @@ import java.io.File
 /**
  * Meson build system wrapper (adapter pattern for Clang, MSVC, NDK, XCode)
  */
-class Meson(
-    private val uv: UVInterface = UVInterface(),
+open class Meson(
+    private val uv: UVBackend = UVBackend(),
 ) {
-    suspend fun installMeson(): Result<String> {
+    open suspend fun installMeson(): Result<String> {
         uv.executeCommand(listOf("tool", "install", "meson"))
         uv.executeCommand(listOf("tool", "install", "ninja"))
         return Result.success("Meson and Ninja installed successfully")
     } // Now meson installed default uv tool's path(~/.local/share/uv/tools)
 
-    fun isMesonInstalled(): Boolean {
-        val isSystemInstalled = true
-        val isDownloadedInstalled = true
-        return isSystemInstalled || isDownloadedInstalled
-    } // Not Implemented
+    /**
+     * Probes whether `meson` and `ninja` are runnable on PATH, either because they were
+     * installed system-wide or because a prior [installMeson] call put them there (`uv tool
+     * install` places its shims under `~/.local/share/uv/tools`, which is expected to already be
+     * on PATH once installed once). [setup] uses this to decide whether it needs to call
+     * [installMeson] first.
+     */
+    open fun isMesonInstalled(): Boolean = isExecutableAvailable("meson") && isExecutableAvailable("ninja")
+
+    private fun isExecutableAvailable(command: String): Boolean =
+        try {
+            val process =
+                ProcessBuilder(command, "--version")
+                    .redirectErrorStream(true)
+                    .start()
+            process.inputStream.bufferedReader().readText()
+            process.waitFor() == 0
+        } catch (e: Exception) {
+            false
+        }
 
     suspend fun setup(
         buildDir: String,
@@ -32,6 +47,9 @@ class Meson(
         overwrite: Boolean = false,
     ): Result<String> =
         runCatching {
+            if (!isMesonInstalled()) {
+                installMeson().getOrThrow()
+            }
             val projectDir = workingDir ?: File(System.getProperty("user.dir"))
             makeMesonBuild(projectDir.absolutePath, overwrite).getOrThrow()
             executeCommand(listOf("setup", buildDir) + options.orEmpty(), projectDir).getOrThrow()
@@ -225,7 +243,7 @@ class Meson(
         val language: String,
     )
 
-    suspend fun executeCommand(
+    open suspend fun executeCommand(
         command: List<String>,
         workingDir: File? = null,
     ): Result<String> =

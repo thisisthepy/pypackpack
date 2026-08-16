@@ -1,7 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
 import kotlinx.coroutines.runBlocking
-import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BaseInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.nio.file.Files
@@ -226,7 +226,7 @@ class CrossEnvTest {
         }
     }
 
-    private class FakeBackend : BaseInterface {
+    private class FakeBackend : BackendInterface {
         companion object {
             var lastInitPath: String? = null
             var lastInitExtraArgs: Map<String, String> = emptyMap()

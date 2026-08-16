@@ -71,24 +71,24 @@ Must be fast (build speed matters)
           - TomlValue.kt   # TOML value type hierarchy
       - dependency
         - frontend
-          - BaseInterface.kt  # factory pattern
+          - FrontendInterface.kt  # factory pattern
           - Cli.kt  # CLI interface
           - Gradle.kt  # Gradle interface
         - middleware
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # strategy pattern
+          - MiddlewareInterface.kt  # factory pattern
+          - DefaultMiddleware.kt  # strategy pattern
           - environment
             - DevEnv.kt  # manages dev/build environment venv
             - CrossEnv.kt  # manages cross environment venv
         - backend
           - external
             - UV.kt  # uv downloader
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # shared Python-version install/list/find/uninstall logic
-          - UVInterface.kt
+          - BackendInterface.kt  # factory pattern
+          - DefaultBackend.kt  # shared Python-version install/list/find/uninstall logic
+          - UVBackend.kt
       - compile
         - frontend
-          - BaseInterface.kt  # factory pattern
+          - FrontendInterface.kt  # factory pattern
           - Cli.kt
           - Gradle.kt
         - middleware
@@ -96,8 +96,8 @@ Must be fast (build speed matters)
             - Nuitka.kt  # nuitka downloader (c++ converter)
             - Cython.kt  # cython downloader (c converter)
             - Lpython.kt  # lpython downloader (llvm converter)
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # decorator pattern
+          - MiddlewareInterface.kt  # factory pattern
+          - DefaultMiddleware.kt  # decorator pattern
           - transcompile
             - BaseTransInterface.kt  # strategy pattern
             - NuitkaTransInterface.kt
@@ -114,11 +114,11 @@ Must be fast (build speed matters)
             - Emscripten.kt  # adapter pattern (Clang.kt or MSVC.kt)
             - Cargo.kt  # adapter pattern (Clang.kt, MSVC.kt, NDK.kt, XCode.kt)
             - Meson.kt  # adapter pattern (Clang.kt, MSVC.kt, NDK.kt, XCode.kt)
-          - BaseInterface.kt  # factory pattern
-          - DefaultInterface.kt  # strategy pattern
+          - BackendInterface.kt  # factory pattern
+          - DefaultBackend.kt  # strategy pattern
       - bundle
-        - BaseInterface.kt  # factory pattern
-        - DefaultInterface.kt  # strategy pattern
+        - BundlerInterface.kt  # factory pattern
+        - DefaultBundler.kt  # strategy pattern placeholder
         - binary
           - BinaryBundler.kt  # .exe, etcs
         - fat
@@ -128,17 +128,17 @@ Must be fast (build speed matters)
         - patch
           - WheelPatchBundler.kt  # .whl.patch
       - deploy
-        - BaseInterface.kt  # factory pattern
-        - DefaultInterface.kt  # decorator pattern
+        - DeployInterface.kt  # factory pattern
+        - DefaultDeployer.kt  # decorator pattern
         - resource
-          - BaseAPI.kt
+          - ResourceAPI.kt
           - ResourceHubAPI.kt  # deploy client
         - code
-          - BaseAPI.kt
+          - CodeAPI.kt
           - PyPIPublishAPI.kt  (uv publish)
           - FastTrackAPI.kt  # deploy client
         - weight
-          - BaseAPI.kt  # factory pattern
+          - WeightAPI.kt  # factory pattern
           - BrainWaveAPI.kt  # deploy client
 
   - usage-example
@@ -262,11 +262,11 @@ pypackpack python uninstall <python version>
 - These commands do not forward to `uv python`; they manage a separate, ppp-specific Python distribution instead.
 - `list`/`find`/`uninstall` look for installs under `~/.pypackpack/python/<version>`.
 - `install` downloads a prebuilt CPython distribution from `thisisthepy/python-multiplatform`'s GitHub release binaries for the given (or host) target platform, installing it to `<project>/.venv` (host target) or `<project>/<target-dir-name>` (cross target, e.g. `windows_amd64`).
+- Because `install`'s actual interpreter location is project-relative (not `~/.pypackpack/python/<version>`), `install` also writes a `version=absolutePath` entry to a small registry file at `~/.pypackpack/python/registry.properties`. `find`/`list`/`uninstall` consult that registry first and fall back to scanning `~/.pypackpack/python/<version>` directly (so a directory placed straight under the install root, e.g. by hand, is still found without ever touching the registry).
 
 Limitation
 
 - `install` only accepts Python `3.13`; any other version is rejected ("Only Python 3.13 is supported due to python-multiplatform limitations").
-- `install`'s download destination (`<project>/.venv` or `<project>/<target-dir-name>`) does not match where `list`/`find`/`uninstall` look (`~/.pypackpack/python/<version>`), so a version downloaded via `install` is not visible to `list`/`find`/`uninstall`.
 - Final placement after download/extraction is incomplete (marked `TODO` in code).
 
 ### Package management features
@@ -327,10 +327,12 @@ pypackpack add <pypi name>...
 ```
 
 - Finds the project root, then runs `uv add` in the root working directory.
+- `add`/`remove`/`sync`/`tree` (and their per-package equivalents, `pypackpack <package> add/remove/sync/tree` and `pypackpack package sync/tree <name>`) now accept unrecognized `--flag [value]` tokens and forward them as `extraArgs` to the backend (`UVBackend.appendOptions`, which already turned an arbitrary map into `--key [value]`). E.g. `pypackpack add requests --dev` and `pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple` both work.
+- The split between "dependency name" and "passthrough flag" is heuristic: every flag an earlier draft of this spec named (`--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`) is boolean in real `uv`, so any `--flag` defaults to a bare flag (no value) unless it is in a small value-taking allowlist (`--extra-index-url`, `--index-url`, `--index-strategy`, `--python`, `--resolution`) hardcoded in `parsePassthroughArgs` (`cli/CommandExtension.kt`).
 
 Limitation
 
-- None of the root-level dependency commands (`add`, `remove`, `sync`, `tree`) expose pass-through flags — each command's `run()` hardcodes `extraArgs = null`. Earlier drafts of this spec documented `--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose` on `add`; none of these are wired up today (`pypackpack add requests --dev` fails with `no such option --dev`). The backend (`UVInterface`) still accepts an arbitrary `extraArgs` map and forwards each entry as a generic `--key [value]` flag to `uv`, so this is a CLI-layer gap rather than a backend limitation.
+- Passthrough flags for `tree` must be given *before* `--target`: `--target` is a greedy vararg option, so a passthrough flag placed after it is swallowed as another target name instead of being recognized as a flag (e.g. `pypackpack tree --target windows --quiet` fails; `pypackpack tree --quiet --target windows` works).
 
 ```bash
 pypackpack remove <pypi name>...
@@ -376,7 +378,7 @@ pypackpack mypackage add numpy --target windows linux
 
 Limitation
 
-- Like the root-level commands, none of `add`/`remove`/`sync`/`tree` expose pass-through flags today — e.g. `pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple` fails with `no such option --extra-index-url`, even though earlier drafts of this spec showed it as a working example.
+- Passthrough flags for `tree` (dynamic form) and `sync`/`tree` (`package sync`/`package tree` explicit form) must be given before `--target`, for the same greedy-vararg reason noted under the root-level commands above.
 
 ```bash
 pypackpack <package name> remove <pypi name> [--target <target1> <target2> ...]
@@ -432,14 +434,13 @@ pypackpack build <package name> [--type <build type: default debug>] [--level <b
 ```
 
 - Auto-generates a `meson.build` for the package by scanning `src/main` (falling back to `src`, then the package root) for Python packages: `.c`/`.cc`/`.cpp`/`.cxx` files become Meson `py.extension_module()` targets and `.py`/`.pyi`/`py.typed` files become `py.install_sources()`.
-- Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI directly.
+- Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI directly. `setup` now probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, no longer the old always-`true` stub) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) automatically when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
 - There is no `source`/`resource` bundle-type subcommand yet; `pypackpack build <package name> resource` does not exist.
 
 Limitation
 
 - `--type`, `--level`, and `--target` are accepted as CLI options but are not yet forwarded into the compile step; the build output path is currently hardcoded to `<package>/build/packpack/single/debug`, installed into `<package>/dist`.
-- `meson`/`ninja` are not auto-installed: `Meson.installMeson()` (which runs `uv tool install meson`/`ninja`) and `isMesonInstalled()` exist but are never called before `setup`/`compile`/`install`, so `meson` must already be on `PATH` or the build fails.
 - Only the Meson backend is implemented; the Clang/MSVC/NDK/XCode/Emscripten/Cargo backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so only C/C++ extension compilation works today (no Rust, no pure-Python compilation/optimization/minification).
 - `build` does not invoke the `bundle` stage automatically; it produces compiled/installed files under `dist/`, not a `.whl`.
 
@@ -476,7 +477,7 @@ pypackpack deploy <package name> resource [--target <target name>] [<etcs>]
 ```
 
 - `DeployCommand` is an empty placeholder class and is not registered as a CLI subcommand, so `pypackpack deploy` does not run at all today.
-- The `deploy` backend (`BaseInterface`/`DefaultInterface` and the `code`/`resource`/`weight` `BaseAPI`/`PyPIPublishAPI`/`FastTrackAPI`/`ResourceHubAPI`/`BrainWaveAPI` classes) are all empty placeholder files.
+- The `deploy` backend (`DeployInterface`/`DefaultDeployer` and the `code`/`resource`/`weight` `CodeAPI`/`ResourceAPI`/`WeightAPI`/`PyPIPublishAPI`/`FastTrackAPI`/`ResourceHubAPI`/`BrainWaveAPI` classes) are all empty placeholder files.
 - Need to specify the target deploy server (PyPI or FastTrack)
 - Implement patch feature
   - Let's go with a git-like concept for patch uploads (the concern is speed, parallel processing)

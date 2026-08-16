@@ -1,20 +1,20 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.frontend
 
-import org.thisisthepy.python.multiplatform.packpack.compile.middleware.DefaultInterface
-import org.thisisthepy.python.multiplatform.packpack.compile.middleware.BaseInterface as MiddlewareBaseInterface
+import org.thisisthepy.python.multiplatform.packpack.compile.middleware.DefaultMiddleware
+import org.thisisthepy.python.multiplatform.packpack.compile.middleware.MiddlewareInterface
 
 /**
  * Gradle interface for compilation process
  */
-class Gradle : BaseInterface {
-    private lateinit var middleware: MiddlewareBaseInterface
+class Gradle : FrontendInterface {
+    private lateinit var middleware: MiddlewareInterface
 
     override fun initialize() {
-        middleware = DefaultInterface()
+        middleware = DefaultMiddleware()
         middleware.initialize()
     }
 
-    override fun getMiddleware(): MiddlewareBaseInterface {
+    override fun getMiddleware(): MiddlewareInterface {
         if (!::middleware.isInitialized) {
             initialize()
         }
