@@ -37,6 +37,7 @@ class PyPackPackCommand : CliktCommand(name = "pypackpack") {
             TreeCommand(),
             VersionCommand(),
             BuildCommand(),
+            DeployCommand(),
         )
     }
 
@@ -57,6 +58,7 @@ private val KNOWN_COMMANDS =
         "tree",
         "version",
         "build",
+        "deploy",
         "help",
         "--help",
         "-h",
