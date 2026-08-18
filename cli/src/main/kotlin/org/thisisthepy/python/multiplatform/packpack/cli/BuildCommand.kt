@@ -25,7 +25,13 @@ class BuildCommand : CliktCommand(name = "build") {
             failureMessage = "Build failed for package: $packageName",
             successMessage = "Build completed successfully for package: $packageName",
         ) {
-            middleware.compile(packageName, mapOf("overwrite" to overwrite.toString()))
+            middleware.compile(
+                packageName,
+                mapOf(
+                    "overwrite" to overwrite.toString(),
+                    "type" to type,
+                ),
+            )
         }
     }
 }

@@ -8,8 +8,9 @@ import java.io.File
 /**
  * Strategy pattern default interface for compilation backend
  */
-class DefaultBackend : BackendInterface {
-    val meson = Meson()
+class DefaultBackend(
+    val meson: Meson = Meson(),
+) : BackendInterface {
 
     override fun initialize() {
         // Default initialization logic for compilation middleware
@@ -22,7 +23,8 @@ class DefaultBackend : BackendInterface {
         runCatching {
             require(packageName.isNotBlank()) { "Package name is required. Use ppp build <package>." }
 
-            val buildDir = "build/packpack/single/debug"
+            val type = extraArgs?.get("type")?.takeIf { it.isNotBlank() } ?: "debug"
+            val buildDir = "build/packpack/single/$type"
             val overwrite = extraArgs?.get("overwrite")?.toBooleanStrictOrNull() ?: false
             val workspaceRoot = findWorkspaceRoot(File(System.getProperty("user.dir")))
             val packageDir = resolveWorkspacePackageDir(workspaceRoot, packageName)
@@ -31,7 +33,7 @@ class DefaultBackend : BackendInterface {
                 File(packageDir, buildDir).deleteRecursively()
             }
 
-            meson.setup(buildDir = buildDir, options = null, workingDir = packageDir, overwrite = overwrite).getOrThrow()
+            meson.setup(buildDir = buildDir, options = listOf("--buildtype=$type"), workingDir = packageDir, overwrite = overwrite).getOrThrow()
             meson.compile(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
             meson.install(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
 

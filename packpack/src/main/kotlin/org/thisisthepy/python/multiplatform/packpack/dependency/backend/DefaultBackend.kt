@@ -149,14 +149,21 @@ abstract class DefaultBackend : BackendInterface {
 
         if (!result.success) throw RuntimeException("Download failed: ${result.error}")
 
-        extractArchive(File(result.filePath), installDir)
+        // We use prefixFilter = "python/install/" to prevent sibling directories in the full tarball
+        // (like python/build/, python/licenses/, and python/PYTHON.json) from being mistakenly
+        // extracted into the root of the installation directory.
+        extractArchive(
+            File(result.filePath),
+            installDir,
+            stripComponents = 2,
+            prefixFilter = "python/install/"
+        )
 
         // Bridge the project-relative install location back to the version registry so that
         // `find`/`list`/`uninstall` (which only take a version, not a project/target) can locate it.
         // See the KDoc on registerInstalledVersion/registryFile for why this indirection exists.
         registerInstalledVersion(pythonVersion, installDir)
 
-        // TODO: unzip and install to correct location
         return Result.success("Downloaded ${result.filePath} for Python $pythonVersion")
     }
 

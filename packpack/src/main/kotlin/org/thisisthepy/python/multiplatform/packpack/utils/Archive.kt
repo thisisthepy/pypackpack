@@ -10,6 +10,7 @@ fun extractArchive(
     archiveFile: File,
     destDir: File,
     stripComponents: Int = 0,
+    prefixFilter: String? = null,
 ) {
     require(stripComponents >= 0) { "stripComponents cannot be negative" }
 
@@ -20,7 +21,7 @@ fun extractArchive(
         fileName.endsWith(".zip") -> {
             ZipFile(archiveFile).use { zip ->
                 zip.entries().asSequence().forEach { entry ->
-                    val entryName = stripArchivePath(entry.name, stripComponents)
+                    val entryName = stripArchivePath(entry.name, stripComponents, prefixFilter)
                     if (entryName != null) {
                         val outputFile = outputFileForArchiveEntry(destDir, entryName)
                         if (entry.isDirectory) {
@@ -52,7 +53,7 @@ fun extractArchive(
                         if (header.size < 512) throw EOFException("Incomplete tar header in ${archiveFile.absolutePath}")
                         if (header.all { it == 0.toByte() }) break
 
-                        val entryName = stripArchivePath(tarEntryName(header), stripComponents)
+                        val entryName = stripArchivePath(tarEntryName(header), stripComponents, prefixFilter)
                         val size = tarEntrySize(header)
                         val typeFlag = header[156].toInt().toChar()
 
@@ -101,7 +102,9 @@ fun extractArchive(
 private fun stripArchivePath(
     entryName: String,
     stripComponents: Int,
+    prefixFilter: String? = null,
 ): String? {
+    if (prefixFilter != null && !entryName.startsWith(prefixFilter)) return null
     val parts = entryName.split('/').filter { it.isNotEmpty() }
     if (parts.size <= stripComponents) return null
     return parts.drop(stripComponents).joinToString("/")

@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.utils.extractArchive
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,6 +12,34 @@ import org.junit.jupiter.api.io.TempDir
 class DefaultBackendTest {
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun extractArchive_stripsTwoComponentsForPythonInstall() {
+        val archive = File(tempDir, "cpython.tar.gz")
+        java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
+            gzip.write(tarHeader("python/", 0, '5'))
+            gzip.write(tarHeader("python/build/", 0, '5'))
+            gzip.write(tarHeader("python/build/Modules/", 0, '5'))
+            gzip.write(tarFile("python/build/Modules/x.o", "x".toByteArray()))
+            gzip.write(tarHeader("python/licenses/", 0, '5'))
+            gzip.write(tarFile("python/licenses/LICENSE", "LICENSE".toByteArray()))
+            gzip.write(tarFile("python/PYTHON.json", "{}".toByteArray()))
+            gzip.write(tarHeader("python/install/", 0, '5'))
+            gzip.write(tarHeader("python/install/bin/", 0, '5'))
+            gzip.write(tarFile("python/install/bin/python", "python-binary".toByteArray()))
+            gzip.write(ByteArray(1024))
+        }
+        val installDir = File(tempDir, "python-install")
+
+        extractArchive(archive, installDir, stripComponents = 2, prefixFilter = "python/install/")
+
+        val pythonExecutable = File(installDir, "bin/python")
+        assertTrue(pythonExecutable.exists(), "Executable should exist directly under installDir/bin/python")
+        assertEquals("python-binary", pythonExecutable.readText())
+
+        assertFalse(File(installDir, "Modules/x.o").exists(), "Build artifacts should not be installed")
+        assertFalse(File(installDir, "LICENSE").exists(), "Licenses should not be installed outside install prefix")
+    }
 
     @Test
     fun listPython_returnsInstalledVersionsInOrder() {
@@ -224,5 +253,35 @@ class DefaultBackendTest {
         ): Result<String> = Result.success("ok")
 
         override suspend fun lockDependencies(projectRoot: String): Result<String> = Result.success("ok")
+    }
+
+    private fun tarHeader(
+        name: String,
+        size: Int,
+        typeFlag: Char,
+    ): ByteArray {
+        val header = ByteArray(512)
+        name.toByteArray().copyInto(header, 0)
+        "0000777\u0000".toByteArray().copyInto(header, 100)
+        "0000000\u0000".toByteArray().copyInto(header, 108)
+        "0000000\u0000".toByteArray().copyInto(header, 116)
+        size.toString(8).padStart(11, '0').plus('\u0000').toByteArray().copyInto(header, 124)
+        "00000000000\u0000".toByteArray().copyInto(header, 136)
+        "        ".toByteArray().copyInto(header, 148)
+        header[156] = typeFlag.code.toByte()
+        "ustar\u000000".toByteArray().copyInto(header, 257)
+
+        val checksum = header.sumOf { it.toUByte().toInt() }
+        checksum.toString(8).padStart(6, '0').plus("\u0000 ").toByteArray().copyInto(header, 148)
+        return header
+    }
+
+    private fun tarFile(
+        name: String,
+        content: ByteArray,
+    ): ByteArray {
+        val header = tarHeader(name, content.size, '0')
+        val paddingSize = (512 - content.size % 512) % 512
+        return header + content + ByteArray(paddingSize)
     }
 }

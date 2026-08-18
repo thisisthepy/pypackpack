@@ -40,7 +40,7 @@ open class Meson(
             false
         }
 
-    suspend fun setup(
+    open suspend fun setup(
         buildDir: String,
         options: List<String>?,
         workingDir: File? = null,
@@ -55,7 +55,7 @@ open class Meson(
             executeCommand(listOf("setup", buildDir) + options.orEmpty(), projectDir).getOrThrow()
         }
 
-    suspend fun compile(
+    open suspend fun compile(
         buildDir: String,
         options: List<String>?,
         workingDir: File? = null,
@@ -64,7 +64,7 @@ open class Meson(
             executeCommand(listOf("compile", "-C", buildDir) + options.orEmpty(), workingDir).getOrThrow()
         }
 
-    suspend fun install(
+    open suspend fun install(
         buildDir: String,
         options: List<String>?,
         workingDir: File? = null,
