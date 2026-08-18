@@ -30,7 +30,13 @@ class DynamicPackageCommand(
 
     override fun run() {
         val middleware = currentContext.findOrSetObject { createCliMiddleware() }
-        val (dependencies, extraArgs) = parsePassthroughArgs(rawArgs)
+        
+        // Fix greedy vararg swallowing passthrough flags
+        val actualTargets = targets.takeWhile { !it.startsWith("-") }
+        val swallowedArgs = targets.dropWhile { !it.startsWith("-") }
+        val allRawArgs = rawArgs + swallowedArgs
+        
+        val (dependencies, extraArgs) = parsePassthroughArgs(allRawArgs)
         val forwardedExtraArgs = extraArgs.ifEmpty { null }
 
         when (operation) {
@@ -43,7 +49,7 @@ class DynamicPackageCommand(
                     failureMessage = "Failed to add dependencies to package '$packageName'",
                     successMessage = "Successfully added dependencies to package '$packageName'",
                 ) {
-                    middleware.addDependencies(packageName, dependencies, targets, forwardedExtraArgs)
+                    middleware.addDependencies(packageName, dependencies, actualTargets, forwardedExtraArgs)
                 }
             }
 
@@ -56,7 +62,7 @@ class DynamicPackageCommand(
                     failureMessage = "Failed to remove dependencies from package '$packageName'",
                     successMessage = "Successfully removed dependencies from package '$packageName'",
                 ) {
-                    middleware.removeDependencies(packageName, dependencies, targets, forwardedExtraArgs)
+                    middleware.removeDependencies(packageName, dependencies, actualTargets, forwardedExtraArgs)
                 }
             }
 
@@ -69,7 +75,7 @@ class DynamicPackageCommand(
                     failureMessage = "Failed to synchronize dependencies for package '$packageName'",
                     successMessage = "Successfully synchronized dependencies for package '$packageName'",
                 ) {
-                    middleware.syncDependencies(packageName, targets, forwardedExtraArgs)
+                    middleware.syncDependencies(packageName, actualTargets, forwardedExtraArgs)
                 }
             }
 
@@ -77,7 +83,7 @@ class DynamicPackageCommand(
                 if (dependencies.isNotEmpty()) {
                     throw PrintMessage("Unexpected argument(s): ${dependencies.joinToString(", ")}", statusCode = 1)
                 }
-                if (!middleware.showDependencyTree(packageName, targets, forwardedExtraArgs)) {
+                if (!middleware.showDependencyTree(packageName, actualTargets, forwardedExtraArgs)) {
                     throw PrintMessage("Failed to show dependency tree for package '$packageName'", statusCode = 1)
                 }
             }

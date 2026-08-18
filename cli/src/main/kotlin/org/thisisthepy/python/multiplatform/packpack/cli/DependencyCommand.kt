@@ -109,11 +109,17 @@ class TreeCommand : BaseDependencyCommand(name = "tree") {
 
     override fun run() {
         val middleware = requireMiddleware()
-        val (positionals, extraArgs) = parsePassthroughArgs(rawArgs)
+        
+        // Fix greedy vararg swallowing passthrough flags
+        val actualTargets = targets.takeWhile { !it.startsWith("-") }
+        val swallowedArgs = targets.dropWhile { !it.startsWith("-") }
+        val allRawArgs = rawArgs + swallowedArgs
+        
+        val (positionals, extraArgs) = parsePassthroughArgs(allRawArgs)
         if (positionals.isNotEmpty()) {
             throw PrintMessage("Unexpected argument(s): ${positionals.joinToString(", ")}", statusCode = 1)
         }
-        if (!middleware.showDependencyTree(null, targets.ifEmpty { null }, extraArgs.ifEmpty { null })) {
+        if (!middleware.showDependencyTree(null, actualTargets.ifEmpty { null }, extraArgs.ifEmpty { null })) {
             throw PrintMessage("Failed to show dependency tree", statusCode = 1)
         }
     }

@@ -61,7 +61,13 @@ class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
 
     override fun run() {
         val middleware = requireMiddleware()
-        val (positionals, extraArgs) = parsePassthroughArgs(rawArgs)
+        
+        // Fix greedy vararg swallowing passthrough flags
+        val actualTargets = targets.takeWhile { !it.startsWith("-") }
+        val swallowedArgs = targets.dropWhile { !it.startsWith("-") }
+        val allRawArgs = rawArgs + swallowedArgs
+        
+        val (positionals, extraArgs) = parsePassthroughArgs(allRawArgs)
         if (positionals.isNotEmpty()) {
             throw PrintMessage("Unexpected argument(s): ${positionals.joinToString(", ")}", statusCode = 1)
         }
@@ -70,7 +76,7 @@ class PackageSyncCommand : BaseDependencyCommand(name = "sync") {
             failureMessage = "Failed to synchronize dependencies for package '$packageName'",
             successMessage = "Successfully synchronized dependencies for package '$packageName'",
         ) {
-            middleware.syncDependencies(packageName, targets, extraArgs.ifEmpty { null })
+            middleware.syncDependencies(packageName, actualTargets, extraArgs.ifEmpty { null })
         }
     }
 }
@@ -88,11 +94,17 @@ class PackageTreeCommand : BaseDependencyCommand(name = "tree") {
 
     override fun run() {
         val middleware = requireMiddleware()
-        val (positionals, extraArgs) = parsePassthroughArgs(rawArgs)
+        
+        // Fix greedy vararg swallowing passthrough flags
+        val actualTargets = targets.takeWhile { !it.startsWith("-") }
+        val swallowedArgs = targets.dropWhile { !it.startsWith("-") }
+        val allRawArgs = rawArgs + swallowedArgs
+        
+        val (positionals, extraArgs) = parsePassthroughArgs(allRawArgs)
         if (positionals.isNotEmpty()) {
             throw PrintMessage("Unexpected argument(s): ${positionals.joinToString(", ")}", statusCode = 1)
         }
-        if (!middleware.showDependencyTree(packageName, targets, extraArgs.ifEmpty { null })) {
+        if (!middleware.showDependencyTree(packageName, actualTargets, extraArgs.ifEmpty { null })) {
             throw PrintMessage("Failed to show dependency tree for package '$packageName'", statusCode = 1)
         }
     }

@@ -86,4 +86,16 @@ class DependencyCommandTest {
         assertEquals(listOf("windows", "linux"), middleware.lastTreeTargets)
         assertEquals(mapOf("quiet" to ""), middleware.lastTreeExtraArgs)
     }
+
+    @Test
+    fun tree_combinesKnownTargetOptionWithPassthroughFlags_trailing() {
+        val middleware = RecordingMiddleware()
+        val command = TreeCommand().apply { configureContext { obj = middleware } }
+
+        val result = command.test("--target windows linux --quiet")
+
+        assertEquals(0, result.statusCode, result.output)
+        assertEquals(listOf("windows", "linux"), middleware.lastTreeTargets)
+        assertEquals(mapOf("quiet" to ""), middleware.lastTreeExtraArgs)
+    }
 }
