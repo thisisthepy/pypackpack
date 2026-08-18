@@ -122,6 +122,11 @@ class FatWheelBundlerTest {
 
     private fun zipEntryNames(whl: File): Set<String> = ZipFile(whl).use { zf -> zf.entries().asSequence().map { it.name }.toSet() }
 
+    private fun zipEntryText(whl: File, entryName: String): String = ZipFile(whl).use { zf ->
+        val entry = zf.getEntry(entryName) ?: error("entry not found: $entryName")
+        zf.getInputStream(entry).bufferedReader().readText()
+    }
+
     @Test
     fun create_returnsFatWheelBundlerForFatType() {
         assertTrue(BundlerInterface.create(BundleType.FAT) is FatWheelBundler)
@@ -301,6 +306,27 @@ class FatWheelBundlerTest {
         // Only one dist-info: dependencies are vendored as plain site-packages content, not as
         // independently-installed wheels, so they carry no dist-info of their own.
         assertFalse(entries.any { it.endsWith(".dist-info/METADATA") && !it.startsWith("core-0.1.0") }, entries.toString())
+    }
+
+    @Test
+    fun bundle_manifestIsWrittenToFilesystemAndMatchesArchiveContent() {
+        workspacePyproject(listOf("core", "libs/helper"))
+        val helper = packageDir("libs/helper", "helper")
+        writeDestdir(helper, "helper/__init__.py")
+        val core = packageDir("core", "core", version = "0.1.0", dependencies = listOf("helper"))
+        writeDestdir(core, "core/__init__.py")
+
+        val result = bundler().bundle(BundleRequest(packageDir = core, target = "macos")).getOrThrow()
+        val manifestFile = result.manifestFile
+
+        assertTrue(manifestFile.isFile, "manifest not written: $manifestFile")
+
+        val entries = zipEntryNames(result.artifactFile!!)
+        val recordEntry = entries.firstOrNull { it.endsWith(".dist-info/RECORD") }
+        assertNotNull(recordEntry, "RECORD not found in archive")
+
+        val archiveContent = zipEntryText(result.artifactFile!!, recordEntry!!)
+        assertEquals(archiveContent, manifestFile.readText())
     }
 
     @Test

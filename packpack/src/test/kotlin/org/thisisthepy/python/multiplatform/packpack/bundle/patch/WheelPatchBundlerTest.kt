@@ -10,6 +10,7 @@ import java.util.zip.ZipFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -162,6 +163,29 @@ class WheelPatchBundlerTest {
         assertFalse(entries.contains("core/removed.py"), entries.toString())
         assertTrue(manifest.contains("core/removed.py"), manifest)
         assertTrue(manifest.lines().any { it.startsWith("D ") && it.contains("core/removed.py") }, manifest)
+    }
+
+    @Test
+    fun bundle_manifestIsWrittenToFilesystemAndMatchesArchiveContent() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py")
+        writeBaselineSingleBundle(pkg)
+        pkg.resolve("dist").deleteRecursively()
+
+        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/new.py")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        val manifestFile = result.manifestFile
+
+        assertTrue(manifestFile.isFile, "manifest not written: $manifestFile")
+
+        val entries = zipEntryNames(result.artifactFile!!)
+        val manifestEntry = entries.firstOrNull { it.endsWith("PATCH-MANIFEST") }
+        assertNotNull(manifestEntry, "PATCH-MANIFEST not found in archive")
+
+        val archiveContent = zipEntryText(result.artifactFile!!, manifestEntry!!)
+        assertEquals(archiveContent, manifestFile.readText())
     }
 
     @Test

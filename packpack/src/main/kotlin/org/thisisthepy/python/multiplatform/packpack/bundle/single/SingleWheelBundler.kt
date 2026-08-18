@@ -394,7 +394,12 @@ class SingleWheelBundler : BundlerInterface {
             recordRows += Triple("$distInfoDir/WHEEL", sha256UrlSafe(wheelBytes), wheelBytes.size.toLong())
 
             val record = renderRecord(recordRows.sortedBy { it.first }, "$distInfoDir/RECORD")
-            writeDeterministicEntry(zip, "$distInfoDir/RECORD", record.toByteArray(Charsets.UTF_8))
+            val recordBytes = record.toByteArray(Charsets.UTF_8)
+            writeDeterministicEntry(zip, "$distInfoDir/RECORD", recordBytes)
+            
+            val manifestFile = File(artifactFile.parentFile, "$distInfoDir/RECORD")
+            manifestFile.parentFile.mkdirs()
+            manifestFile.writeBytes(recordBytes)
         }
     }
 

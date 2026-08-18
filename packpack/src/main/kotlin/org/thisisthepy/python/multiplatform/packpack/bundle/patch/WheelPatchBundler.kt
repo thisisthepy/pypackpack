@@ -393,7 +393,12 @@ class WheelPatchBundler : BundlerInterface {
             }
 
             val manifest = renderManifest(packageName, baseVersion, newVersion, added, modified, currentPayload, removed)
-            writeDeterministicEntry(zip, "$distInfoDir/$PATCH_MANIFEST_FILE_NAME", manifest.toByteArray(Charsets.UTF_8))
+            val manifestBytes = manifest.toByteArray(Charsets.UTF_8)
+            writeDeterministicEntry(zip, "$distInfoDir/$PATCH_MANIFEST_FILE_NAME", manifestBytes)
+            
+            val manifestFile = File(artifactFile.parentFile, "$distInfoDir/$PATCH_MANIFEST_FILE_NAME")
+            manifestFile.parentFile.mkdirs()
+            manifestFile.writeBytes(manifestBytes)
         }
     }
 

@@ -177,6 +177,24 @@ class SingleWheelBundlerTest {
     }
 
     @Test
+    fun bundle_manifestIsWrittenToFilesystemAndMatchesArchiveContent() {
+        val pkg = packageDir(name = "core", version = "0.1.0")
+        writeDestdir(pkg, "core/__init__.py")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        val manifestFile = result.manifestFile
+
+        assertTrue(manifestFile.isFile, "manifest not written: $manifestFile")
+
+        val entries = zipEntryNames(result.artifactFile!!)
+        val recordEntry = entries.firstOrNull { it.endsWith(".dist-info/RECORD") }
+        assertNotNull(recordEntry, "RECORD not found in archive")
+
+        val archiveContent = zipEntryText(result.artifactFile!!, recordEntry!!)
+        assertEquals(archiveContent, manifestFile.readText())
+    }
+
+    @Test
     fun bundle_metadataDeclaresNameAndVersion() {
         val pkg = packageDir(name = "core", version = "0.1.0")
         writeDestdir(pkg, "core/__init__.py")

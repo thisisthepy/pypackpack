@@ -243,14 +243,51 @@ open class Meson(
         val language: String,
     )
 
+    companion object {
+        internal fun resolveMesonExecutable(
+            binPath: String?,
+            isMesonInstalled: Boolean,
+            isWindows: Boolean,
+            fileExists: (String) -> Boolean
+        ): String {
+            if (isMesonInstalled) return "meson"
+            if (binPath == null) {
+                throw IllegalStateException("Meson is not installed and 'uv' is not available. Please install meson or uv to proceed.")
+            }
+            val exeName = if (isWindows) "meson.exe" else "meson"
+            val exePath = "$binPath${File.separator}$exeName"
+            if (!fileExists(exePath)) {
+                throw IllegalStateException("Meson is not installed and 'uv tool dir' ($binPath) does not contain $exeName. Please install meson.")
+            }
+            return exePath
+        }
+    }
+
     open suspend fun executeCommand(
         command: List<String>,
         workingDir: File? = null,
     ): Result<String> =
         runCatching {
             withContext(Dispatchers.IO) {
-                val fullCommand = listOf("meson") + command
+                val isInstalled = isMesonInstalled()
+                val binPath = if (!isInstalled) uv.executeCommand(listOf("tool", "dir", "--bin")).getOrNull()?.trim() else null
+                val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+                
+                val mesonExecutable = resolveMesonExecutable(
+                    binPath = binPath,
+                    isMesonInstalled = isInstalled,
+                    isWindows = isWindows,
+                    fileExists = { File(it).exists() }
+                )
+
+                val fullCommand = listOf(mesonExecutable) + command
                 val processBuilder = ProcessBuilder(fullCommand).redirectErrorStream(true)
+
+                if (binPath != null) {
+                    val env = processBuilder.environment()
+                    val pathVar = if (isWindows) "Path" else "PATH"
+                    env[pathVar] = "$binPath${File.pathSeparator}${env[pathVar] ?: ""}"
+                }
 
                 if (workingDir != null) {
                     processBuilder.directory(workingDir)

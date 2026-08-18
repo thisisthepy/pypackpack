@@ -226,6 +226,56 @@ class MesonTest {
         }
     }
 
+    @Test
+    fun resolveMesonExecutable_throwsWhenNotInstalledAndNoUv() {
+        val ex = runCatching {
+            Meson.resolveMesonExecutable(
+                binPath = null,
+                isMesonInstalled = false,
+                isWindows = false,
+                fileExists = { false }
+            )
+        }.exceptionOrNull()
+        assertTrue(ex is IllegalStateException)
+        assertTrue(ex.message!!.contains("install meson or uv"))
+    }
+
+    @Test
+    fun resolveMesonExecutable_throwsWhenNotInstalledAndUvDirLacksMeson() {
+        val ex = runCatching {
+            Meson.resolveMesonExecutable(
+                binPath = "/some/uv/bin",
+                isMesonInstalled = false,
+                isWindows = false,
+                fileExists = { false }
+            )
+        }.exceptionOrNull()
+        assertTrue(ex is IllegalStateException)
+        assertTrue(ex.message!!.contains("/some/uv/bin"))
+    }
+
+    @Test
+    fun resolveMesonExecutable_returnsAbsoluteWhenUvDirHasMeson() {
+        val result = Meson.resolveMesonExecutable(
+            binPath = "/some/uv/bin",
+            isMesonInstalled = false,
+            isWindows = false,
+            fileExists = { true }
+        )
+        assertTrue(result.replace("\\", "/").contains("/some/uv/bin/meson"))
+    }
+
+    @Test
+    fun resolveMesonExecutable_returnsMesonWhenInstalled() {
+        val result = Meson.resolveMesonExecutable(
+            binPath = null,
+            isMesonInstalled = true,
+            isWindows = false,
+            fileExists = { false }
+        )
+        assertEquals("meson", result)
+    }
+
     private fun withWorkspace(block: File.() -> Unit) {
         val testWorkDir = File("build/tmp/meson-test")
         testWorkDir.mkdirs()
