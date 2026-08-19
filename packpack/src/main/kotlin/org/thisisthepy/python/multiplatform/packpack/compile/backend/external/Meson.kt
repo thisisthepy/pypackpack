@@ -26,7 +26,19 @@ open class Meson(
      * on PATH once installed once). [setup] uses this to decide whether it needs to call
      * [installMeson] first.
      */
-    open fun isMesonInstalled(): Boolean = isExecutableAvailable("meson") && isExecutableAvailable("ninja")
+    open suspend fun isMesonInstalled(): Boolean {
+        if (isExecutableAvailable("meson") && isExecutableAvailable("ninja")) {
+            return true
+        }
+        val binPath = uv.executeCommand(listOf("tool", "dir", "--bin")).getOrNull()?.trim()
+        if (binPath != null) {
+            val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+            val mesonExe = if (isWindows) "$binPath${File.separator}meson.exe" else "$binPath${File.separator}meson"
+            val ninjaExe = if (isWindows) "$binPath${File.separator}ninja.exe" else "$binPath${File.separator}ninja"
+            return File(mesonExe).exists() && File(ninjaExe).exists()
+        }
+        return false
+    }
 
     private fun isExecutableAvailable(command: String): Boolean =
         try {
@@ -68,9 +80,12 @@ open class Meson(
         buildDir: String,
         options: List<String>?,
         workingDir: File? = null,
+        destdir: String? = null,
     ): Result<String> =
         runCatching {
-            executeCommand(listOf("install", "-C", buildDir, "--destdir=$workingDir/dist") + options.orEmpty(), workingDir).getOrThrow()
+            val defaultDestdir = workingDir?.let { "$it/dist" } ?: "dist"
+            val actualDestdir = destdir ?: defaultDestdir
+            executeCommand(listOf("install", "-C", buildDir, "--destdir=$actualDestdir") + options.orEmpty(), workingDir).getOrThrow()
         }
 
     internal fun makeMesonBuild(

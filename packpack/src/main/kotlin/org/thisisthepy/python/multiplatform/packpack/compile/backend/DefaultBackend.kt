@@ -24,7 +24,9 @@ class DefaultBackend(
             require(packageName.isNotBlank()) { "Package name is required. Use ppp build <package>." }
 
             val type = extraArgs?.get("type")?.takeIf { it.isNotBlank() } ?: "debug"
-            val buildDir = "build/packpack/single/$type"
+            val level = extraArgs?.get("level")?.takeIf { it.isNotBlank() } ?: "instant"
+            val target = extraArgs?.get("target")?.takeIf { it.isNotBlank() } ?: "default"
+            val buildDir = "build/packpack/single/$type/$level/$target"
             val overwrite = extraArgs?.get("overwrite")?.toBooleanStrictOrNull() ?: false
             val workspaceRoot = findWorkspaceRoot(File(System.getProperty("user.dir")))
             val packageDir = resolveWorkspacePackageDir(workspaceRoot, packageName)
@@ -33,9 +35,11 @@ class DefaultBackend(
                 File(packageDir, buildDir).deleteRecursively()
             }
 
+            val destdir = "${packageDir.absolutePath}/dist/$target/$type/$level"
+
             meson.setup(buildDir = buildDir, options = listOf("--buildtype=$type"), workingDir = packageDir, overwrite = overwrite).getOrThrow()
             meson.compile(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
-            meson.install(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
+            meson.install(buildDir = buildDir, options = null, workingDir = packageDir, destdir = destdir).getOrThrow()
 
             "Package '$packageName' compiled successfully."
         }

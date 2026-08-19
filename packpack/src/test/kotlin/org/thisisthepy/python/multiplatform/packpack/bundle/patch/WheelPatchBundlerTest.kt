@@ -57,8 +57,11 @@ class WheelPatchBundlerTest {
         relativePath: String,
         content: ByteArray = "x".toByteArray(),
         prefix: String = "usr/local/lib/python3.13",
+        target: String = org.thisisthepy.python.multiplatform.packpack.utils.Platforms.normalizeTarget("macos")!!,
+        type: String = "debug",
+        level: String = "instant",
     ) {
-        val file = File(File(pkg, "dist/$prefix/site-packages"), relativePath)
+        val file = File(File(pkg, "dist/$target/$type/$level/$prefix/site-packages"), relativePath)
         file.parentFile.mkdirs()
         file.writeBytes(content)
     }

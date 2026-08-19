@@ -176,9 +176,9 @@ class SingleWheelBundler : BundlerInterface {
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val version = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
 
-            val destdir = File(packageDir, "dist")
+            val destdir = File(packageDir, "dist/${canonicalTarget}/${request.buildType}/${request.buildLevel}")
             require(destdir.isDirectory) {
-                "No compiled output found under ${destdir.absolutePath}. Run `pypackpack build $packageName` first."
+                "No compiled output found under ${destdir.absolutePath}. Run `pypackpack build $packageName --type ${request.buildType} --level ${request.buildLevel} --target ${canonicalTarget}` first."
             }
             val sitePackages = findSitePackages(destdir)
 

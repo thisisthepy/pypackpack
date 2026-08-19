@@ -210,7 +210,7 @@ class MesonTest {
             private set
         val executedCommands = mutableListOf<List<String>>()
 
-        override fun isMesonInstalled(): Boolean = mesonInstalled
+        override suspend fun isMesonInstalled(): Boolean = mesonInstalled
 
         override suspend fun installMeson(): Result<String> {
             installMesonCalled = true
@@ -263,6 +263,37 @@ class MesonTest {
             fileExists = { true }
         )
         assertTrue(result.replace("\\", "/").contains("/some/uv/bin/meson"))
+    }
+
+    @Test
+    fun isMesonInstalled_checksUvToolDir() {
+        withWorkspace {
+            val uvToolBin = File(this, "uv_tool_bin")
+            uvToolBin.mkdirs()
+            
+            // On Unix, touch meson and ninja
+            val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+            val mesonExe = if (isWindows) "meson.exe" else "meson"
+            val ninjaExe = if (isWindows) "ninja.exe" else "ninja"
+            File(uvToolBin, mesonExe).writeText("")
+            File(uvToolBin, ninjaExe).writeText("")
+            
+            val mockUv = object : org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVBackend() {
+                override suspend fun executeCommand(command: List<String>, workingDir: File?): Result<String> {
+                    if (command == listOf("tool", "dir", "--bin")) {
+                        return Result.success(uvToolBin.absolutePath)
+                    }
+                    return super.executeCommand(command, workingDir)
+                }
+            }
+            
+            val meson = Meson(uv = mockUv)
+            val result = kotlinx.coroutines.runBlocking { meson.isMesonInstalled() }
+            
+            // Depending on system PATH, it might be true anyway, but we just verify it doesn't crash
+            // and uses the uv dir fallback logic properly.
+            assertTrue(result, "isMesonInstalled should return true when meson and ninja exist in uv tool dir")
+        }
     }
 
     @Test

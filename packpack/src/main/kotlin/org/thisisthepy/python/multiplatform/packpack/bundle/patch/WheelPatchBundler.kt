@@ -118,7 +118,6 @@ class WheelPatchBundler : BundlerInterface {
                 "Android wheel tag (PEP 738) requires minSdk >= $ANDROID_MIN_SDK_FLOOR (its own floor), " +
                     "was ${request.minSdk}."
             }
-
             val editor = TomlEditor(pyproject.readText())
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val newVersion = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
@@ -132,7 +131,7 @@ class WheelPatchBundler : BundlerInterface {
                     "against a baseline for a different package."
             }
 
-            val sitePackages = locateSitePackages(packageDir, packageName)
+            val sitePackages = locateSitePackages(packageDir, packageName, canonicalTarget, request.buildType, request.buildLevel)
             val currentPayload = collectPayload(sitePackages)
             require(currentPayload.isNotEmpty()) {
                 "No installed files found under ${sitePackages.absolutePath}. Run `pypackpack build $packageName` first."
@@ -230,10 +229,13 @@ class WheelPatchBundler : BundlerInterface {
     private fun locateSitePackages(
         packageDir: File,
         packageName: String,
+        canonicalTarget: String,
+        buildType: String,
+        buildLevel: String,
     ): File {
-        val destdir = File(packageDir, "dist")
+        val destdir = File(packageDir, "dist/${canonicalTarget}/${buildType}/${buildLevel}")
         require(destdir.isDirectory) {
-            "No compiled output found under ${destdir.absolutePath}. Run `pypackpack build $packageName` first."
+            "No compiled output found under ${destdir.absolutePath}. Run `pypackpack build $packageName --type $buildType --level $buildLevel --target $canonicalTarget` first."
         }
         val matches =
             destdir

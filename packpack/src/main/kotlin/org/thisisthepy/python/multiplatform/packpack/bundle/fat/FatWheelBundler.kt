@@ -116,8 +116,8 @@ class FatWheelBundler : BundlerInterface {
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val version = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
 
-            val ownPayload = collectPayload(locateSitePackages(packageDir, packageName))
-            val dependencyPayload = collectDependencyPayload(packageDir, editor, packageName, canonicalTarget)
+            val ownPayload = collectPayload(locateSitePackages(packageDir, packageName, canonicalTarget, request.buildType, request.buildLevel))
+            val dependencyPayload = collectDependencyPayload(packageDir, editor, packageName, canonicalTarget, request.buildType, request.buildLevel)
 
             val payload = mergePayloads(ownPayload, dependencyPayload)
             require(payload.isNotEmpty()) {
@@ -185,6 +185,8 @@ class FatWheelBundler : BundlerInterface {
         editor: TomlEditor,
         ownPackageName: String,
         canonicalTarget: String,
+        buildType: String,
+        buildLevel: String,
     ): Map<String, File> {
         val dependencyNames = editor.getArray("project", "dependencies").map { extractDependencyName(it) }
         if (dependencyNames.isEmpty()) return emptyMap()
@@ -223,7 +225,7 @@ class FatWheelBundler : BundlerInterface {
             val match = members.firstOrNull { (memberName, _) -> memberName.normalizedForMatch() == depName.normalizedForMatch() }
             if (match != null) {
                 val (memberName, memberDir) = match
-                val memberPayload = collectPayload(locateSitePackages(memberDir, memberName))
+                val memberPayload = collectPayload(locateSitePackages(memberDir, memberName, canonicalTarget, buildType, buildLevel))
                 require(memberPayload.isNotEmpty()) {
                     "Dependency '$memberName' (workspace member at ${memberDir.absolutePath}) has no compiled " +
                         "output. Run `pypackpack build $memberName` first."
@@ -352,10 +354,13 @@ class FatWheelBundler : BundlerInterface {
     private fun locateSitePackages(
         packageDir: File,
         packageName: String,
+        canonicalTarget: String,
+        buildType: String,
+        buildLevel: String,
     ): File {
-        val destdir = File(packageDir, "dist")
+        val destdir = File(packageDir, "dist/${canonicalTarget}/${buildType}/${buildLevel}")
         require(destdir.isDirectory) {
-            "No compiled output found under ${destdir.absolutePath}. Run `pypackpack build $packageName` first."
+            "No compiled output found under ${destdir.absolutePath}. Run `pypackpack build $packageName --type $buildType --level $buildLevel --target $canonicalTarget` first."
         }
         val matches =
             destdir

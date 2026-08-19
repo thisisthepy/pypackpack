@@ -60,8 +60,11 @@ class SingleWheelBundlerTest {
         relativePath: String,
         content: ByteArray = "x".toByteArray(),
         prefix: String = "usr/local/lib/python3.13",
+        target: String = org.thisisthepy.python.multiplatform.packpack.utils.Platforms.normalizeTarget("macos")!!,
+        type: String = "debug",
+        level: String = "instant",
     ) {
-        val file = File(File(pkg, "dist/$prefix/site-packages"), relativePath)
+        val file = File(File(pkg, "dist/$target/$type/$level/$prefix/site-packages"), relativePath)
         file.parentFile.mkdirs()
         file.writeBytes(content)
     }
@@ -119,7 +122,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_locatesSitePackagesUnderPosixPrefixNesting() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py", prefix = "usr/local/lib/python3.13")
+        writeDestdir(pkg, "core/__init__.py", prefix = "usr/local/lib/python3.13", target = "x86_64-unknown-linux-gnu")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "linux")).getOrThrow()
 
@@ -129,7 +132,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_locatesSitePackagesWithNoPrefixNesting() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py", prefix = "")
+        writeDestdir(pkg, "core/__init__.py", prefix = "", target = "x86_64-unknown-linux-gnu")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "linux")).getOrThrow()
 
@@ -150,8 +153,8 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_failsWhenDestdirHasNoSitePackagesDirectory() {
         val pkg = packageDir()
-        File(pkg, "dist/usr/local/lib/python3.13").mkdirs()
-        File(pkg, "dist/usr/local/lib/python3.13/not-site-packages.txt").writeText("x")
+        File(pkg, "dist/aarch64-apple-darwin/debug/instant/usr/local/lib/python3.13").mkdirs()
+        File(pkg, "dist/aarch64-apple-darwin/debug/instant/usr/local/lib/python3.13/not-site-packages.txt").writeText("x")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos"))
 
@@ -165,7 +168,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_wheelContainsMetadataWheelAndRecord() {
         val pkg = packageDir(name = "core", version = "0.1.0")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
         val entries = zipEntryNames(result.artifactFile!!)
@@ -179,7 +182,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_manifestIsWrittenToFilesystemAndMatchesArchiveContent() {
         val pkg = packageDir(name = "core", version = "0.1.0")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
         val manifestFile = result.manifestFile
@@ -197,7 +200,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_metadataDeclaresNameAndVersion() {
         val pkg = packageDir(name = "core", version = "0.1.0")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
         val metadata = zipEntryText(result.artifactFile!!, "core-0.1.0.dist-info/METADATA")
@@ -210,7 +213,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_wheelFileDeclaresTagAndRootIsPurelib() {
         val pkg = packageDir(name = "core", version = "0.1.0")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
         writeDestdir(pkg, "core/_ext.cpython-313-darwin.so")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
@@ -224,7 +227,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_rootIsPurelibTrueWhenNoNativeExtensionPresent() {
         val pkg = packageDir(name = "core", version = "0.1.0")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
         val wheel = zipEntryText(result.artifactFile!!, "core-0.1.0.dist-info/WHEEL")
@@ -255,7 +258,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_excludesPycacheAndDotfilesButKeepsNativeExtensions() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
         writeDestdir(pkg, "core/_ext.cpython-313-darwin.so")
         writeDestdir(pkg, "core/__pycache__/__init__.cpython-313.pyc")
         writeDestdir(pkg, "core/.DS_Store")
@@ -271,7 +274,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_isDeterministicAcrossRuns() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
         writeDestdir(pkg, "core/b.py")
         writeDestdir(pkg, "core/a.py")
 
@@ -286,7 +289,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_refusesToOverwriteExistingOutputUnlessAsked() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
         bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
 
         val second = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos"))
@@ -298,7 +301,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_rejectsBuildLevelsThatAreNotImplementedYet() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         listOf("bytecode", "native", "mixed").forEach { level ->
             val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level))
@@ -310,7 +313,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_rejectsUnknownTarget() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "definitely-not-a-target"))
 
@@ -352,7 +355,10 @@ class SingleWheelBundlerTest {
 
         cases.forEach { (target, expectedTag) ->
             val pkg = packageDir(name = "tagcheck-${target.hashCode()}")
-            writeDestdir(pkg, "core/__init__.py")
+            
+            // Normalize target just like the bundler does internally
+            val normalizedTarget = org.thisisthepy.python.multiplatform.packpack.utils.Platforms.normalizeTarget(target) ?: "aarch64-apple-darwin"
+            writeDestdir(pkg, "core/__init__.py", target = normalizedTarget)
 
             val result =
                 bundler()
@@ -379,7 +385,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_androidPlatformTagUsesDeclaredMinSdkWhenProvided() {
         val pkg = packageDir(name = "minsdk-declared")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-linux-android")
 
         val result =
             bundler()
@@ -396,7 +402,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_androidPlatformTagFallsBackToThePep738FloorWhenMinSdkIsNotDeclared() {
         val pkg = packageDir(name = "minsdk-undeclared")
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-linux-android")
 
         val result =
             bundler()
@@ -409,7 +415,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_rejectsMinSdkBelowThePep738Floor() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-linux-android")
 
         val result =
             bundler().bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android", minSdk = 16))
@@ -421,7 +427,7 @@ class SingleWheelBundlerTest {
     @Test
     fun bundle_rejectsMinSdkDeclaredForANonAndroidTarget() {
         val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
 
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", minSdk = 24))
 

@@ -30,6 +30,8 @@ class BuildCommand : CliktCommand(name = "build") {
                 mapOf(
                     "overwrite" to overwrite.toString(),
                     "type" to type,
+                    "level" to level,
+                    "target" to (target ?: ""),
                 ),
             )
         }

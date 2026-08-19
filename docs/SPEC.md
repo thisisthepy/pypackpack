@@ -48,19 +48,20 @@ Must be fast (build speed matters)
 
 ```
 - pypackpack
+  - cli
+    - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack/cli
+      - Command.kt               # main entry point, root command, dynamic package command dispatch
+      - CommandExtension.kt      # CLI helper, validation, progress display
+      - DependencyCommand.kt     # handles root-level 'add', 'remove', 'sync', 'tree'
+      - DynamicPackageCommand.kt # handles '<package> add/remove/sync/tree'
+      - PackageCommand.kt        # handles 'package add/remove/sync/tree'
+      - ProjectCommand.kt        # handles 'version', 'init'
+      - PythonCommand.kt         # handles 'python' related commands
+      - TargetCommand.kt         # handles 'target' related commands
+      - BuildCommand.kt          # handles 'build' command
+      - DeployCommand.kt         # placeholder for 'deploy' command (empty, not registered yet)
   - packpack
     - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack
-      - cli
-        - Command.kt               # main entry point, root command, dynamic package command dispatch
-        - CommandExtension.kt      # CLI helper, validation, progress display
-        - DependencyCommand.kt     # handles root-level 'add', 'remove', 'sync', 'tree'
-        - DynamicPackageCommand.kt # handles '<package> add/remove/sync/tree'
-        - PackageCommand.kt        # handles 'package add/remove/sync/tree'
-        - ProjectCommand.kt        # handles 'version', 'init'
-        - PythonCommand.kt         # handles 'python' related commands
-        - TargetCommand.kt         # handles 'target' related commands
-        - BuildCommand.kt          # handles 'build' command
-        - DeployCommand.kt         # placeholder for 'deploy' command (empty, not registered yet)
       - utils
         - Platforms.kt
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader); also defines DownloadSpec
@@ -330,10 +331,6 @@ pypackpack add <pypi name>...
 - `add`/`remove`/`sync`/`tree` (and their per-package equivalents, `pypackpack <package> add/remove/sync/tree` and `pypackpack package sync/tree <name>`) now accept unrecognized `--flag [value]` tokens and forward them as `extraArgs` to the backend (`UVBackend.appendOptions`, which already turned an arbitrary map into `--key [value]`). E.g. `pypackpack add requests --dev` and `pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple` both work.
 - The split between "dependency name" and "passthrough flag" is heuristic: every flag an earlier draft of this spec named (`--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`) is boolean in real `uv`, so any `--flag` defaults to a bare flag (no value) unless it is in a small value-taking allowlist (`--extra-index-url`, `--index-url`, `--index-strategy`, `--python`, `--resolution`) hardcoded in `parsePassthroughArgs` (`cli/CommandExtension.kt`).
 
-Limitation
-
-- Passthrough flags for `tree` must be given *before* `--target`: `--target` is a greedy vararg option, so a passthrough flag placed after it is swallowed as another target name instead of being recognized as a flag (e.g. `pypackpack tree --target windows --quiet` fails; `pypackpack tree --quiet --target windows` works).
-
 ```bash
 pypackpack remove <pypi name>...
 ```
@@ -375,10 +372,6 @@ pypackpack mypackage add numpy --target windows linux
 - `add` computes a marker for each target and repeatedly calls `uv add --package <name> --marker <marker>`.
 - If `--target` is absent, uses the `[tool.ppp.dependencies].platforms` value from the package's `pyproject.toml` as the default target.
 - If there is no default target and `--target` is also empty, raises an error.
-
-Limitation
-
-- Passthrough flags for `tree` (dynamic form) and `sync`/`tree` (`package sync`/`package tree` explicit form) must be given before `--target`, for the same greedy-vararg reason noted under the root-level commands above.
 
 ```bash
 pypackpack <package name> remove <pypi name> [--target <target1> <target2> ...]
