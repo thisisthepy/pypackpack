@@ -70,6 +70,18 @@ import java.security.MessageDigest
  *    valid one is written as `"minSdk": <value>` beside `platformFamily`; the key is omitted
  *    entirely (not `null`) when undeclared, matching every other manifest field's convention of only
  *    describing what was actually asked for.
+ * 9. **`metaDirs`/`libDirs` are merged wholesale, after the platform overlay, in that order.**
+ *    [BundleRequest.metaDirs] and [BundleRequest.libDirs] are `toolchain`'s per-source-set DSL lists
+ *    (`DSLBuild.kt`'s `SourceSetConfig.metaDirs`/`libDirs`) which, like [BundleRequest.minSdk] before
+ *    it, had nowhere to go before these fields existed. Each declared directory is taken as a whole
+ *    tree relative to itself -- the same treatment assumption 3 gives the platform overlay, and for
+ *    the same reason: a generated meta tree or a vendored site-packages tree is not itself a
+ *    discoverable Python package with an `__init__.py` at its root, so running it through
+ *    [findPythonPackages] would silently drop it. Merge order for a colliding relative path is
+ *    common source, then platform overlay, then every `metaDirs` entry in declaration order, then
+ *    every `libDirs` entry in declaration order -- each later stage overwriting the earlier one,
+ *    mirroring assumption 3's "platform wins over common". Both default to empty, which is exactly
+ *    today's behavior for every existing caller.
  *
  * The bundle is a *directory*, not an archive. Compressing it is `toolchain`'s business (it already
  * has a `Zip` task) and leaving it uncompressed keeps incremental staging cheap.
@@ -112,7 +124,7 @@ class ResourceBundler : BundlerInterface {
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val version = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
 
-            val payload = collectPayload(packageDir, descriptor.family)
+            val payload = collectPayload(packageDir, descriptor.family, request.metaDirs, request.libDirs)
             require(payload.isNotEmpty()) {
                 "No bundleable source found for package '$packageName' under " +
                     "${packageDir.absolutePath}/src/main, /src, or the package root."
@@ -168,6 +180,8 @@ class ResourceBundler : BundlerInterface {
     private fun collectPayload(
         packageDir: File,
         family: String,
+        metaDirs: List<File>,
+        libDirs: List<File>,
     ): Map<String, File> {
         val payload = sortedMapOf<String, File>()
 
@@ -182,6 +196,11 @@ class ResourceBundler : BundlerInterface {
         if (platformRoot.isDirectory) {
             payload.putAll(collectFrom(platformRoot, platformRoot))
         }
+
+        // `metaDirs`/`libDirs` (assumption 9): also taken wholesale, in declaration order, each
+        // overwriting a colliding path from the stage before it.
+        metaDirs.forEach { dir -> if (dir.isDirectory) payload.putAll(collectFrom(dir, dir)) }
+        libDirs.forEach { dir -> if (dir.isDirectory) payload.putAll(collectFrom(dir, dir)) }
 
         return payload
     }

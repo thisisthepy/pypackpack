@@ -196,6 +196,80 @@ class ResourceBundlerTest {
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("macos"), result.exceptionOrNull()?.message)
     }
 
+    /**
+     * `BundleRequest.metaDirs` is generated metadata (`.pyi` stubs, per the reference DSL
+     * `(플러그인예시)build.gradle.kts` in `toolchain`, which pairs `metaDirs("src/commonMain/
+     * generated/meta")` with `srcDirs`/`libDirs`, and per this repository's own decision that `.pyi`
+     * generation belongs to the Gradle plugin, not `ppp`). It is merged wholesale into the `python/`
+     * payload the same way the platform overlay is -- no `findPythonPackages` filtering -- because a
+     * generated meta tree is not itself a discoverable Python package.
+     */
+    @Test
+    fun bundle_mergesMetaDirsFilesIntoPayload() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        val metaDir = File(tempDir, "generated-meta")
+        write(metaDir, "core/api.pyi", "def ping() -> str: ...\n")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "macos", metaDirs = listOf(metaDir)))
+                .getOrThrow()
+
+        assertEquals("def ping() -> str: ...\n", File(result.outputDir, "python/core/api.pyi").readText())
+        assertTrue(result.manifestFile.readText().contains("\"path\": \"python/core/api.pyi\""))
+    }
+
+    /**
+     * `BundleRequest.libDirs` is prebuilt/vendored library content (per the same reference DSL's
+     * `libDirs("src/commonMain/build/site-packages")`) -- a site-packages-shaped tree merged wholesale
+     * into the `python/` payload, the same as [bundle_mergesMetaDirsFilesIntoPayload].
+     */
+    @Test
+    fun bundle_mergesLibDirsFilesIntoPayload() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        val libDir = File(tempDir, "site-packages")
+        write(libDir, "vendor_pkg/module.py", "VENDORED = True\n")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "macos", libDirs = listOf(libDir)))
+                .getOrThrow()
+
+        assertEquals("VENDORED = True\n", File(result.outputDir, "python/vendor_pkg/module.py").readText())
+        assertTrue(result.manifestFile.readText().contains("\"path\": \"python/vendor_pkg/module.py\""))
+    }
+
+    /**
+     * Merge order for a colliding relative path: common source, then the platform overlay, then
+     * `metaDirs`, then `libDirs` -- each later stage winning, mirroring the existing common-then-
+     * platform precedence [bundle_overlaysPlatformSpecificSourcesOverCommonOnes] already pins down.
+     */
+    @Test
+    fun bundle_libDirsWinsOverMetaDirsWhichWinsOverPlatformOverlayForTheSamePath() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/api.py", "PLATFORM = 'common'\n")
+        write(pkg, "src/android/core/api.py", "PLATFORM = 'android'\n")
+        val metaDir = File(tempDir, "generated-meta")
+        write(metaDir, "core/api.py", "PLATFORM = 'meta'\n")
+        val libDir = File(tempDir, "site-packages")
+        write(libDir, "core/api.py", "PLATFORM = 'lib'\n")
+
+        val result =
+            bundler()
+                .bundle(
+                    BundleRequest(
+                        packageDir = pkg,
+                        target = "aarch64-linux-android",
+                        metaDirs = listOf(metaDir),
+                        libDirs = listOf(libDir),
+                    ),
+                ).getOrThrow()
+
+        assertEquals("PLATFORM = 'lib'\n", File(result.outputDir, "python/core/api.py").readText())
+    }
+
     @Test
     fun bundle_keepsNonPythonResourceFilesButDropsCompiledAndEditorArtifacts() {
         val pkg = packageDir()

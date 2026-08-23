@@ -43,6 +43,19 @@ enum class BundleType(
  *   did not exist yet). Only meaningful for an `android`-family [target]; validated by
  *   [org.thisisthepy.python.multiplatform.packpack.utils.Platforms.requireValidMinSdk], which every
  *   bundler that accepts it calls before using it.
+ * @param metaDirs generated metadata directories -- `.pyi` type stubs and the like -- to merge into
+ *   [BundleType.RESOURCE]'s payload. This is `toolchain`'s `python { sourceSets { commonMain {
+ *   metaDirs(...) } } }` (`DSLBuild.kt`'s `SourceSetConfig.metaDirs`), which had "nowhere to send it"
+ *   the same way [minSdk] once did: `toolchain`'s reference DSL (`(플러그인예시)build.gradle.kts`)
+ *   pairs `metaDirs("src/commonMain/generated/meta")` with `srcDirs`, and this repository's own
+ *   decision records `.pyi` generation as the Gradle plugin's job (PyREPL-style), not `ppp`'s -- so
+ *   this is where that generated output is expected to land before bundling. Empty by default, which
+ *   preserves every existing caller's behavior exactly. See [ResourceBundler]'s KDoc for merge order.
+ * @param libDirs prebuilt/vendored library directories -- a site-packages-shaped tree -- to merge into
+ *   [BundleType.RESOURCE]'s payload. This is `toolchain`'s `python { sourceSets { commonMain {
+ *   libDirs(...) } } }`, paired in the same reference DSL with `libDirs("src/commonMain/build/
+ *   site-packages")`. Empty by default, which preserves every existing caller's behavior exactly. See
+ *   [ResourceBundler]'s KDoc for merge order.
  */
 data class BundleRequest(
     val packageDir: File,
@@ -52,6 +65,8 @@ data class BundleRequest(
     val outputDir: File? = null,
     val overwrite: Boolean = false,
     val minSdk: Int? = null,
+    val metaDirs: List<File> = emptyList(),
+    val libDirs: List<File> = emptyList(),
 )
 
 /**
