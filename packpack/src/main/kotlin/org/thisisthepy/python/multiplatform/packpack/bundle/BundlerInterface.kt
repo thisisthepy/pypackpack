@@ -95,9 +95,9 @@ data class BundleResult(
 /**
  * Factory pattern base interface for bundling.
  *
- * [BundleType.RESOURCE] and [BundleType.SINGLE] are implemented; the other three return a failed
- * [Result] naming themselves rather than throwing or silently succeeding, so a caller that asks for
- * one gets an actionable message instead of an empty directory.
+ * [BundleType.RESOURCE], [BundleType.SINGLE], [BundleType.FAT], and [BundleType.PATCH] are implemented;
+ * [BundleType.BINARY] returns a failed [Result] naming itself rather than throwing or silently succeeding,
+ * so a caller that asks for it gets an actionable message instead of an empty directory.
  */
 interface BundlerInterface {
     fun bundle(request: BundleRequest): Result<BundleResult>

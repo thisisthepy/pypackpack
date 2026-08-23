@@ -439,7 +439,7 @@ Not yet implemented (target)
 
 - Describing, in the package's `pyproject.toml`, the scope of dependency packages that need to be built (today everything under the package is built at the same level).
 - Selecting whether to bundle everything into a single file or build separately, as metadata.
-- Bundle compression (`.whl`) plus incrementally updating only the changed parts (`.whl.patch`), including tracking which primary version a patch is based on and its patch number.
+- Bundle compression (`.whl` for `single`/`fat`) and content change patch generation (`.whl.patch` for `patch`) are implemented (`SingleWheelBundler`, `FatWheelBundler`, `WheelPatchBundler`). Server-side patch version tracking (base version ledger, server management page) remains a future design target.
 
 #### Build Level (`Not yet implemented (target)`)
 
