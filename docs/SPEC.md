@@ -128,6 +128,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # shared Python-version install/list/find/uninstall logic
           - UVBackend.kt
+          - MissingWheel.kt  # parses uv's "no wheel for this target" failure
       - compile
         - frontend
           - FrontendInterface.kt  # factory pattern
@@ -492,6 +493,7 @@ Status: implemented — `packpack/.../dependency/middleware/environment/CrossEnv
 `packpack/.../dependency/backend/UVBackendTest.kt` (`installDependenciesToTarget_*`).
 
 - `sync` first calls `uv sync --package <name>`. Then, for each target, it calls `uv tree --package <name> --python-platform <target>` to verify the target resolves, and installs that target's dependencies with `uv pip install -r pyproject.toml --target <package>/build/crossenv/<canonical target> --python-platform <target>`.
+- If a package has no wheel for a target, the failure names the package spec and the target and says whether only an sdist exists (`NoWheelForTargetException`, with uv's raw text appended). Recognized uv texts (`parseMissingWheel`): `Failed to download and build ... is not compatible with the target Python` (only an sdist exists), `has no wheels with a matching platform tag` (wheels for other platforms only, no sdist) and `has no usable wheels` (building disabled, sdist unknown). Any other uv error passes through unchanged. Status: implemented — `packpack/.../dependency/backend/MissingWheelTest.kt` (fixtures are real uv 0.12.3 output).
 - If `--target` is absent, uses a single host target as the default.
 
 ```bash
