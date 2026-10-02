@@ -70,7 +70,9 @@ abstract class DefaultBackend : BackendInterface {
     }
 
     /** The project `installPython` places the interpreter in. A seam for tests; see rule 13 in AGENTS.md. */
-    protected open fun projectRoot(): File = findProjectRoot()
+    // No pyproject.toml above the working directory: the working directory itself, which is what
+    // the previous `File(findProjectRoot(), …)` resolved to when the root was null.
+    protected open fun projectRoot(): File = findProjectRoot() ?: File(System.getProperty("user.dir"))
 
     /** The host's canonical target triple. A seam for tests. */
     protected open fun hostTarget(): String = Platforms.detectHostTarget()
