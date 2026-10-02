@@ -40,8 +40,9 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
     Rust (`Cargo.kt`) is an empty placeholder.
 - (2). Support crossenv for multi-platform code
   - Status: partial — per-target dependency markers and per-target install directories
-    (`build/crossenv/<target>`), see *Per-package target dependency management*. No cross
-    interpreter environment is created.
+    (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
+    install of Android and iOS wheels is tested (`packpack/.../dependency/backend/UVBackendRealInstallTest.kt`).
+    No cross interpreter environment is created.
 - (3). Support Python code compilation/optimization/minification (nuitka, lpython, etc.)
   - Status: planned — `Nuitka.kt`, `Cython.kt`, `Lpython.kt`, `transcompile/` and `minification/`
     are empty placeholders. (The `bytecode` level of the `resource` bundle uses `compileall`, which
@@ -489,9 +490,21 @@ pypackpack <package name> sync [--target <target1> <target2> ...]
 
 Status: implemented — `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
 (`syncDependenciesInstallsPerTargetCrossenvDirectories`) and
-`packpack/.../dependency/backend/UVBackendTest.kt` (`installDependenciesToTarget_*`).
+`packpack/.../dependency/backend/UVBackendTest.kt` (`installDependenciesToTarget_*`) check the
+calls against a recording backend. `packpack/.../dependency/backend/UVBackendRealInstallTest.kt`
+(`installDependenciesToTarget_installsAndroidWheelsIntoCrossenvDirectory`,
+`installDependenciesToTarget_installsIosWheelsIntoCrossenvDirectory`; tagged `network`, needs
+network access and `uv`) runs the real install for `aarch64-linux-android` and `arm64-apple-ios`
+with a pure-Python package (`six`) and a native one (`markupsafe`), and checks that the extension
+module and its wheel tag are the target's (`android_24_arm64_v8a`, `ios_13_0_arm64_iphoneos`),
+not the host's.
 
 - `sync` first calls `uv sync --package <name>`. Then, for each target, it calls `uv tree --package <name> --python-platform <target>` to verify the target resolves, and installs that target's dependencies with `uv pip install -r pyproject.toml --target <package>/build/crossenv/<canonical target> --python-platform <target>`.
+- uv selects wheels by `--python-platform` and by the Python version, which defaults to the
+  interpreter uv finds on the host, not the target runtime's. Pass `--python-version` (the runtime's,
+  e.g. `3.13`) through the extra arguments when the host's differs. A dependency with no wheel for the
+  target is built from its sdist with the host compiler and then rejected as incompatible; pass
+  `--only-binary :all:` to fail at resolution instead ("has no usable wheels").
 - If `--target` is absent, uses a single host target as the default.
 
 ```bash
