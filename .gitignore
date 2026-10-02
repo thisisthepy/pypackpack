@@ -178,8 +178,14 @@ cython_debug/
 # Project Settings
 ########################################################################################################################
 # Distribution
-/tools/
+/tools/*
+# tools/release/ is tracked developer tooling (AGENTS.md rule 4), not a downloaded tool.
+!/tools/release/
 /sources/
+
+# Agent worktrees and scratch files (AGENTS.md rule 2)
+.worktrees/
+.tmp/
 
 
 ########################################################################################################################

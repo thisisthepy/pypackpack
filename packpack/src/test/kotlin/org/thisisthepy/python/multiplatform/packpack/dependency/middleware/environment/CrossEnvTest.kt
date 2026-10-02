@@ -124,7 +124,7 @@ class CrossEnvTest {
         // pyproject.toml ends up holding `platform_machine == 'x86_64' and sys_platform ==
         // 'win32'` -- exactly what this fixture pre-seeds below. `removeDependencies` must still
         // find this entry when asked to remove the same target it was added for (see
-        // docs/SPEC.md's "remove --target" limitation and docs/KNOWN_ISSUES.md).
+        // docs/SPEC.md's "remove --target" limitation and docs/issues/KNOWN_ISSUES.md).
         withWorkspace(
             """
             [project]
