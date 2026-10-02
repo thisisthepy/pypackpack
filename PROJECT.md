@@ -20,7 +20,9 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
 - `target add` / `remove` (워크스페이스 멤버까지 전파, `src/<family>/__init__.py` 생성)
 - `<package> remove --target` — `uv` 가 다시 쓴 `sys_platform` 마커도 매칭 (예전 결함 해결)
-- `<package> sync` — 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치
+- `<package> sync` — 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치.
+  `aarch64-linux-android` / `arm64-apple-ios` 에 실제 휠(`six`, `markupsafe`)을 설치하는 테스트
+  (`UVBackendRealInstallTest`, 네트워크와 `uv` 필요) 있음
 - 번들 `resource` (`instant`, `bytecode`), `single`, `fat`, `patch` (`instant` 만)
 - CLI 도움말, 통과 플래그(`--dev`, `--extra-index-url …`) 파싱
 - `meson.build` 자동 생성, `meson`/`ninja` 자동 설치
