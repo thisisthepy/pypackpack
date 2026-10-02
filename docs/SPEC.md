@@ -129,6 +129,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # shared Python-version install/list/find/uninstall logic
           - UVBackend.kt
+          - MissingWheel.kt  # parses uv's "no wheel for this target" failure
       - compile
         - frontend
           - FrontendInterface.kt  # factory pattern
@@ -505,6 +506,7 @@ not the host's.
   e.g. `3.13`) through the extra arguments when the host's differs. A dependency with no wheel for the
   target is built from its sdist with the host compiler and then rejected as incompatible; pass
   `--only-binary :all:` to fail at resolution instead ("has no usable wheels").
+- If a package has no wheel for a target, the failure names the package spec and the target and says whether only an sdist exists (`NoWheelForTargetException`, with uv's raw text appended). Recognized uv texts (`parseMissingWheel`): `Failed to download and build ... is not compatible with the target Python` (only an sdist exists), `has no wheels with a matching platform tag` (wheels for other platforms only, no sdist) and `has no usable wheels` (building disabled, sdist unknown). Any other uv error passes through unchanged. Status: implemented — `packpack/.../dependency/backend/MissingWheelTest.kt` (fixtures are real uv 0.12.3 output).
 - If `--target` is absent, uses a single host target as the default.
 
 ```bash

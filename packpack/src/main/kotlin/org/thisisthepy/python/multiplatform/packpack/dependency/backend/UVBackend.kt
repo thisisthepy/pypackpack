@@ -161,7 +161,10 @@ open class UVBackend(
             }
             appendOptions(command, options)
 
-            return executeCommand(command, workingDir)
+            val result = executeCommand(command, workingDir)
+            val failure = result.exceptionOrNull() ?: return result
+            val target = options["python-platform"]?.takeIf { it.isNotBlank() } ?: pythonPlatform
+            return Result.failure(describeInstallFailure(failure, target))
         }
 
     /** Show dependency tree */
