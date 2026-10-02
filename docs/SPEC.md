@@ -157,6 +157,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - Meson.kt  # meson.build generation, meson setup/compile/install, meson/ninja auto-install
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # strategy pattern
+        - extension
+          - ExtensionCompiler.kt  # interface and data types only: the native/mixed compile slot (docs/design/compile-slot.md); nothing implements or calls it
       - bundle
         - BundlerInterface.kt  # factory pattern; BundleType, BundleRequest, BundleResult
         - DefaultBundler.kt  # placeholder
