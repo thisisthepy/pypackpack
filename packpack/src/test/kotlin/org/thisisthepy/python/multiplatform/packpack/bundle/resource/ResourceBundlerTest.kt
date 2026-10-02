@@ -185,6 +185,38 @@ class ResourceBundlerTest {
         assertFalse(result.manifestFile.readText().contains("\"minSdk\""))
     }
 
+    /**
+     * `versionName` / `versionCode` are the app's Python payload version, from `toolchain`'s
+     * `defaultConfig { versionName; versionCode }` (toolchain#11). They sit beside, not instead of,
+     * `"version"`, which is the package's own pyproject version. Written only when declared.
+     */
+    @Test
+    fun bundle_manifestRecordsDeclaredPayloadVersion() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "macos", versionName = "1.2.0", versionCode = 7))
+                .getOrThrow()
+
+        val manifest = result.manifestFile.readText()
+        assertTrue(manifest.contains("\"versionName\": \"1.2.0\""), manifest)
+        assertTrue(manifest.contains("\"versionCode\": 7"), manifest)
+        assertBalancedJson(manifest)
+    }
+
+    @Test
+    fun bundle_manifestOmitsPayloadVersionWhenNotDeclared() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+
+        val manifest = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow().manifestFile.readText()
+
+        assertFalse(manifest.contains("\"versionName\""), manifest)
+        assertFalse(manifest.contains("\"versionCode\""), manifest)
+    }
+
     @Test
     fun bundle_rejectsMinSdkDeclaredForANonAndroidTarget() {
         val pkg = packageDir()
