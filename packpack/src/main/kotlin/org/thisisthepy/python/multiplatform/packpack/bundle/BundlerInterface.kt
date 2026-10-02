@@ -67,6 +67,13 @@ data class BundleRequest(
     val minSdk: Int? = null,
     val metaDirs: List<File> = emptyList(),
     val libDirs: List<File> = emptyList(),
+    /**
+     * The app's Python payload version (toolchain's `defaultConfig { versionName; versionCode }`),
+     * recorded in the manifest beside the package's own `version` when declared. Code push compares
+     * it to decide whether a payload changed.
+     */
+    val versionName: String? = null,
+    val versionCode: Int? = null,
 )
 
 /**

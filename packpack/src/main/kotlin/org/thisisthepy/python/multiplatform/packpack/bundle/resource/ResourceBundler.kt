@@ -385,6 +385,12 @@ class ResourceBundler : BundlerInterface {
             appendLine("  \"bundleType\": ${BundleType.RESOURCE.id.jsonString()},")
             appendLine("  \"packageName\": ${packageName.jsonString()},")
             appendLine("  \"version\": ${version.jsonString()},")
+            if (request.versionName != null) {
+                appendLine("  \"versionName\": ${request.versionName.jsonString()},")
+            }
+            if (request.versionCode != null) {
+                appendLine("  \"versionCode\": ${request.versionCode},")
+            }
             appendLine("  \"target\": ${descriptor.canonicalTarget.jsonString()},")
             appendLine("  \"platformFamily\": ${descriptor.family.jsonString()},")
             if (request.minSdk != null) {
