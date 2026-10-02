@@ -345,7 +345,7 @@ internal object MarkerPolicy {
      * iOS -- a future uv version normalizing it the same way should not silently break matching again.
      *
      * This is what made `removeDependencies` fail to find a target-scoped dependency it had itself
-     * added (docs/SPEC.md's "remove --target" limitation, docs/KNOWN_ISSUES.md): it compared the
+     * added (docs/SPEC.md's "remove --target" limitation, docs/issues/KNOWN_ISSUES.md): it compared the
      * literal text [markerForTarget] recomputes against whatever uv actually wrote, and those two
      * strings disagree.
      */

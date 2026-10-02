@@ -1,4 +1,4 @@
-English | [한국어](docs/locale/README_ko.md)
+[English](../../README.md) | 한국어
 
 # pypackpack
 
@@ -6,116 +6,116 @@ English | [한국어](docs/locale/README_ko.md)
 [![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 
-### Description
+### 설명
 
-A multiplatform solution to distribute python project.
+Python 프로젝트를 배포하기 위한 멀티플랫폼 솔루션.
 
-pypackpack = crossenv + compiler(nuitka, pyinstaller) + bundler(js webpack) + codepush(js expo)
+pypackpack = crossenv + 컴파일러(nuitka, pyinstaller) + 번들러(js webpack) + 코드푸시(js expo)
 
-#### Supporting multiplatforms:
+#### 지원하는 멀티플랫폼:
 
 - Android (arm64, x86_64)
 - iOS (arm64)
-- masOS (universal)
+- macOS (universal)
 - Linux (x86_64)
 - Windows (x86_64)
 - WASM -
 
 > [!NOTE]  
-> \*\* Since Xcode only runs on macOS, you need macOS to build this repo for iOS.
+> \*\* Xcode 는 macOS 에서만 실행되므로, 이 저장소를 iOS 용으로 빌드하려면 macOS 가 필요합니다.
 
-## Build Manually 🛠️
+## 직접 빌드하기 🛠️
 
-### Prerequisites
+### 사전 요구 사항
 
-- **GraalVM 22+** with Native Image support
-- **Gradle 8.5+** (included via wrapper)
+- Native Image 를 지원하는 **GraalVM 22+**
+- **Gradle 8.5+** (wrapper 에 포함)
 
-#### (1) Clone this repo
+#### (1) 이 저장소 클론
 
-- RC version
+- RC 버전
 
 ```bash
 git clone https://github.com/thisisthepy/pypackpack PyPackPack
 ```
 
-- dev version
+- 개발 버전
 
 ```bash
 git clone https://github.com/thisisthepy/pypackpack@develop PyPackPack
 ```
 
-#### (2) Setup GraalVM
+#### (2) GraalVM 설정
 
-Download and install GraalVM from [https://www.graalvm.org/](https://www.graalvm.org/)
+[https://www.graalvm.org/](https://www.graalvm.org/) 에서 GraalVM 을 내려받아 설치합니다.
 
-Set environment variables:
+환경 변수를 설정합니다:
 
 ```bash
 export GRAALVM_HOME=/path/to/graalvm
 export PATH=$GRAALVM_HOME/bin:$PATH
 ```
 
-Install Native Image component:
+Native Image 컴포넌트를 설치합니다:
 
 ```bash
 gu install native-image
 ```
 
-#### (3) Build Options
+#### (3) 빌드 옵션
 
-**Standard Gradle Build:**
+**표준 Gradle 빌드:**
 
 ```bash
 ./gradlew build
 ```
 
-**Build Native Executable:**
+**네이티브 실행 파일 빌드:**
 
 ```bash
 ./gradlew buildNativeExecutable
 ```
 
-**Package Native Distribution:**
+**네이티브 배포본 패키징:**
 
 ```bash
 ./gradlew packageNative
 ```
 
-**Quick Build Script (Unix):**
+**빠른 빌드 스크립트 (Unix):**
 
 ```bash
 chmod +x scripts/build-native.sh
 ./scripts/build-native.sh
 ```
 
-**Quick Build Script (Windows):**
+**빠른 빌드 스크립트 (Windows):**
 
 ```cmd
 scripts\build-native.bat
 ```
 
-#### (4) Available Gradle Tasks
+#### (4) 사용 가능한 Gradle 태스크
 
-- `build` - Standard build with tests
-- `nativeCompile` - Compile to native executable
-- `buildNativeExecutable` - Build and copy native executable
-- `packageNative` - Create distribution package
-- `buildAllPlatforms` - Cross-platform build (requires Docker)
+- `build` - 테스트를 포함한 표준 빌드
+- `nativeCompile` - 네이티브 실행 파일로 컴파일
+- `buildNativeExecutable` - 네이티브 실행 파일을 빌드하고 복사
+- `packageNative` - 배포 패키지 생성
+- `buildAllPlatforms` - 크로스 플랫폼 빌드 (Docker 필요)
 
 ---
 
-## Use Pre-Built Package 🧰
+## 미리 빌드된 패키지 사용하기 🧰
 
-#### (1) Maven Repo (Release only)
+#### (1) Maven 저장소 (릴리스 전용)
 
-In your project build.gradle.kts
+프로젝트의 build.gradle.kts 에
 
     implementation("io.github.thisisthepy:python-multiplatform:0.0.1")
 
-#### (2) Jitpack (for Pre-release)
+#### (2) Jitpack (프리릴리스용)
 
-In your project settings.gradle.kts
+프로젝트의 settings.gradle.kts 에
 
     pluginManagement {
         repositories {
@@ -135,18 +135,18 @@ In your project settings.gradle.kts
         }
     }
 
-In your project build.gradle.kts
+프로젝트의 build.gradle.kts 에
 
     implementation("com.github.thisisthepy:python-multiplatform-mobile:0.0.1")
 
 > [!TIP]
-> Some tips
+> 몇 가지 팁
 
 ---
 
-## Usage 📑
+## 사용법 📑
 
-In your main method,
+main 메서드에서,
 
 ```kotlin
 
@@ -154,10 +154,10 @@ In your main method,
 ```
 
 > [!IMPORTANT]
-> Somethig important
+> 중요한 내용
 
 ---
 
-## Stargazers over time 🌟
+## 시간에 따른 Stargazers 🌟
 
 [![Stargazers over time](https://starchart.cc/thisisthepy/pypackpack.svg?variant=adaptive)](https://starchart.cc/thisisthepy/python-multiplatform-mobile)
