@@ -107,7 +107,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
       - utils
         - Platforms.kt  # supported targets, aliases, families, markers, min SDK validation
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader); also defines DownloadSpec
-        - Archive.kt  # zip/tar.gz/tar.zst archive extraction
+        - Archive.kt  # zip/tar.gz/tar.zst archive extraction (with contained symlinks and executable bits)
+        - Checksum.kt  # SHA-256 of a file, and verification against a pinned digest
         - Workspace.kt  # project/workspace root discovery, workspace member listing
         - toml
           - TomlEditor.kt  # style-preserving TOML editor (tables/arrays/values)
@@ -128,6 +129,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - UV.kt  # uv downloader
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # shared Python-version install/list/find/uninstall logic
+          - PythonDistributions.kt  # (version, target) -> interpreter archive URL and pinned SHA-256
           - UVBackend.kt
       - compile
         - frontend
@@ -323,22 +325,78 @@ pypackpack python uninstall <python version>
 
 #### Installing a ppp Python distribution
 
-Status: partial — `packpack/.../dependency/backend/DefaultBackendTest.kt` covers only the refusals
-(`installPython_returnsFailureForUnsupportedPythonVersion`,
-`installPython_returnsFailureForUnsupportedTargetPlatform`) and the archive layout
-(`extractArchive_stripsTwoComponentsForPythonInstall`). No test downloads.
-
 ```bash
 pypackpack python install <python version> [<target platform>]
 ```
 
-- Downloads a prebuilt CPython distribution from `thisisthepy/python-multiplatform`'s GitHub release binaries (`raw/release/binary`) for the given (or host) target platform, and extracts its `python/install/` tree into `<project>/.venv` (host target) or `<project>/<target-dir-name>` (cross target, e.g. `windows_amd64`).
-- Writes a `version=absolutePath` entry to `~/.pypackpack/python/registry.properties`, so `find`/`list`/`uninstall` can locate the project-relative install.
+##### Version and target selection
+
+Status: implemented — `packpack/.../dependency/backend/PythonDistributionsTest.kt` (every pair's URL
+and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
+(`installPython_refusesAnUnsupportedVersionWithTheSupportedList`,
+`installPython_returnsFailureForUnsupportedTargetPlatform`).
+
+- The installable versions are the ones `toolchain` can ask for (`PY3_14_7`, `PY3_13_0` in `toolchain`'s
+  `dsl/DSLCore.kt`). `3.14` and `3.13` are accepted as shorthands for `3.14.7` and `3.13.0`.
+- Every (version, canonical target) pair maps to one archive URL and one pinned SHA-256 in
+  `dependency/backend/PythonDistributions.kt`, which cites where each digest came from:
+
+| Version | Targets | Source | Digest provenance |
+|---|---|---|---|
+| 3.14.7 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-build-standalone `20260807`, `install_only.tar.gz` | python-multiplatform's `python-checksums.properties`, equal to the release's `SHA256SUMS` |
+| 3.14.7 | `aarch64-unknown-linux-gnu`, `aarch64-pc-windows-msvc` | same | the release's `SHA256SUMS` only |
+| 3.14.7 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.14.7-<arch>-linux-android.tar.gz` | python-multiplatform's lockfile (python.org publishes no checksum file) |
+| 3.14.7 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | BeeWare Python-Apple-support `3.14-b10` (one XCframework for all three) | python-multiplatform's lockfile, equal to the GitHub release asset digest |
+| 3.13.0 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-multiplatform `release` branch `binary/` (copies of python-build-standalone `20241008` `full.tar.zst`) | python-build-standalone `20241008` `SHA256SUMS` |
+
+- A pair not in the table fails with `Python <version> is not available for <target>. Supported: <version/target, ...>`.
+- A pair that is known but has no pin fails closed (`... has no pinned SHA-256, so it is refused rather
+  than installed unverified`) without downloading anything. Today that is 3.13.0 for Android and iOS
+  (`binary/*.tar.xz`, `binary/*.zip`): nothing publishes their digest and computing one needs the full
+  download (a TODO in `PythonDistributions.kt`).
 
 Limitation
 
-- `install` only accepts Python `3.13`; any other version is rejected ("Only Python 3.13 is supported due to python-mutliplatform limitations", spelling as in the code).
+- BeeWare's `3.14-b10`, which python-multiplatform pairs with `pythonVersion=3.14.7`, carries CPython
+  3.14.6 according to its release notes; it is the newest BeeWare 3.14 build.
+- Free-threaded builds and Sigstore verification (both available in python-multiplatform's build) are
+  not offered here.
+
+##### Digest verification and placement
+
+Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt`
+(`installPython_matchingDigestExtractsIntoTheCrossTargetDirectory`,
+`installPython_hostTargetGoesToTheProjectVenv`, `installPython_mismatchedDigestRefusesAndLeavesNothingBehind`,
+`installPython_mismatchedDigestLeavesAnExistingInstallUntouched`,
+`installPython_archiveWithAnUnexpectedLayoutIsRefused`, `installPython_refusesAPairWithNoPinnedDigestWithoutDownloading`)
+and `utils/ArchiveTest.kt` (`extractArchive_recreatesRelativeSymlinksAndExecutableBits`,
+`extractArchive_rejectsSymlinksThatEscapeTheDestination`). The tests use small fake archives; no test downloads.
+
+- The archive is downloaded into a staging directory beside the install directory
+  (`<project>/.<install dir>.pypackpack-staging`), and its SHA-256 is compared with the pin **before**
+  anything is extracted.
+- A mismatch fails with `SHA-256 mismatch for <archive>: expected <pin>, actual <digest>` and registers nothing.
+- The archive is extracted inside the staging directory and only then moved to `<project>/.venv`
+  (host target) or `<project>/<target-dir-name>` (cross target: `windows_amd64`, `windows_arm64`,
+  `linux_x86_64`, `linux_arm64`, `macos_arm64`, `macos_x86_64`, `android_arm64`, `android_x86_64`,
+  `ios_arm64`, `ios_simulator_arm64`, `ios_simulator_x86_64`). A missing install directory is created by
+  a rename; an existing one (a `.venv` uv already made) has the tree copied over it.
+- Whatever happens, the staging directory is deleted, so a refused or failed install leaves neither the
+  archive nor a partial tree, and an existing install directory untouched.
+- Only the interpreter tree is installed: `python/` of an `install_only` archive, `python/install/` of a
+  `full` archive, the whole `./` tree of a python.org Android archive, the whole XCframework archive for
+  iOS. An archive that verifies but yields nothing under that prefix is refused.
+- tar symbolic links are recreated when they are relative and stay inside the install directory (others
+  are rejected), and executable bits are kept, so `bin/python` exists and runs.
+- On success it writes a `version=absolutePath` entry to `~/.pypackpack/python/registry.properties`, keyed
+  by the version string as given, so `find`/`list`/`uninstall` can locate the project-relative install.
+
+Limitation
+
 - The project root is located through `user.dir` (`findProjectRoot()`), not an explicit working directory.
+- `Downloader` holds the whole archive in memory before writing it.
+- `utils/Archive.kt` reads ustar names (100-byte name + 155-byte prefix) and skips PAX (`x`/`g`) and GNU
+  long-name (`L`) records, and has no `.tar.xz` support.
 
 ### Package management features
 

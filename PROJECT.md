@@ -18,6 +18,11 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **구현됨 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
+- `python install` — 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b10 iOS)
+  와 3.13.0 (python-multiplatform `release` 브랜치 `binary/`, 데스크톱만). 모든 아카이브를
+  `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치나 고정값이 없는 쌍은
+  실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
+  테스트 (`DefaultBackendTest`, `PythonDistributionsTest`); 실제 다운로드 테스트는 없음
 - `target add` / `remove` (워크스페이스 멤버까지 전파, `src/<family>/__init__.py` 생성)
 - `<package> remove --target` — `uv` 가 다시 쓴 `sys_platform` 마커도 매칭 (예전 결함 해결)
 - `<package> sync` — 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치.
@@ -28,7 +33,7 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `meson.build` 자동 생성, `meson`/`ninja` 자동 설치
 
 **부분**
-- `init`, `python use`, `python install` (3.13 만, 다운로드 테스트 없음), `package add/remove`, `target list`
+- `init`, `python use`, `package add/remove`, `target list`
 - `version` — `pypackpack version` 만 동작. `--version` / `-v` / `v` 는 실패한다
 - 루트 `add/remove/sync/tree`, `<package> add/tree` — CLI 전달만 테스트, `uv` 호출은 테스트 없음
 - `build` — Meson 으로 C/C++ 만. `--level` / `--target` 은 디렉터리 이름만 바꾸고 교차 컴파일하지 않음
@@ -84,7 +89,9 @@ bash tools/release/test-sync-release.sh   # release 동기화 스크립트 테�
 
 ## 열린 질문
 
-1. 지원 Python 버전 — `python install` 은 3.13 만. python-multiplatform 을 따라갈 것인가.
+1. 3.13.0 의 Android(`binary/*.tar.xz`)·iOS(`binary/*.zip`) 는 공개된 SHA-256 이 없어 거부된다
+   (`PythonDistributions.kt` 의 TODO). 한 번 내려받아 고정할 것인가, 3.13.0 모바일을 버릴 것인가.
+   (`.tar.xz` 는 `Archive.kt` 가 풀지도 못한다.)
 2. WASM 을 첫 릴리스 범위에 넣을 것인가 (`wasm32-pyodide2024` 는 타깃 목록에만 있음).
 3. `build` 가 번들까지 할 것인가, `bundle` 을 별도 명령으로 둘 것인가.
 4. `build --target` 이 별칭이나 생략(`default`)일 때, 번들러가 찾는 정규 트리플 경로와 어긋난다.

@@ -4,6 +4,7 @@ import com.github.luben.zstd.ZstdOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.nio.file.Files
 import java.util.zip.CRC32
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipEntry
@@ -11,6 +12,8 @@ import java.util.zip.ZipOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class ArchiveTest {
@@ -119,6 +122,44 @@ class ArchiveTest {
         }
     }
 
+    @Test
+    fun extractArchive_recreatesRelativeSymlinksAndExecutableBits() {
+        val archive = File(tempDir, "pbs.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { gzip ->
+            gzip.write(tarDirectory("python/"))
+            gzip.write(tarDirectory("python/bin/"))
+            gzip.write(tarFile("python/bin/python3.14", "interp".toByteArray(), mode = "0000755"))
+            gzip.write(tarFile("python/bin/README", "doc".toByteArray(), mode = "0000644"))
+            gzip.write(tarHeader("python/bin/python", 0, '2', linkName = "python3.14"))
+            gzip.write(ByteArray(1024))
+        }
+        val destDir = File(tempDir, "pbs-dest")
+
+        extractArchive(archive, destDir, stripComponents = 1, prefixFilter = "python/")
+
+        val link = File(destDir, "bin/python").toPath()
+        assertTrue(Files.isSymbolicLink(link))
+        assertEquals("python3.14", Files.readSymbolicLink(link).toString())
+        assertEquals("interp", link.toFile().readText())
+        assertTrue(File(destDir, "bin/python3.14").canExecute())
+        assertFalse(File(destDir, "bin/README").canExecute())
+    }
+
+    @Test
+    fun extractArchive_rejectsSymlinksThatEscapeTheDestination() {
+        for (linkName in listOf("../../outside", "/etc/passwd")) {
+            val archive = File(tempDir, "evil.tar.gz")
+            GZIPOutputStream(archive.outputStream()).use { gzip ->
+                gzip.write(tarHeader("bin/python", 0, '2', linkName = linkName))
+                gzip.write(ByteArray(1024))
+            }
+
+            assertFailsWith<IllegalArgumentException>(linkName) {
+                extractArchive(archive, File(tempDir, "evil-dest"))
+            }
+        }
+    }
+
     private fun tarDirectory(name: String): ByteArray = tarHeader(name, 0, '5')
 
     private fun zipWithStoredDataDescriptor(
@@ -183,8 +224,9 @@ class ArchiveTest {
     private fun tarFile(
         name: String,
         content: ByteArray,
+        mode: String = "0000777",
     ): ByteArray {
-        val header = tarHeader(name, content.size, '0')
+        val header = tarHeader(name, content.size, '0', mode = mode)
         val paddingSize = (512 - content.size % 512) % 512
         return header + content + ByteArray(paddingSize)
     }
@@ -193,10 +235,13 @@ class ArchiveTest {
         name: String,
         size: Int,
         typeFlag: Char,
+        mode: String = "0000777",
+        linkName: String = "",
     ): ByteArray {
         val header = ByteArray(512)
         name.toByteArray().copyInto(header, 0)
-        "0000777\u0000".toByteArray().copyInto(header, 100)
+        "$mode\u0000".toByteArray().copyInto(header, 100)
+        linkName.toByteArray().copyInto(header, 157)
         "0000000\u0000".toByteArray().copyInto(header, 108)
         "0000000\u0000".toByteArray().copyInto(header, 116)
         size.toString(8).padStart(11, '0').plus('\u0000').toByteArray().copyInto(header, 124)
