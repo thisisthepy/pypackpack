@@ -33,6 +33,13 @@ dependencies {
 
 kotlin {
     jvmToolchain(21)
+    // packpack runs inside Gradle plugins (toolchain), where Gradle's own kotlin-stdlib wins:
+    // Gradle 8.9 embeds 1.9.23. Compiled at api 2.3, the coroutine code referenced
+    // kotlin.coroutines.jvm.internal.SpillingKt (stdlib 2.2+), and every suspend call failed with
+    // NoClassDefFoundError in a real consumer, though not in tests, whose stdlib is newer.
+    // apiVersion 1.9 keeps the bytecode to the stdlib API Gradle 8.9 ships. Raise it only with the
+    // oldest Gradle toolchain supports.
+    compilerOptions { apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9) }
 }
 
 tasks.test {
