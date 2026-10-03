@@ -130,7 +130,7 @@ data class BundleRequest(
     // ... existing fields unchanged ...
     val pythonAbi: PythonAbi? = null,                              // required at native
     val nativeModules: List<ExtensionModuleSource> = emptyList(),  // exactly the modules TypedPython produced C for
-    val notNativeModules: Map<String, String> = emptyMap(),        // module -> why TypedPython produced no C (§4)
+    val notNativeModules: List<NotNativeModule> = emptyList(),     // developer modules TypedPython produced no C for, and why (§4)
     val nativeOptions: ExtensionCompileOptions = ExtensionCompileOptions(),
     val cpythonIncludeDir: File? = null,                           // required at native
     val extensionSuffix: String? = null,                           // required at native
@@ -142,6 +142,16 @@ data class BundleRequest(
 - pypackpack never runs TypedPython and never calls `python-multiplatform`'s providers; it depends
   on no other thisisthepy repository (`AGENTS.md` rule 12). The Gradle side runs TypedPython,
   resolves the providers (which carries their task dependencies) and hands the results here.
+```kotlin
+data class NotNativeModule(val module: String, val kind: Kind, val items: List<SkippedItem> = emptyList()) {
+    enum class Kind { NOT_MARKED, NOTHING_COMPILED }
+}
+data class SkippedItem(val name: String, val file: String, val line: Int?, val message: String)  // function or class; package-relative file
+```
+
+These mirror TypedPython's `ModuleResult` (`name`, `extension`, `skipped: function or class →
+reason`): structured, so the bundler formats the warning and `file:line` stays machine-readable.
+
 - At `instant`, `bytecode` and `mixed`, `nativeModules` and the CPython fields are ignored. At
   `instant` and `bytecode` the developer's `.py` runs as written, which keeps debug builds
   hot-reloadable; at `mixed` it ships as bytecode (§4).
@@ -221,9 +231,17 @@ pointed out that the previous draft's "both levels are identical" contradicted t
   which `libDirs` already carry; the CPython fields are not required.
 - **A developer module without C is the exception at `native`, not a refusal.** "Native code only"
   is the intent; a module TypedPython could not compile still ships, as bytecode, and the build says
-  so. The reason comes from TypedPython through `BundleRequest.notNativeModules` (module → reason);
-  a developer module in neither map gets the reason "no C was supplied for it". The warnings go into
-  a new `BundleResult.warnings`, which `toolchain` logs as Gradle warnings.
+  so, with the reason TypedPython reports in `BundleRequest.notNativeModules`:
+  - `NOT_MARKED`: compiling is opt-in, and the module has neither `# typedpython: compiled` nor an
+    `@compiled` function. The common case, not a defect: *"`app.util` ships as bytecode: not marked
+    for compilation (add `# typedpython: compiled` or `@compiled`)"*.
+  - `NOTHING_COMPILED`: opted in, but every function and class stayed interpreted. One line per
+    item: *"`app/physics/nbody.py:30: main: subscript sys.argv[1] of an object is not supported`"*.
+  - A developer module in neither list gets *"no C was supplied for it"*.
+  The warnings go into a new `BundleResult.warnings`, which `toolchain` logs as Gradle warnings.
+- **A module with C where only some functions stayed interpreted** is in `nativeModules`, and those
+  functions run their fallback inside the `.so`. That is not a warning; the bundler may list them at
+  info level from the same data.
 - **C that fails to build is still a failure** (§5): a listed module is never silently shipped as
   bytecode.
 - To apply this the bundler must remember each payload file's origin; `collectPayload` currently
@@ -408,7 +426,7 @@ if (request.buildLevel == "native") {                // mixed never reaches the 
     out.copyRecursively(pythonRoot)                   // the extensions
     warnings += developerModules(pythonRoot)          // §4: every developer module left without C
         .filter { it !in compiled.moduleNames && it.substringAfterLast('.') != "__init__" }
-        .map { "$it ships as bytecode at level 'native': ${request.notNativeModules[it] ?: "no C was supplied for it"}" }
+        .map { module -> nativeWarning(module, request.notNativeModules.find { it.module == module }) }
 }
 // then the existing bytecode pass for every module that was not compiled
 ```
@@ -448,8 +466,6 @@ it under `tools`.
    backend lands.
 2. **The `libraryName` form (Q9).** This draft takes the file name in `libDir` as
    `python-multiplatform` #56 reports it and derives the linker flag. Settle once #56 lands.
-3. **Reasons for modules without C.** §4 needs TypedPython to report, per developer module it did not
-   compile, why (`notNativeModules`). Can its pipeline supply that, and in what words?
 
 **Closed in review (2026-10-03):** whether `native` refuses modules without C (no: bytecode with a
 warning); whether a `.py` fallback is mandatory and how it is named (no fallback artefact: it lives
@@ -467,6 +483,9 @@ providers, §7); Windows and `clang-cl` (out of scope for 2026-11, macOS first).
 - Q7, raw flags: fine for clang/gcc; another toolchain maps the floating-point semantics instead of
   receiving flags verbatim, §6.
 - Q8, shared runtime C: none; the header-only runtime is compiled into each extension.
+- Reasons for modules without C: TypedPython reports them per module, as `NOT_MARKED` or
+  `NOTHING_COMPILED` with the skipped functions and classes (§2, §4). On its side it splits the line
+  out of the message and reports the two cases explicitly in `ModuleResult`.
 
 **Existing defect, found while reading:** `ResourceBundler` drops `*.pyd` from every input,
 including `libDirs`, so a Windows library's prebuilt extensions never reach the bundle while
