@@ -31,6 +31,9 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `<package> sync` — 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치.
   `aarch64-linux-android` / `arm64-apple-ios` 에 실제 휠(`six`, `markupsafe`)을 설치하는 테스트
   (`UVBackendRealInstallTest`, 네트워크와 `uv` 필요) 있음
+- `installDependenciesToTarget(..., requirements: List<String>? = null)` (라이브러리 API, #36) — 목록을 주면
+  `-r pyproject.toml` 대신 요구사항을 `uv pip install` 위치 인자로 그대로 전달(`pyproject.toml` 불필요, 빈 목록은
+  성공한 no-op, `null` 은 기존 동작). 가짜 러너 테스트 4개 + 네트워크 테스트 1개 (`UVBackendRealInstallTest`)
 - 번들 `resource` (`instant`, `bytecode`), `single`, `fat`, `patch` (`instant` 만)
 - CLI 도움말, 통과 플래그(`--dev`, `--extra-index-url …`) 파싱
 - `meson.build` 자동 생성, `meson`/`ninja` 자동 설치

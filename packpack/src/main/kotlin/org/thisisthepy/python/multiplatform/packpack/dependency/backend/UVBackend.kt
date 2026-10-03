@@ -138,18 +138,28 @@ open class UVBackend(
      * straight from `pyproject.toml` (rather than a separately exported requirements file) reuses
      * this project's existing per-target marker convention (`uv add --marker`, see `MarkerPolicy`)
      * for free: uv resolves and installs only the entries whose marker matches `pythonPlatform`.
+     * With [requirements] the specifiers are passed as positional arguments (no shell, so markers
+     * and extras need no quoting) in place of `-r pyproject.toml`; an empty list does nothing.
      */
     override suspend fun installDependenciesToTarget(
         targetDir: String,
         pythonPlatform: String,
         extraArgs: Map<String, String>?,
         workingDir: File?,
+        requirements: List<String>?,
     ): Result<String> =
         runCatching {
             require(targetDir.isNotBlank()) { "Target directory cannot be blank" }
             require(pythonPlatform.isNotBlank()) { "Python platform cannot be blank" }
             val options = extraArgs.orEmpty()
-            val command = mutableListOf("pip", "install", "-r", "pyproject.toml")
+            if (requirements != null) {
+                require(requirements.none { it.isBlank() || it.startsWith("-") }) {
+                    "Requirements must be non-blank specifiers, not options: $requirements"
+                }
+                if (requirements.isEmpty()) return Result.success("No requirements to install")
+            }
+            val command = mutableListOf("pip", "install")
+            if (requirements == null) command.addAll(listOf("-r", "pyproject.toml")) else command.addAll(requirements)
 
             if (options["target"].isNullOrBlank()) {
                 command.add("--target")

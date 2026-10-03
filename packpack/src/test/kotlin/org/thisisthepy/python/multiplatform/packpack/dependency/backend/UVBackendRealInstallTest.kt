@@ -59,6 +59,31 @@ class UVBackendRealInstallTest {
         )
     }
 
+    @Test
+    fun installDependenciesToTarget_installsRequirementListWithoutPyproject() {
+        val packageDir = Files.createTempDirectory("uvbackend-reqlist").toFile()
+        try {
+            val targetDir = File(packageDir, "build/crossenv/aarch64-linux-android")
+            val result =
+                runBlocking {
+                    UVBackend().installDependenciesToTarget(
+                        targetDir = targetDir.absolutePath,
+                        pythonPlatform = "aarch64-linux-android",
+                        extraArgs = mapOf("python-version" to "3.13", "only-binary" to ":all:"),
+                        workingDir = packageDir,
+                        requirements = listOf("six==1.17.0"),
+                    )
+                }
+            result.exceptionOrNull()?.let {
+                fail("uv pip install of a requirement list failed (needs network access and uv):\n${it.message}", it)
+            }
+            assertFalse(File(packageDir, "pyproject.toml").exists())
+            assertTrue(File(targetDir, "six.py").isFile, "six.py missing from $targetDir")
+        } finally {
+            packageDir.deleteRecursively()
+        }
+    }
+
     private fun assertInstallsTargetWheels(
         target: String,
         extensionSuffix: String,
