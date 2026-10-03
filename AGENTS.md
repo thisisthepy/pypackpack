@@ -14,8 +14,8 @@ overrides any default your tooling has.
 
 ## 2. Nothing is created outside this repository
 
-Everything your work produces — worktrees, agent prompts, logs, measurements, experiments, scratch
-files — lives **inside this repository's root directory.**
+Everything your work produces (worktrees, agent prompts, logs, measurements, experiments, scratch
+files) lives **inside this repository's root directory.**
 
 | What | Where |
 |---|---|
@@ -26,7 +26,7 @@ files — lives **inside this repository's root directory.**
 
 Before writing a file, check that its absolute path starts with this repository's root. If it does
 not, stop. The only exceptions are a path the user names explicitly, and caches that build tools
-manage themselves. **Re-pointing a shared cache or a home-directory symlink reaches other projects —
+manage themselves. **Re-pointing a shared cache or a home-directory symlink reaches other projects;
 ask first.**
 
 Writing to *another* repository is not an exception either. Do it only when told to work there.
@@ -35,7 +35,7 @@ Writing to *another* repository is not an exception either. Do it only when told
 
 **Never add a new directory (or a new file) at the repository root on your own.** The root layout is
 the maintainer's: source modules, `docs/`, `gradle/`, `.github/` and the files that tools require
-there. Work belongs inside an existing module or directory — sources under `src/<sourceSet>/`,
+there. Work belongs inside an existing module or directory: sources under `src/<sourceSet>/`,
 CI-only scripts under `.github/scripts/`, temporary files under the git-ignored `.tmp/`. If you think
 a new top-level entry is needed, propose it (what, why, which alternatives inside existing
 directories you ruled out) and wait for approval. This was added after unapproved root folders
@@ -49,7 +49,7 @@ build caches, model weights, `node_modules`) into every worktree is how 86 workt
 
 - Create worktrees under `.worktrees/<name>`.
 - **Symlink** large untracked directories from the main checkout instead of copying or rebuilding
-  them. If `tools/worktree-add.sh` exists, use it — it does the linking.
+  them. If `tools/worktree-add.sh` exists, use it: it does the linking.
 - Delete a worktree once its branch is merged: `git worktree remove .worktrees/<name>`.
 - Periodically delete `build/` directories inside worktrees; they only grow.
 
@@ -78,7 +78,7 @@ Every new feature goes through an issue and a pull request:
 
 1. Before starting, search the repository's issues (`gh issue list --state all --search "<keywords>"`).
 2. If no issue covers the work, open one (`gh issue create`) stating what and why, and the
-   completion criterion — which tests must pass.
+   completion criterion: which tests must pass.
 3. Work on a `feat/<topic>` branch, push every commit, and open a pull request into `develop`
    whose body contains `Closes #<number>`.
 4. Merge into `develop` through that pull request (`gh pr merge`), not by a local merge, so the
@@ -102,18 +102,18 @@ If a request conflicts with `docs/INTENT.md`, say so instead of implementing it.
 
 ## 6. User-authored files are specification
 
-Files the user wrote by hand — notebooks, example build files, sample apps — are the specification.
+Files the user wrote by hand (notebooks, example build files, sample apps) are the specification.
 Read them **first**. Never delete, rewrite, or `git add` them without being told to. Generated
 documentation (roadmaps, design notes) is a record of work, not a requirement; when the two
 disagree, the user's file wins.
 
 ## 7. Show a conclusion before acting on it
 
-Anything beyond the immediate request — another repository, a public API signature, deleting
-files, killing processes, force-pushing, changing branch protection — state what you would do and
+Anything beyond the immediate request (another repository, a public API signature, deleting
+files, killing processes, force-pushing, changing branch protection): state what you would do and
 why, and wait. Investigating, measuring, and reporting are always fine.
 
-**Push every commit right away.** After you commit — on a work branch or on `develop` — push it to
+**Push every commit right away.** After you commit (on a work branch or on `develop`) push it to
 the remote immediately; no confirmation is needed. Never push to `main` or `release` by hand, and
 never force-push without the user's explicit approval.
 
@@ -153,12 +153,12 @@ to implement", say what you counted against.
 - Give every agent prompt the absolute paths it may write to, and repeat rule 2 in it.
 - **Subagents do not run heavy local builds.** Subagents write code, design, investigate, review
   and document. Gradle builds, cargo builds, the test gate and model runs are done by the session
-  itself — one at a time on this machine — or by CI (GitHub Actions) on a pushed branch. Several
+  itself (one at a time on this machine) or by CI (GitHub Actions) on a pushed branch. Several
   sessions share one machine; parallel local builds slow every one of them.
 
 ---
 
-# Repository-specific rules — `pypackpack`
+# Repository-specific rules: `pypackpack`
 
 ## 11. Layout
 
@@ -220,7 +220,7 @@ is acceptable for the CLI and nowhere else.
 resolves it from `~/.m2`, not through `includeBuild`. Therefore:
 
 - A change to a public signature in `:packpack` breaks `toolchain` silently until someone republishes.
-  Run `./gradlew :packpack:publishToMavenLocal` and make the matching change in `toolchain` — that is
+  Run `./gradlew :packpack:publishToMavenLocal` and make the matching change in `toolchain`; that is
   another repository, so rule 7 applies: state the change and wait.
 - The coordinate and version live in `packpack/build.gradle.kts` (`group`, `version`, `artifactId`).
   Changing any of them is a change to `toolchain` too.
@@ -275,7 +275,7 @@ There are no Python tests in this repository.
 | `docs/INTENT.md` | English | Why the project exists and what it is not. |
 | `docs/SPEC.md` | English | The behavioural contract, one `Status:` per item. |
 | `docs/issues/KNOWN_ISSUES.md` | English | Open and fixed defects that are not yet a spec item. |
-| `docs/<topic>/` | — | Anything else. No other `.md` directly in `docs/`. |
+| `docs/<topic>/` | - | Anything else. No other `.md` directly in `docs/`. |
 
 - `Status: implemented` requires a test in this repository that exercises the behaviour; cite it.
   Wiring with no test is `partial`.
@@ -289,3 +289,15 @@ There are no Python tests in this repository.
 - KDoc comments cite `docs/SPEC.md` (this repository's) and `toolchain` files such as `DSLBuild.kt`
   and `(플러그인예시)build.gradle.kts` (another repository's). When you touch such a comment, name
   the repository.
+
+## 18. Writing
+
+- **No em-dash (U+2014)**, anywhere: documentation, the guide, code comments, KDoc, docstrings and
+  strings. Use a comma, a colon, parentheses, or two sentences. An empty table cell is `-`.
+- **Examples install and run with `uv`, `ppp` (pypackpack) or `tcl` (toolchain-lite), never
+  `pip install`.** For this package: `uv tool install pypackpack` or `uvx pypackpack`. `uv pip …`
+  is fine where a pip-style command is the point.
+- The licence is Apache-2.0 everywhere it is stated: `LICENSE`, `pyproject.toml` (`license`), the
+  READMEs and the guide footer.
+
+(User directives, 2026-10-03.)

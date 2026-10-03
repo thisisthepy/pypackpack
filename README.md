@@ -19,7 +19,7 @@ English | [한국어](https://github.com/thisisthepy/pypackpack/blob/develop/doc
 
 ## 💡 Why
 
-A Python project that has to run on a phone as well as a desktop needs more than `pip install`:
+A Python project that has to run on a phone as well as a desktop needs more than installing packages:
 dependencies resolved for a platform that is not the one you build on, extension modules compiled
 for it, and the result packaged so an app can carry it. `pypackpack` (`ppp`) does that work, so you
 never configure a Python, a JVM or a cross-compiler by hand.
@@ -51,13 +51,14 @@ per-target install directories on top.
 ## 🚀 Install
 
 ```shell
-pip install pypackpack        # or: uv tool install pypackpack
+uv tool install pypackpack    # puts pypackpack and ppp on PATH
 pypackpack --help             # alias: ppp
+uvx pypackpack --help         # or run it without installing
 ```
 
 The wheel carries the command line as a native binary (GraalVM Native Image), one wheel per
 platform: macOS 11+ on Apple silicon, Linux x86_64 and aarch64 (glibc), Windows x86_64. On any other
-platform pip reports no matching distribution. There is deliberately no source distribution:
+platform the installer finds no matching wheel. There is deliberately no source distribution:
 building needs a JDK and GraalVM, and an sdist would install the launcher without the binary.
 
 `uv` is needed at run time. When none is on `PATH`, pypackpack downloads one into

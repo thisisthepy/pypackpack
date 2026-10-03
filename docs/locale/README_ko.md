@@ -19,7 +19,7 @@
 
 ## 💡 왜 필요한가
 
-데스크톱뿐 아니라 휴대폰에서도 돌아야 하는 Python 프로젝트에는 `pip install` 이상의 것이 필요합니다.
+데스크톱뿐 아니라 휴대폰에서도 돌아야 하는 Python 프로젝트에는 패키지 설치 이상의 것이 필요합니다.
 빌드하는 기기가 아닌 플랫폼을 위해 해석한 의존성, 그 플랫폼용으로 컴파일한 확장 모듈, 그리고 앱이
 담을 수 있게 포장한 결과물. `pypackpack` (`ppp`) 이 그 일을 하므로, Python, JVM, 크로스 컴파일러를
 손으로 설정할 일이 없습니다.
@@ -48,13 +48,14 @@ pypackpack 은 그 위에 타깃, 타깃별 마커, 타깃별 설치 디렉터�
 ## 🚀 설치
 
 ```shell
-pip install pypackpack        # 또는: uv tool install pypackpack
+uv tool install pypackpack    # PATH 에 pypackpack 과 ppp 를 둠
 pypackpack --help             # 별칭: ppp
+uvx pypackpack --help         # 설치 없이 실행
 ```
 
 휠은 명령줄 도구를 네이티브 바이너리 (GraalVM Native Image) 로 담으며, 플랫폼마다 휠이 하나씩
 있습니다: Apple silicon 의 macOS 11 이상, Linux x86_64 와 aarch64 (glibc), Windows x86_64. 그 밖의
-플랫폼에서는 pip 가 맞는 배포본이 없다고 알립니다. 소스 배포본은 일부러 두지 않습니다. 빌드에 JDK 와
+플랫폼에서는 설치 도구가 맞는 휠을 찾지 못합니다. 소스 배포본은 일부러 두지 않습니다. 빌드에 JDK 와
 GraalVM 이 필요하므로, sdist 는 바이너리 없이 런처만 설치하게 됩니다.
 
 실행에는 `uv` 가 필요합니다. `PATH` 에 없으면 pypackpack 이 `~/.pypackpack/uv` 에 내려받습니다.

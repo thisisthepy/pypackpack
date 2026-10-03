@@ -1,4 +1,4 @@
-// pypackpack guide — language and theme. Loaded synchronously in <head> so the first paint is
+// pypackpack guide: language and theme. Loaded synchronously in <head> so the first paint is
 // already in the right language and theme.
 (function () {
   var LANG_KEY = "thisisthepy.guide.lang";

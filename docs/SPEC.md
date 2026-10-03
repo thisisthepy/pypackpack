@@ -4,10 +4,10 @@
 
 Every feature item carries one `Status:` line:
 
-- `implemented` — the behaviour exists and a test in this repository exercises it. The test is cited.
-- `partial` — the core flow exists, but part of the documented behaviour is missing, or it is wired
+- `implemented`: the behaviour exists and a test in this repository exercises it. The test is cited.
+- `partial`: the core flow exists, but part of the documented behaviour is missing, or it is wired
   with no test in this repository. What is missing is listed under *Limitation*.
-- `planned` — not reflected in code yet (an empty placeholder file counts as not reflected), but a
+- `planned`: not reflected in code yet (an empty placeholder file counts as not reflected), but a
   direction this project keeps.
 
 Test paths below are abbreviated: `packpack/.../X.kt` means
@@ -24,32 +24,32 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 #### Goals to achieve
 
 - No OS dependency (Desktop, macOS, linux) via GraalVM Native Image
-  - Status: partial — `:cli` applies `org.graalvm.buildtools.native` (`cli/build.gradle.kts`:
+  - Status: partial. `:cli` applies `org.graalvm.buildtools.native` (`cli/build.gradle.kts`:
     `nativeCompile`, `buildNativeExecutable`, `packageNative`). No test or CI job builds the native
     image, and `buildAllPlatforms` only prints a message.
 - Must be easy to install and use (let's not make users configure paths for Python, JVM, etc.)
-  - Status: partial — `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
+  - Status: partial. `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
     installed through `uv tool install` when absent (see *CLI Version* and *Package build*).
-    `pip install pypackpack` is wired but nothing is uploaded yet (see *Distribution through PyPI*).
+    `uv tool install pypackpack` is wired but nothing is uploaded yet (see *Distribution through PyPI*).
 - Must be fast (build speed matters)
-  - Status: planned — nothing measures build speed today.
+  - Status: planned. Nothing measures build speed today.
 
 ### <pypackpack> core
 
 - (1). Support building Python packages written in C, C++, Rust (except when patches are required)
-  - Status: partial — C/C++ through Meson (`packpack/.../compile/backend/external/MesonTest.kt`).
+  - Status: partial. C/C++ through Meson (`packpack/.../compile/backend/external/MesonTest.kt`).
     Rust (`Cargo.kt`) is an empty placeholder.
 - (2). Support crossenv for multi-platform code
-  - Status: partial — per-target dependency markers and per-target install directories
+  - Status: partial. Per-target dependency markers and per-target install directories
     (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
     install of Android and iOS wheels is tested (`packpack/.../dependency/backend/UVBackendRealInstallTest.kt`).
     No cross interpreter environment is created.
 - (3). Support Python code compilation/optimization/minification (nuitka, lpython, etc.)
-  - Status: planned — `Nuitka.kt`, `Cython.kt`, `Lpython.kt`, `transcompile/` and `minification/`
+  - Status: planned. `Nuitka.kt`, `Cython.kt`, `Lpython.kt`, `transcompile/` and `minification/`
     are empty placeholders. (The `bytecode` level of the `resource` bundle uses `compileall`, which
     is not this.)
 - (4). Support code update fast track API
-  - Status: planned — `deploy/code/FastTrackAPI.kt` is an empty placeholder; see *Package
+  - Status: planned. `deploy/code/FastTrackAPI.kt` is an empty placeholder; see *Package
     deployment*.
 
 ### PyPackPack Companion (tools designed to be used together)
@@ -246,7 +246,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
 
 #### CLI Help
 
-Status: implemented — `cli/.../DeployCommandTest.kt` (`deploy_registeredInPyPackPackCommandHelp`
+Status: implemented. `cli/.../DeployCommandTest.kt` (`deploy_registeredInPyPackPackCommandHelp`
 runs the root `--help`; `deploy_helpOptionWorks` runs a subcommand's).
 
 ```bash
@@ -262,7 +262,7 @@ Limitation
 
 #### CLI Version
 
-Status: partial — `cli/.../BuildInfoTest.kt` checks the printed version's source; nothing tests the uv
+Status: partial. `cli/.../BuildInfoTest.kt` checks the printed version's source; nothing tests the uv
 part.
 
 ```bash
@@ -286,12 +286,12 @@ Limitation
 
 #### Distribution through PyPI
 
-Status: partial — `.github/workflows/publish-pypi.yml` builds and smoke-tests the wheels on every pull
+Status: partial. `.github/workflows/publish-pypi.yml` builds and smoke-tests the wheels on every pull
 request that touches the publishing files. Nothing has been uploaded (PyPI still holds the old
 repository's 0.1.0, a Windows-only wheel).
 
 ```bash
-pip install pypackpack     # or: uv tool install pypackpack
+uv tool install pypackpack   # or: uvx pypackpack
 pypackpack --help          # the native binary
 ppp --help                 # the same binary, through the `pypackpack` Python package
 ```
@@ -304,7 +304,7 @@ ppp --help                 # the same binary, through the `pypackpack` Python pa
   `GLIBC_` symbol version on Linux, whose `NEEDED` libraries must be glibc's or `libz`; the
   `LC_BUILD_VERSION` minimum on macOS, which the build sets to 11.0 (`cli/build.gradle.kts`).
 - There is no sdist: building needs a JDK and GraalVM, so an sdist would install the launcher without
-  the binary. An unsupported platform gets pip's "no matching distribution".
+  the binary. On an unsupported platform the installer finds no matching wheel.
 - Before uploading, the workflow requires the release tag to be `v<version>`, `pyproject.toml` and
   `cli/build.gradle.kts` to carry the same version, the version to be new on PyPI, and every wheel
   to pass `.github/scripts/pypi/smoke_wheel.py`: installed into a fresh venv, `pypackpack --help`
@@ -315,12 +315,12 @@ ppp --help                 # the same binary, through the `pypackpack` Python pa
 Limitation
 
 - No wheel for macOS x86_64, Windows arm64 or musl Linux.
-- Building from source (`pip install .`) gives only the launcher; `ppp` then says the binary is
+- Installing from source (`uv pip install .`) gives only the launcher; `ppp` then says the binary is
   missing and exits 1.
 
 #### Project creation
 
-Status: partial — `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
+Status: partial. `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
 generated `README.md` and `LICENSE`.
 
 ```bash
@@ -339,7 +339,7 @@ Limitation
 
 #### Changing the project's Python version
 
-Status: partial — no test in this repository.
+Status: partial. No test in this repository.
 
 ```bash
 pypackpack python use <python version>
@@ -353,7 +353,7 @@ Limitation
 
 #### Listing, finding and uninstalling ppp Python distributions
 
-Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt` (`listPython_*`,
+Status: implemented. `packpack/.../dependency/backend/DefaultBackendTest.kt` (`listPython_*`,
 `findPython_*`, `uninstallPython_*`).
 
 ```bash
@@ -374,7 +374,7 @@ pypackpack python install <python version> [<target platform>]
 
 ##### Version and target selection
 
-Status: implemented — `packpack/.../dependency/backend/PythonDistributionsTest.kt` (every pair's URL
+Status: implemented. `packpack/.../dependency/backend/PythonDistributionsTest.kt` (every pair's URL
 and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 (`installPython_refusesAnUnsupportedVersionWithTheSupportedList`,
 `installPython_returnsFailureForUnsupportedTargetPlatform`).
@@ -405,7 +405,7 @@ Limitation
 
 ##### Digest verification and placement
 
-Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt`
+Status: implemented. `packpack/.../dependency/backend/DefaultBackendTest.kt`
 (`installPython_matchingDigestExtractsIntoTheCrossTargetDirectory`,
 `installPython_hostTargetGoesToTheProjectVenv`, `installPython_mismatchedDigestRefusesAndLeavesNothingBehind`,
 `installPython_mismatchedDigestLeavesAnExistingInstallUntouched`,
@@ -434,7 +434,7 @@ and `utils/ArchiveTest.kt` (`extractArchive_recreatesRelativeSymlinksAndExecutab
 
 ##### Installing into an explicit directory
 
-Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt`
+Status: implemented. `packpack/.../dependency/backend/DefaultBackendTest.kt`
 (`installPython_explicitInstallDirReceivesTheTreeAndNothingElse`,
 `installPython_explicitInstallDirReplacesAPreviousInstallForTheHostToo`,
 `installPython_explicitInstallDirStillRefusesAnUnpinnedPairBeforeDownloading`,
@@ -470,7 +470,7 @@ Limitation
 
 #### Adding/removing packages
 
-Status: partial — `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+Status: partial. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
 (`addPackageCreatesSourceFoldersForInheritedWorkspaceTargets`) covers `add`; nothing covers `remove`.
 
 ```bash
@@ -483,8 +483,8 @@ pypackpack package remove <package path> [--path <workspace root>]
 - `package add` creates a directory at the specified path, then in that directory runs `uv init --bare --package --name <leaf dir name>` to generate only `pyproject.toml`, and ppp generates the scaffolding: the package's `README.md`, `src/main/__init__.py`, `src/test/test_import.py`, `build/crossenv`, `build/packpack`. It also registers the package as a workspace member.
 - A new package inherits the root's `[tool.ppp.dependencies].platforms`, and gets a `src/<family>/__init__.py` for each inherited target family.
 - `package remove` recursively deletes the package directory and removes the corresponding relative path from `[tool.uv.workspace].members` in the root `pyproject.toml`.
-- `<package path>` is resolved as a literal path relative to the workspace root, not by matching workspace member names — a bare leaf name only works when the package actually sits directly under the workspace root (e.g. `package remove core` fails for a package registered at `packages/core`; the full relative path must be used there instead).
-- The `package` command additionally exposes `sync` and `tree` subcommands for per-package dependency operations — see Per-package target dependency management.
+- `<package path>` is resolved as a literal path relative to the workspace root, not by matching workspace member names: a bare leaf name only works when the package actually sits directly under the workspace root (e.g. `package remove core` fails for a package registered at `packages/core`; the full relative path must be used there instead).
+- The `package` command additionally exposes `sync` and `tree` subcommands for per-package dependency operations: see Per-package target dependency management.
 
 Limitation
 
@@ -494,7 +494,7 @@ Limitation
 
 #### Viewing build target platforms
 
-Status: partial — no test covers `target list`'s output.
+Status: partial. No test covers `target list`'s output.
 
 ```bash
 pypackpack target list
@@ -504,7 +504,7 @@ pypackpack target list
 
 #### Adding/removing build target platforms
 
-Status: implemented — `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
 (`addTargetsSyncsWorkspaceMemberPackages`, `removeTargetsSyncsWorkspaceMemberPackages`,
 `addTargetsUsesPackageNameInsteadOfPackagePath`, `removeTargetsUsesPackageNameInsteadOfPackagePath`).
 
@@ -535,7 +535,7 @@ pypackpack <package> target remove <target name>...
 
 #### Dev environment dependency management
 
-Status: partial — `cli/.../DependencyCommandTest.kt` and `cli/.../CommandExtensionTest.kt` cover
+Status: partial. `cli/.../DependencyCommandTest.kt` and `cli/.../CommandExtensionTest.kt` cover
 argument parsing and forwarding to the middleware (against a recording middleware). No test runs
 the `uv` calls.
 
@@ -573,7 +573,7 @@ pypackpack tree [--target <target1> <target2> ...]
 
 #### Per-package target dependency management
 
-Status: partial — see the per-command lines below. `cli/.../DynamicPackageCommandTest.kt`,
+Status: partial. See the per-command lines below. `cli/.../DynamicPackageCommandTest.kt`,
 `cli/.../PackageCommandTest.kt` and `cli/.../TargetOptionParsingTest.kt` cover the CLI parsing and
 forwarding for all four commands.
 
@@ -581,7 +581,7 @@ forwarding for all four commands.
 pypackpack <package name> add <pypi name> [--target <target1> <target2> ...]
 ```
 
-Status: partial — no test runs the per-target `uv add --marker` loop.
+Status: partial. No test runs the per-target `uv add --marker` loop.
 
 ```bash
 # example
@@ -592,7 +592,7 @@ pypackpack mypackage add numpy --target windows linux
 - `pypackpack package sync <name> [--target ...]` and `pypackpack package tree <name> [--target ...]` invoke the same logic as an explicit alternative to the dynamic `sync`/`tree` forms.
 - The target package is resolved among workspace members by name or relative path.
 - `add` computes a marker for each target (`platform_system == '<system>' and platform_machine == '<machine>'`) and repeatedly calls `uv add --package <name> --marker <marker>`.
-- `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Pyodide. Status: implemented — `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
+- `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Pyodide. Status: implemented. `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
 - Markers written before #49 (`arm64` for Linux/Android/Windows aarch64, `i686` for 32-bit Windows) never matched, so those dependencies were not installed. `remove --target` still finds them under the corrected target (`MarkerPolicyTest`); to install them, remove and add them again.
 - If `--target` is absent, uses the `[tool.ppp.dependencies].platforms` value from the package's `pyproject.toml` as the default target.
 - If there is no default target and `--target` is also empty, raises an error.
@@ -601,7 +601,7 @@ pypackpack mypackage add numpy --target windows linux
 pypackpack <package name> remove <pypi name> [--target <target1> <target2> ...]
 ```
 
-Status: implemented — `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
 (`removeDependenciesMatchesUvNormalizedMarkerText`, `removeDependenciesDoesNotMatchAWrongTargetsNormalizedMarker`).
 
 - `remove` directly edits `project.dependencies` in the package's `pyproject.toml`, removing only entries where both the requested package name and the target marker match.
@@ -616,7 +616,7 @@ Limitation
 pypackpack <package name> sync [--target <target1> <target2> ...]
 ```
 
-Status: implemented — `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
 (`syncDependenciesInstallsPerTargetCrossenvDirectories`) and
 `packpack/.../dependency/backend/UVBackendTest.kt` (`installDependenciesToTarget_*`) check the
 calls against a recording backend. `packpack/.../dependency/backend/UVBackendRealInstallTest.kt`
@@ -637,14 +637,14 @@ not the host's.
 - `sync` sends each extra argument only to the uv commands that accept it: `--python-version` to
   `uv tree` and `uv pip install`, `--only-binary` to `uv pip install`, neither to `uv sync` (which
   manages the host `.venv`). Test: `CrossEnvTest.syncDependenciesSendsTargetInstallOptionsOnlyToTheUvCommandsThatHaveThem`.
-- If a package has no wheel for a target, the failure names the package spec and the target and says whether only an sdist exists (`NoWheelForTargetException`, with uv's raw text appended). Recognized uv texts (`parseMissingWheel`): `Failed to download and build ... is not compatible with the target Python` (only an sdist exists), `has no wheels with a matching platform tag` (wheels for other platforms only, no sdist) and `has no usable wheels` (building disabled, sdist unknown). Any other uv error passes through unchanged. Status: implemented — `packpack/.../dependency/backend/MissingWheelTest.kt` (fixtures are real uv 0.12.3 output).
+- If a package has no wheel for a target, the failure names the package spec and the target and says whether only an sdist exists (`NoWheelForTargetException`, with uv's raw text appended). Recognized uv texts (`parseMissingWheel`): `Failed to download and build ... is not compatible with the target Python` (only an sdist exists), `has no wheels with a matching platform tag` (wheels for other platforms only, no sdist) and `has no usable wheels` (building disabled, sdist unknown). Any other uv error passes through unchanged. Status: implemented. `packpack/.../dependency/backend/MissingWheelTest.kt` (fixtures are real uv 0.12.3 output).
 - If `--target` is absent, uses a single host target as the default.
 
 ```bash
 pypackpack <package name> tree [--target <target1> <target2> ...]
 ```
 
-Status: partial — only the CLI forwarding is tested.
+Status: partial. Only the CLI forwarding is tested.
 
 - `tree` calls `uv tree --package <name> --python-platform <target>` for each target and prints the results in sequence.
 - If `--target` is absent, uses a single host target as the default.
@@ -666,7 +666,7 @@ Of these four stages, the `pypackpack build` CLI command only drives `compile` (
 
 #### Package build
 
-Status: partial — `packpack/.../compile/backend/external/MesonTest.kt` (meson.build generation,
+Status: partial. `packpack/.../compile/backend/external/MesonTest.kt` (meson.build generation,
 meson/ninja auto-install) and `packpack/.../compile/backend/DefaultBackendTest.kt` (build and install
 directories per type, level and target).
 
@@ -688,7 +688,7 @@ Limitation
 - `build` does not invoke the `bundle` stage; it produces compiled/installed files under `dist/`, not a `.whl`.
 - The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
 
-Not yet implemented (target) — Status: planned
+Not yet implemented (target). Status: planned
 
 - Describing, in the package's `pyproject.toml`, the scope of dependency packages that need to be built (today everything under the package is built at the same level).
 - Selecting whether to bundle everything into a single file or build separately, as metadata.
@@ -697,12 +697,12 @@ Not yet implemented (target) — Status: planned
 #### Build Level
 
 - `instant`: Bundles the Python source almost as-is.
-  - Status: implemented — for bundle types `resource`, `single`, `fat` and `patch`
+  - Status: implemented. For bundle types `resource`, `single`, `fat` and `patch`
     (`packpack/.../bundle/resource/ResourceBundlerTest.kt`,
     `packpack/.../bundle/single/SingleWheelBundlerTest.kt`, `packpack/.../bundle/fat/FatWheelBundlerTest.kt`,
     `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`).
 - `bytecode`: Converts the Python source to `.pyc` and bundles it.
-  - Status: partial — implemented for bundle type `resource` only
+  - Status: partial. Implemented for bundle type `resource` only
     (`packpack/.../bundle/resource/ResourceBundlerTest.kt`: `bundle_bytecodeLevelKeepsBothPyAndPycForDebugBuildType`,
     `bundle_bytecodeLevelKeepsOnlyPycForReleaseBuildType`, `bundle_bytecodeLevelProducesARealLoadablePycFile`,
     `bundle_bytecodeLevelFailsClearlyWithoutAVenvInterpreter`). Every `.py` in the payload is compiled
@@ -710,9 +710,9 @@ Not yet implemented (target) — Status: planned
     `<project>/.venv`; `debug` keeps the `.py` beside the `.pyc`, `release` keeps only the `.pyc`.
     `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
 - `native`: Converts Python/native source into a native artifact.
-  - Status: planned — every bundler rejects it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet`).
+  - Status: planned. Every bundler rejects it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet`).
 - `mixed`: Converts only some modules to native, keeping the rest as source or bytecode.
-  - Status: planned — every bundler rejects it.
+  - Status: planned. Every bundler rejects it.
 
 The level is chosen per bundle request (`BundleRequest.buildLevel`) and names the output directory
 `<package>/build/packpack/<bundle type>/<build type>/<build level>`. `pypackpack build --level` does
@@ -724,28 +724,28 @@ Bundling is a library API: `BundlerInterface.create(BundleType.<TYPE>).bundle(Bu
 (`bundle/BundlerInterface.kt`). There is no `pypackpack bundle` command.
 
 - `binary`: Produces a target-specific binary layout suitable for execution or embedding in an app.
-  - Status: planned — `BinaryBundler` returns a failed `Result` with `NotImplementedError`
+  - Status: planned. `BinaryBundler` returns a failed `Result` with `NotImplementedError`
     (`packpack/.../bundle/BundlerInterfaceTest.kt`, `unimplementedBundler_binaryReturnsFailureWithNotImplementedError`).
 - `fat`: Produces a wheel-like archive that includes the current package together with its dependencies.
-  - Status: implemented — `packpack/.../bundle/fat/FatWheelBundlerTest.kt`.
+  - Status: implemented. `packpack/.../bundle/fat/FatWheelBundlerTest.kt`.
   - Reads the package's own compiled output from `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`).
   - Vendors workspace-local dependencies by name (matched against `tool.uv.workspace.members` entries) from their own `dist/<canonical target>/<build type>/<build level>`.
   - Vendors third-party dependencies, declared or transitive, from `<package>/build/crossenv/<canonical target>`, where `pypackpack <package> sync --target <target>` installs them via `uv pip install --target --python-platform`. That `sync` must have been run first.
   - Only the `instant` build level is currently supported.
 - `single`: Produces a wheel-like archive that includes only the current package.
-  - Status: implemented — `packpack/.../bundle/single/SingleWheelBundlerTest.kt`.
+  - Status: implemented. `packpack/.../bundle/single/SingleWheelBundlerTest.kt`.
   - Reads `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`) and keeps native extension modules.
   - The Android platform tag uses the declared `minSdk`, falling back to the PEP 738 floor, and rejects a `minSdk` below that floor.
   - Only the `instant` build level is currently supported.
 - `patch`: Produces a patch archive containing only the changes relative to the existing primary bundle.
-  - Status: implemented — `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`.
+  - Status: implemented. `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`.
   - Reads the baseline wheel from `<package>/build/packpack/single/<buildType>/<buildLevel>`.
   - Compares current package files (from `<package>/dist/<canonical target>/<build type>/<build level>`) against baseline entries by path and SHA-256.
   - Records added and modified files in full; removed files in a text manifest (`PATCH-MANIFEST`).
   - Only the `instant` build level is currently supported.
   - Patch *version tracking* (base version, patch number) is planned.
 - `resource`: Produces a resource layout consumable by python-multiplatform/toolchain.
-  - Status: implemented — `packpack/.../bundle/resource/ResourceBundlerTest.kt`.
+  - Status: implemented. `packpack/.../bundle/resource/ResourceBundlerTest.kt`.
   - A directory, not an archive: `python/` (the payload, meant to be placed on `sys.path`) beside `resource-manifest.json` (identity, target, per-file SHA-256; sorted, no timestamp).
   - Reads the package *source*, not the compiled `dist/` output: `src/main` first, then `src/<family>` on top, then each `BundleRequest.metaDirs` entry, then each `libDirs` entry; a later stage wins for the same path.
   - Drops `__pycache__/`, `*.pyc`/`*.pyo`/`*.pyd`, dot-entries, `build/`, `dist/` and `node_modules/`. Because it reads source, extension modules that `build` compiles never reach it, unlike the wheel bundlers.
@@ -756,7 +756,7 @@ Bundling is a library API: `BundlerInterface.create(BundleType.<TYPE>).bundle(Bu
 
 #### Package deployment
 
-Status: planned — `pypackpack deploy` is registered, and every deploy type refuses with a
+Status: planned. `pypackpack deploy` is registered, and every deploy type refuses with a
 "not implemented" message and exit code 1 (`cli/.../DeployCommandTest.kt`,
 `packpack/.../deploy/DeployInterfaceTest.kt`). Nothing is uploaded.
 

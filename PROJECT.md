@@ -1,4 +1,4 @@
-# PROJECT — pypackpack
+# PROJECT: pypackpack
 
 Python 프로젝트를 여러 플랫폼(데스크톱, Android, iOS, WASM)으로 배포하기 위한 빌드 도구.
 Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다. GraalVM 네이티브 CLI
@@ -18,20 +18,20 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **구현됨 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
-- `python install` — 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
+- `python install`: 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
   와 3.13.0 (python-multiplatform `release` 브랜치 `binary/`, 데스크톱만). 모든 아카이브를
   `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치나 고정값이 없는 쌍은
   실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
   테스트 (`DefaultBackendTest`, `PythonDistributionsTest`); 실제 다운로드 테스트는 없음
-- `installPython(version, target, installDir)` (라이브러리 API, #37) — 같은 고정·검증 후 주어진 디렉터리를
+- `installPython(version, target, installDir)` (라이브러리 API, #37): 같은 고정·검증 후 주어진 디렉터리를
   통째로 교체한다(옆 스테이징에서 이름 바꾸기). `projectRoot()`(`user.dir`)·`.venv`·레지스트리는 건드리지
   않는다. 가짜 아카이브 테스트 4개 (`DefaultBackendTest.installPython_explicitInstallDir*`)
 - `target add` / `remove` (워크스페이스 멤버까지 전파, `src/<family>/__init__.py` 생성)
-- `<package> remove --target` — `uv` 가 다시 쓴 `sys_platform` 마커도 매칭 (예전 결함 해결)
-- `<package> sync` — 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치.
+- `<package> remove --target`: `uv` 가 다시 쓴 `sys_platform` 마커도 매칭 (예전 결함 해결)
+- `<package> sync`: 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치.
   `aarch64-linux-android` / `arm64-apple-ios` 에 실제 휠(`six`, `markupsafe`)을 설치하는 테스트
   (`UVBackendRealInstallTest`, 네트워크와 `uv` 필요) 있음
-- `installDependenciesToTarget(..., requirements: List<String>? = null)` (라이브러리 API, #36) — 목록을 주면
+- `installDependenciesToTarget(..., requirements: List<String>? = null)` (라이브러리 API, #36); 목록을 주면
   `-r pyproject.toml` 대신 요구사항을 `uv pip install` 위치 인자로 그대로 전달(`pyproject.toml` 불필요, 빈 목록은
   성공한 no-op, `null` 은 기존 동작). 가짜 러너 테스트 4개 + 네트워크 테스트 1개 (`UVBackendRealInstallTest`)
 - 번들 `resource` (`instant`, `bytecode`), `single`, `fat`, `patch` (`instant` 만)
@@ -40,22 +40,22 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **부분**
 - `init`, `python use`, `package add/remove`, `target list`
-- `version` — `pypackpack version` 만 동작. `--version` / `-v` / `v` 는 실패한다
-- 루트 `add/remove/sync/tree`, `<package> add/tree` — CLI 전달만 테스트, `uv` 호출은 테스트 없음
-- `build` — Meson 으로 C/C++ 만. `--level` / `--target` 은 디렉터리 이름만 바꾸고 교차 컴파일하지 않음
+- `version`: `pypackpack version` 만 동작. `--version` / `-v` / `v` 는 실패한다
+- 루트 `add/remove/sync/tree`, `<package> add/tree`: CLI 전달만 테스트, `uv` 호출은 테스트 없음
+- `build`: Meson 으로 C/C++ 만. `--level` / `--target` 은 디렉터리 이름만 바꾸고 교차 컴파일하지 않음
 - 번들은 라이브러리 API 뿐, CLI 명령 없음. `build` 가 번들을 호출하지 않음
-- GraalVM 네이티브 이미지 — 설정은 있으나 이를 빌드하는 테스트나 CI 가 없음
+- GraalVM 네이티브 이미지: 설정은 있으나 이를 빌드하는 테스트나 CI 가 없음
 
 **계획 (빈 파일이거나 없음)**
 - `native` / `mixed` 빌드 레벨, `binary` 번들
 - Clang/MSVC/NDK/XCode/Emscripten/Cargo 백엔드, Nuitka/Cython/Lpython, 최소화(minification)
-- `deploy` — 명령은 등록되어 있지만 모든 타입이 "not implemented" 로 실패
+- `deploy`: 명령은 등록되어 있지만 모든 타입이 "not implemented" 로 실패
 - 패치 버전 추적, 코드 업데이트 fast track API
 
 ## 구조
 
 ```
-packpack/        라이브러리 (dependency/, compile/, bundle/, deploy/, utils/) — Maven 게시
+packpack/        라이브러리 (dependency/, compile/, bundle/, deploy/, utils/): Maven 게시
 cli/             pypackpack / ppp CLI (Clikt, application, GraalVM native image)
 usage-example/   :packpack 에 의존하는 빌드 파일 (소스 없음)
 docs/            INTENT.md, SPEC.md, issues/, locale/
@@ -89,7 +89,7 @@ bash tools/release/test-sync-release.sh   # release 동기화 스크립트 테�
   `installDir` 없이 호출한 `installPython`)는 결함으로 기록. `installPython(version, target, installDir)` 은
   주어진 디렉터리에만 설치하고 `projectRoot()`·`.venv`·레지스트리를 건드리지 않는다(#37, `toolchain` 의
   `build/pythonRuntime/<트리플>/<버전>/` 용).
-- **미구현은 실패한 `Result`**: `UnimplementedBundler`, `UnimplementedDeployer` — 빈 결과로 성공하지 않는다.
+- **미구현은 실패한 `Result`**: `UnimplementedBundler`, `UnimplementedDeployer`; 빈 결과로 성공하지 않는다.
 - **타깃 이름은 정규 트리플**: 별칭(`windows` 등)은 `Platforms.normalizeTarget` 으로 정규화하고,
   `build/crossenv/<트리플>` 같은 디렉터리 이름에도 트리플을 쓴다.
 - **마커는 (system, machine) 쌍으로 비교**: `uv` 가 마커 문자열을 다시 쓰기 때문.

@@ -3,7 +3,7 @@
 # which reads [project] below. Its version must equal cli/build.gradle.kts's: the workflow refuses
 # to publish unless the installed binary prints it.
 #
-# Building from source (`pip install .`) gives only the Python package, without the binary; `ppp`
+# Installing from source (`uv pip install .`) gives only the Python package, without the binary; `ppp`
 # then says so and exits.
 [build-system]
 requires = ["setuptools>=77"]
