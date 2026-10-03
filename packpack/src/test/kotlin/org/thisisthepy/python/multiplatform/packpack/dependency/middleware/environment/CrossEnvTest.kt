@@ -233,6 +233,40 @@ class CrossEnvTest {
     }
 
     @Test
+    fun syncDependenciesSendsTargetInstallOptionsOnlyToTheUvCommandsThatHaveThem() {
+        // #50: `ppp core sync --target … --python-version 3.13 --only-binary :all:` forwarded both
+        // to `uv sync` too, which has neither flag. --python-version selects the runtime's wheels
+        // (uv tree, uv pip install); --only-binary exists on uv pip install only.
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val options = mapOf("python-version" to "3.13", "only-binary" to ":all:", "index-url" to "https://example.com/simple")
+            crossEnv.syncDependencies("core", listOf("aarch64-linux-android"), options).getOrThrow()
+
+            assertEquals(mapOf("index-url" to "https://example.com/simple", "package" to "core"), backend.syncArgs.single())
+            val tree = backend.treeArgs.single()
+            assertEquals("3.13", tree["python-version"])
+            assertEquals(null, tree["only-binary"])
+            val install = backend.targetInstallCalls.single().extraArgs
+            assertEquals("3.13", install["python-version"])
+            assertEquals(":all:", install["only-binary"])
+            assertEquals("https://example.com/simple", install["index-url"])
+        }
+    }
+
+    @Test
     fun printResolvedPackageSpecContents() {
         withWorkspace(
             """
@@ -353,9 +387,12 @@ class CrossEnvTest {
             val targetDir: String,
             val pythonPlatform: String,
             val workingDir: File?,
+            val extraArgs: Map<String, String> = emptyMap(),
         )
 
         val targetInstallCalls = mutableListOf<TargetInstallCall>()
+        val syncArgs = mutableListOf<Map<String, String>>()
+        val treeArgs = mutableListOf<Map<String, String>>()
 
         override fun initialize() = Unit
 
@@ -411,7 +448,10 @@ class CrossEnvTest {
             venvPath: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
-        ): Result<String> = Result.success("ok")
+        ): Result<String> {
+            syncArgs += extraArgs.orEmpty()
+            return Result.success("ok")
+        }
 
         override suspend fun installDependenciesToTarget(
             targetDir: String,
@@ -420,7 +460,7 @@ class CrossEnvTest {
             workingDir: File?,
             requirements: List<String>?,
         ): Result<String> {
-            targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir)
+            targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir, extraArgs.orEmpty())
             return Result.success("ok")
         }
 
@@ -428,7 +468,10 @@ class CrossEnvTest {
             packageName: String?,
             extraArgs: Map<String, String>?,
             workingDir: File?,
-        ): Result<String> = Result.success("ok")
+        ): Result<String> {
+            treeArgs += extraArgs.orEmpty()
+            return Result.success("ok")
+        }
 
         override suspend fun lockDependencies(projectRoot: String): Result<String> = Result.success("ok")
 

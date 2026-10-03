@@ -38,14 +38,20 @@ internal fun CliktCommand.requireMiddleware(): MiddlewareInterface = currentCont
  * bare flag (empty value). Only [VALUE_TAKING_PASSTHROUGH_FLAGS] consume the following token as
  * their value. Defaulting to "boolean" rather than "peek at the next token" avoids swallowing a
  * positional argument that happens to follow a boolean flag (e.g. `add requests --dev numpy` must
- * keep `numpy` as a dependency, not become the value of `--dev`).
+ * keep `numpy` as a dependency, not become the value of `--dev`). Any flag written `--key=value`
+ * carries its value regardless of the list (#50).
  */
 private val VALUE_TAKING_PASSTHROUGH_FLAGS =
     setOf(
         "extra-index-url",
         "index-url",
         "index-strategy",
+        "index",
+        "default-index",
+        "find-links",
         "python",
+        "python-version",
+        "only-binary",
         "resolution",
     )
 
@@ -60,7 +66,10 @@ internal fun parsePassthroughArgs(tokens: List<String>): ParsedPassthroughArgs {
     var i = 0
     while (i < tokens.size) {
         val token = tokens[i]
-        if (token.startsWith("--") && token.length > 2) {
+        if (token.startsWith("--") && token.length > 2 && '=' in token) {
+            extraArgs[token.substring(2).substringBefore('=')] = token.substringAfter('=')
+            i += 1
+        } else if (token.startsWith("--") && token.length > 2) {
             val key = token.removePrefix("--")
             if (key in VALUE_TAKING_PASSTHROUGH_FLAGS) {
                 val next =
