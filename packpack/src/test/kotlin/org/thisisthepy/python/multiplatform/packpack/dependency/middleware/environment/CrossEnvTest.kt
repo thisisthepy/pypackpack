@@ -418,6 +418,7 @@ class CrossEnvTest {
             pythonPlatform: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
+            requirements: List<String>?,
         ): Result<String> {
             targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir)
             return Result.success("ok")

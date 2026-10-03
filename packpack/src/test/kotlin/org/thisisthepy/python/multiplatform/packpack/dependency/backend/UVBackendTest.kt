@@ -3,6 +3,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -118,6 +119,56 @@ class UVBackendTest {
             ),
             backend.lastCommand,
         )
+    }
+
+    @Test
+    fun installDependenciesToTarget_withRequirements_passesThemPositionallyWithoutDashR() {
+        val backend = RecordingUVBackend()
+        val specs = listOf("six==1.17.0", "requests[socks]>=2", "tomli>=2; python_version < '3.11'")
+
+        val result =
+            runBlocking {
+                backend.installDependenciesToTarget(
+                    targetDir = "build/crossenv/android",
+                    pythonPlatform = "aarch64-linux-android",
+                    workingDir = File("/tmp/project/core"),
+                    requirements = specs,
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf("pip", "install") + specs +
+                listOf("--target", "build/crossenv/android", "--python-platform", "aarch64-linux-android"),
+            backend.lastCommand,
+        )
+        assertFalse("-r" in backend.lastCommand)
+        assertFalse("pyproject.toml" in backend.lastCommand)
+    }
+
+    @Test
+    fun installDependenciesToTarget_nullRequirementsKeepsDashRPyproject() {
+        val backend = RecordingUVBackend()
+        runBlocking { backend.installDependenciesToTarget("t", "windows", requirements = null) }
+        assertEquals(
+            listOf("pip", "install", "-r", "pyproject.toml", "--target", "t", "--python-platform", "windows"),
+            backend.lastCommand,
+        )
+    }
+
+    @Test
+    fun installDependenciesToTarget_emptyRequirementsIsSuccessfulNoOp() {
+        val backend = RecordingUVBackend()
+        val result = runBlocking { backend.installDependenciesToTarget("t", "windows", requirements = emptyList()) }
+        assertTrue(result.isSuccess)
+        assertEquals(emptyList(), backend.lastCommand)
+    }
+
+    @Test
+    fun installDependenciesToTarget_rejectsOptionLikeRequirement() {
+        val backend = RecordingUVBackend()
+        val result = runBlocking { backend.installDependenciesToTarget("t", "windows", requirements = listOf("--index-url=x")) }
+        assertTrue(result.isFailure)
     }
 
     private class RecordingUVBackend : UVBackend() {

@@ -93,6 +93,7 @@ class DefaultMiddlewareInitTest {
             pythonPlatform: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
+            requirements: List<String>?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun showDependencyTree(

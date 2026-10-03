@@ -586,6 +586,7 @@ module and its wheel tag are the target's (`android_24_arm64_v8a`, `ios_13_0_arm
 not the host's.
 
 - `sync` first calls `uv sync --package <name>`. Then, for each target, it calls `uv tree --package <name> --python-platform <target>` to verify the target resolves, and installs that target's dependencies with `uv pip install -r pyproject.toml --target <package>/build/crossenv/<canonical target> --python-platform <target>`.
+- `BackendInterface.installDependenciesToTarget(..., requirements: List<String>? = null)`: when `requirements` is given, those PEP 508 specifiers (markers and extras included) are passed to uv as positional arguments (`uv pip install <spec>... --target <dir> --python-platform <target>`, no shell) instead of `-r pyproject.toml`, so `workingDir` needs no `pyproject.toml`. `null` keeps `-r pyproject.toml`; an empty list is a successful no-op; a blank or `-`-leading entry fails. The missing-wheel mapping (`NoWheelForTargetException`) applies either way. Test: `UVBackendTest` (`installDependenciesToTarget_*Requirements*`) and, tagged `network`, `UVBackendRealInstallTest.installDependenciesToTarget_installsRequirementListWithoutPyproject`.
 - uv selects wheels by `--python-platform` and by the Python version, which defaults to the
   interpreter uv finds on the host, not the target runtime's. Pass `--python-version` (the runtime's,
   e.g. `3.13`) through the extra arguments when the host's differs. A dependency with no wheel for the
