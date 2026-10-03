@@ -170,7 +170,8 @@ graalvmNative {
                 "--no-fallback",
                 "--enable-preview",
                 "--install-exit-handlers",
-                "--initialize-at-build-time=kotlin,kotlinx.coroutines,io.ktor,kotlinx.io",
+                // io.ktor reaches org.slf4j (slf4j-nop: no I/O at init); GraalVM 21 refuses it at run time.
+                "--initialize-at-build-time=kotlin,kotlinx.coroutines,io.ktor,kotlinx.io,org.slf4j",
                 "-H:+ReportExceptionStackTraces",
                 "-H:+AddAllCharsets",
                 "--gc=serial"
