@@ -267,6 +267,9 @@ pypackpack version
 
 - Prints the pypackpack version and the detected uv version.
 - If uv is not detected, downloads uv into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
+- The download is uv's release archive for the host. The `.tar.gz` archives (Linux, macOS) keep their
+  files under one top-level directory, which is stripped; the Windows `.zip` holds `uv.exe` at its root.
+  A binary missing after extraction is a failure, not a success (`packpack/.../dependency/backend/external/UVInstallTest.kt`).
 
 Limitation
 
