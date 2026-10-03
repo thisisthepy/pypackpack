@@ -191,8 +191,9 @@ is acceptable for the CLI and nowhere else.
   (`workingDir: File?`, or `BundleRequest.packageDir`). Do not add one that reads `user.dir`.
 - Known exceptions, which predate the rule and are defects, not precedent:
   `compile/backend/DefaultBackend.compile` (finds the workspace from `user.dir`) and
-  `dependency/backend/DefaultBackend.installPython` (calls `findProjectRoot()`). Fixing either is a
-  public signature change: rule 14 applies.
+  `dependency/backend/DefaultBackend.installPython` when called without `installDir` (it then calls
+  `findProjectRoot()`; pass `installDir` from any daemon-hosted caller). Fixing `compile` is a public
+  signature change: rule 14 applies.
 
 ## 14. `toolchain` consumes this library from `mavenLocal`
 

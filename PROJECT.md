@@ -23,6 +23,9 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
   `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치나 고정값이 없는 쌍은
   실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
   테스트 (`DefaultBackendTest`, `PythonDistributionsTest`); 실제 다운로드 테스트는 없음
+- `installPython(version, target, installDir)` (라이브러리 API, #37) — 같은 고정·검증 후 주어진 디렉터리를
+  통째로 교체한다(옆 스테이징에서 이름 바꾸기). `projectRoot()`(`user.dir`)·`.venv`·레지스트리는 건드리지
+  않는다. 가짜 아카이브 테스트 4개 (`DefaultBackendTest.installPython_explicitInstallDir*`)
 - `target add` / `remove` (워크스페이스 멤버까지 전파, `src/<family>/__init__.py` 생성)
 - `<package> remove --target` — `uv` 가 다시 쓴 `sys_platform` 마커도 매칭 (예전 결함 해결)
 - `<package> sync` — 타깃별 `build/crossenv/<target>` 에 `uv pip install --target` 로 설치.
@@ -80,7 +83,9 @@ bash tools/release/test-sync-release.sh   # release 동기화 스크립트 테�
   (`toolchain`)가 Clikt 를 받지 않게 하기 위함.
 - **백엔드 계층은 `workingDir` 를 명시적으로 받는다**: `toolchain` 은 Gradle 데몬 안에서 호출하므로
   JVM 전역 `user.dir` 에 의존하면 안 된다. 예외(`compile` 의 `DefaultBackend.compile`,
-  `installPython`)는 결함으로 기록.
+  `installDir` 없이 호출한 `installPython`)는 결함으로 기록. `installPython(version, target, installDir)` 은
+  주어진 디렉터리에만 설치하고 `projectRoot()`·`.venv`·레지스트리를 건드리지 않는다(#37, `toolchain` 의
+  `build/pythonRuntime/<트리플>/<버전>/` 용).
 - **미구현은 실패한 `Result`**: `UnimplementedBundler`, `UnimplementedDeployer` — 빈 결과로 성공하지 않는다.
 - **타깃 이름은 정규 트리플**: 별칭(`windows` 등)은 `Platforms.normalizeTarget` 으로 정규화하고,
   `build/crossenv/<트리플>` 같은 디렉터리 이름에도 트리플을 쓴다.

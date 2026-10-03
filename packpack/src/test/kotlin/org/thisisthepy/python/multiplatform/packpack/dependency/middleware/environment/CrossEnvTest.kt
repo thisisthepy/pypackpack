@@ -438,6 +438,7 @@ class CrossEnvTest {
         override suspend fun installPython(
             pythonVersion: String,
             targetPlatform: String?,
+            installDir: File?,
         ): Result<String> = Result.success("ok")
 
         override fun uninstallPython(pythonVersion: String): Result<String> = Result.success("ok")

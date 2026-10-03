@@ -8,6 +8,7 @@ import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.verifySha256
 import java.io.File
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
@@ -108,12 +109,17 @@ abstract class DefaultBackend : BackendInterface {
      *    expected and the actual digest;
      * 4. extract into the staging directory, then move the tree into place.
      *
+     * The install directory is [installDir] when given: the tree replaces whatever is there, and
+     * neither [projectRoot] nor the registry is touched. Otherwise it is `<project>/.venv` (host) or
+     * `<project>/<target-dir-name>`, and the location is registered for `find`/`list`/`uninstall`.
+     *
      * Any failure deletes the staging directory, so a refused or broken download leaves neither the
      * archive nor a partial tree behind, and the install directory untouched.
      */
     override suspend fun installPython(
         pythonVersion: String,
         targetPlatform: String?,
+        installDir: File?,
     ): Result<String> {
         val canonicalTarget =
             Platforms.normalizeTarget(targetPlatform ?: hostTarget())
@@ -124,16 +130,24 @@ abstract class DefaultBackend : BackendInterface {
             distribution.sha256
                 ?: return Result.failure(IllegalStateException("No pinned SHA-256 for ${distribution.fileName}"))
 
-        val dirName =
-            if (canonicalTarget == hostTarget()) {
-                ".venv"
+        val destination =
+            if (installDir != null) {
+                installDir.absoluteFile
             } else {
-                installDirName(canonicalTarget)
-                    ?: return Result.failure(IllegalArgumentException("Unsupported target platform: $canonicalTarget"))
+                val dirName =
+                    if (canonicalTarget == hostTarget()) {
+                        ".venv"
+                    } else {
+                        installDirName(canonicalTarget)
+                            ?: return Result.failure(IllegalArgumentException("Unsupported target platform: $canonicalTarget"))
+                    }
+                File(projectRoot(), dirName)
             }
-        val installDir = File(projectRoot(), dirName)
+        val parent =
+            destination.parentFile
+                ?: return Result.failure(IllegalArgumentException("Install directory has no parent: ${destination.path}"))
 
-        val staging = File(installDir.parentFile, ".${installDir.name}.pypackpack-staging")
+        val staging = File(parent, ".${destination.name}.pypackpack-staging")
         return try {
             staging.deleteRecursively()
             val downloadDir = File(staging, "download")
@@ -152,21 +166,62 @@ abstract class DefaultBackend : BackendInterface {
                     ),
                 )
             }
-            placeExtractedTree(extractDir, installDir)
+            if (installDir != null) {
+                // An explicit directory belongs to the caller (e.g. toolchain's
+                // build/pythonRuntime/<triple>/<version>/): replace it whole and register nothing.
+                replaceWithExtractedTree(extractDir, destination, File(staging, "previous"))
+            } else {
+                placeExtractedTree(extractDir, destination)
 
-            // Bridge the project-relative install location back to the version registry so that
-            // `find`/`list`/`uninstall` (which only take a version, not a project/target) can locate it.
-            // See the KDoc on registerInstalledVersion/registryFile for why this indirection exists.
-            registerInstalledVersion(pythonVersion, installDir)
+                // Bridge the project-relative install location back to the version registry so that
+                // `find`/`list`/`uninstall` (which only take a version, not a project/target) can locate it.
+                // See the KDoc on registerInstalledVersion/registryFile for why this indirection exists.
+                registerInstalledVersion(pythonVersion, destination)
+            }
 
             Result.success(
-                "Installed Python ${distribution.version} for $canonicalTarget into ${installDir.absolutePath} " +
+                "Installed Python ${distribution.version} for $canonicalTarget into ${destination.absolutePath} " +
                     "(${distribution.fileName}, sha256 $expectedSha256)",
             )
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
             staging.deleteRecursively()
+        }
+    }
+
+    /**
+     * Replaces [installDir] with [extractDir] by renames within one parent directory: a previous
+     * [installDir] is first moved aside to [previous] (inside the staging directory, which the caller
+     * deletes), then [extractDir] is renamed into place. If that rename fails, the previous tree is
+     * moved back, so [installDir] is either the old tree or the new one.
+     */
+    private fun replaceWithExtractedTree(
+        extractDir: File,
+        installDir: File,
+        previous: File,
+    ) {
+        val hadPrevious = Files.exists(installDir.toPath(), LinkOption.NOFOLLOW_LINKS)
+        if (hadPrevious) rename(installDir, previous)
+        try {
+            rename(extractDir, installDir)
+        } catch (e: Exception) {
+            if (hadPrevious) rename(previous, installDir)
+            throw e
+        }
+        // A previous symbolic link is removed as a link, so deleting the staging directory never
+        // reaches through it.
+        if (Files.isSymbolicLink(previous.toPath())) Files.delete(previous.toPath())
+    }
+
+    private fun rename(
+        from: File,
+        to: File,
+    ) {
+        try {
+            Files.move(from.toPath(), to.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: AtomicMoveNotSupportedException) {
+            Files.move(from.toPath(), to.toPath())
         }
     }
 

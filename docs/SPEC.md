@@ -392,9 +392,36 @@ and `utils/ArchiveTest.kt` (`extractArchive_recreatesRelativeSymlinksAndExecutab
 - On success it writes a `version=absolutePath` entry to `~/.pypackpack/python/registry.properties`, keyed
   by the version string as given, so `find`/`list`/`uninstall` can locate the project-relative install.
 
+##### Installing into an explicit directory
+
+Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt`
+(`installPython_explicitInstallDirReceivesTheTreeAndNothingElse`,
+`installPython_explicitInstallDirReplacesAPreviousInstallForTheHostToo`,
+`installPython_explicitInstallDirStillRefusesAnUnpinnedPairBeforeDownloading`,
+`installPython_explicitInstallDirIsLeftAsItWasOnADigestMismatch`). The tests use small fake archives; no test downloads.
+
+```kotlin
+suspend fun installPython(pythonVersion: String, targetPlatform: String?, installDir: File? = null): Result<String>
+```
+
+- This is the backend-layer form `toolchain` calls from a Gradle daemon (AGENTS.md rule 13), e.g. into
+  `build/pythonRuntime/<triple>/<version>/`. The CLI does not expose it.
+- The (version, target) pair is resolved and refused exactly as above, before anything is downloaded or
+  created.
+- The archive is downloaded and extracted in a staging directory beside `installDir`
+  (`<parent>/.<name>.pypackpack-staging`), and its SHA-256 is verified before extraction.
+- The extracted tree then **replaces** `installDir`: a previous `installDir` is renamed aside into the
+  staging directory, the new tree is renamed into place (if that rename fails the previous tree is
+  renamed back), and the staging directory is deleted. Nothing is merged into an existing tree.
+- `projectRoot()` (and so `user.dir`), `<project>/.venv` and the registry are not touched, so
+  `find`/`list`/`uninstall` do not see such an install; the caller owns the directory.
+- A refused pair, a digest mismatch or an unexpected archive layout leaves `installDir` as it was.
+- When `installDir` is `null`, the project-relative placement above applies unchanged.
+
 Limitation
 
-- The project root is located through `user.dir` (`findProjectRoot()`), not an explicit working directory.
+- Without `installDir`, the project root is located through `user.dir` (`findProjectRoot()`), not an
+  explicit working directory.
 - `Downloader` holds the whole archive in memory before writing it.
 - `utils/Archive.kt` reads ustar names (100-byte name + 155-byte prefix) and skips PAX (`x`/`g`) and GNU
   long-name (`L`) records, and has no `.tar.xz` support.
