@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
 class PythonDistributionsTest {
     private val pbs = "https://github.com/astral-sh/python-build-standalone/releases/download/20260807"
     private val pm = "https://github.com/thisisthepy/python-multiplatform/raw/release/binary"
-    private val ios314 = "https://github.com/beeware/Python-Apple-support/releases/download/3.14-b10/Python-3.14-iOS-support.b10.tar.gz"
-    private val ios314Sha = "200ef60eb67be0483ceb638daa9048f84f41a9a952707a5ad4c3198037c7b583"
+    private val ios314 = "https://github.com/beeware/Python-Apple-support/releases/download/3.14-b11/Python-3.14-iOS-support.b11.tar.gz"
+    private val ios314Sha = "b591f3301bd22a4f423c49c746cac9e55558b909fd14d6eb8327ccc62234ab7b"
 
     /** version/target -> (url, sha256). */
     private val pinned: Map<String, Pair<String, String>> =

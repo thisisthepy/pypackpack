@@ -18,7 +18,7 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **구현됨 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
-- `python install` — 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b10 iOS)
+- `python install` — 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
   와 3.13.0 (python-multiplatform `release` 브랜치 `binary/`, 데스크톱만). 모든 아카이브를
   `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치나 고정값이 없는 쌍은
   실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
