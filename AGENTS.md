@@ -173,9 +173,12 @@ to implement", say what you counted against.
 - Many files are empty placeholders that only name a future feature (every compile backend except
   `Meson`, all of `compile/middleware/{external,transcompile,minification}`, `bundle/binary/`, every
   class under `deploy/`). Do not count them as implemented; `docs/SPEC.md` marks them `planned`.
-- The root `pyproject.toml` describes a Python wrapper (`packpack/src/main/python/`, both files
-  empty) around the native binary. Nothing builds it. Do not add Python code to satisfy it without
-  asking.
+- The root `pyproject.toml` is the PyPI distribution (user decision, 2026-10-03, #52): a platform
+  wheel per OS that carries the native CLI as the `pypackpack` script, plus a small Python package
+  (`packpack/src/main/python/`, published as `pypackpack`) whose `ppp` and `python -m pypackpack` run
+  that binary. `.github/workflows/publish-pypi.yml` builds, smoke-tests and uploads the wheels; its
+  version must equal `cli/build.gradle.kts`'s. Keep that Python package a launcher: the work stays in
+  Kotlin.
 
 ## 12. pypackpack owns the work
 

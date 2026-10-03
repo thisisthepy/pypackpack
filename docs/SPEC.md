@@ -30,6 +30,7 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 - Must be easy to install and use (let's not make users configure paths for Python, JVM, etc.)
   - Status: partial — `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
     installed through `uv tool install` when absent (see *CLI Version* and *Package build*).
+    `pip install pypackpack` is wired but nothing is uploaded yet (see *Distribution through PyPI*).
 - Must be fast (build speed matters)
   - Status: planned — nothing measures build speed today.
 
@@ -102,7 +103,9 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
       - TargetCommand.kt         # handles 'target' related commands
       - BuildCommand.kt          # handles 'build' command
       - DeployCommand.kt         # handles 'deploy' (registered; every deploy type refuses today)
+      - BuildInfo.kt             # the CLI's version, from build-info.properties that cli/build.gradle.kts generates
   - packpack                     # Gradle module :packpack -- the library, published to Maven
+    - src/main/python            # the PyPI launcher package `pypackpack` (__init__.py, __main__.py); see *Distribution through PyPI*
     - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack
       - utils
         - Platforms.kt  # supported targets, aliases, families, markers, min SDK validation
@@ -259,13 +262,16 @@ Limitation
 
 #### CLI Version
 
-Status: partial — no test in this repository.
+Status: partial — `cli/.../BuildInfoTest.kt` checks the printed version's source; nothing tests the uv
+part.
 
 ```bash
 pypackpack version
 ```
 
 - Prints the pypackpack version and the detected uv version.
+- The pypackpack version is `cli/build.gradle.kts`'s `version`, which the build writes into the CLI's
+  resources (`build-info.properties`, read by `BuildInfo`). It is the PyPI wheel's version too.
 - If uv is not detected, downloads uv into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
 - The download is uv's release archive for the host. The `.tar.gz` archives (Linux, macOS) keep their
   files under one top-level directory, which is stripped; the Windows `.zip` holds `uv.exe` at its root.
@@ -277,7 +283,40 @@ Limitation
   `no such option -v`, `no such subcommand v`; observed by running the `:cli:installDist` launcher).
   `VersionCommand.aliases()` declares them, but Clikt applies `aliases()` to a command's own
   subcommands, and `VersionCommand` has none.
-- The pypackpack version is a string literal in `ProjectCommand.kt`, not read from the build.
+
+#### Distribution through PyPI
+
+Status: partial — `.github/workflows/publish-pypi.yml` builds and smoke-tests the wheels on every pull
+request that touches the publishing files. Nothing has been uploaded (PyPI still holds the old
+repository's 0.1.0, a Windows-only wheel).
+
+```bash
+pip install pypackpack     # or: uv tool install pypackpack
+pypackpack --help          # the native binary
+ppp --help                 # the same binary, through the `pypackpack` Python package
+```
+
+- A wheel per platform, `py3-none-<platform>`: Linux x86_64 and aarch64 (manylinux), macOS arm64,
+  Windows x86_64. Each carries the GraalVM native image as the `pypackpack` script and the Python
+  package `pypackpack` (`packpack/src/main/python/`), whose `ppp` entry point and `python -m
+  pypackpack` run that binary.
+- The platform tag is read from the binary (`.github/scripts/pypi/build_wheel.py`): the highest
+  `GLIBC_` symbol version on Linux, whose `NEEDED` libraries must be glibc's or `libz`; the
+  `LC_BUILD_VERSION` minimum on macOS, which the build sets to 11.0 (`cli/build.gradle.kts`).
+- There is no sdist: building needs a JDK and GraalVM, so an sdist would install the launcher without
+  the binary. An unsupported platform gets pip's "no matching distribution".
+- Before uploading, the workflow requires the release tag to be `v<version>`, `pyproject.toml` and
+  `cli/build.gradle.kts` to carry the same version, the version to be new on PyPI, and every wheel
+  to pass `.github/scripts/pypi/smoke_wheel.py`: installed into a fresh venv, `pypackpack --help`
+  works, `pypackpack`/`ppp`/`python -m pypackpack version` print that version, and
+  `pypackpack init` creates a project.
+- Upload is trusted publishing from the `pypi` environment, on a published GitHub Release only.
+
+Limitation
+
+- No wheel for macOS x86_64, Windows arm64 or musl Linux.
+- Building from source (`pip install .`) gives only the launcher; `ppp` then says the binary is
+  missing and exits 1.
 
 #### Project creation
 
