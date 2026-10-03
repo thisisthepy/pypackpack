@@ -1,7 +1,14 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    application
-    id("org.graalvm.buildtools.native")
+    kotlin("plugin.serialization") version "2.3.0"
+    // `toolchain` is meant to delegate to this project rather than reimplement it, and until this
+    // is published nothing outside this repository can resolve it at all -- which is what has been
+    // blocking that delegation.
+    //
+    // `application` and `org.graalvm.buildtools.native` moved to `:cli` (see cli/build.gradle.kts).
+    // This module is the library only: `toolchain` depends on it as an ordinary Maven artifact and
+    // must not see the CLI's own dependencies (Clikt in particular) on its runtime classpath.
+    `maven-publish`
 }
 
 group = "org.thisisthepy.python.multiplatform"
@@ -13,183 +20,61 @@ repositories {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.koin.core)
+    implementation("com.akuleshov7:ktoml-core:0.7.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation("com.github.luben:zstd-jni:1.5.7-9")
+    runtimeOnly("org.slf4j:slf4j-nop:2.0.17")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
 }
 
-application {
-    mainClass.set("org.thisisthepy.python.multiplatform.packpack.util.CommandLineKt")
-}
-
 kotlin {
     jvmToolchain(21)
+    // packpack runs inside Gradle plugins (toolchain), where Gradle's own kotlin-stdlib wins:
+    // Gradle 8.9 embeds 1.9.23. Compiled at api 2.3, the coroutine code referenced
+    // kotlin.coroutines.jvm.internal.SpillingKt (stdlib 2.2+), and every suspend call failed with
+    // NoClassDefFoundError in a real consumer, though not in tests, whose stdlib is newer.
+    // apiVersion 1.9 keeps the bytecode to the stdlib API Gradle 8.9 ships. Raise it only with the
+    // oldest Gradle toolchain supports.
+    compilerOptions { apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9) }
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 
-// Custom tasks for native compilation
-tasks.register("buildNativeExecutable") {
-    group = "native"
-    description = "Build native executable for current platform"
-    dependsOn("nativeCompile")
-    
-    doLast {
-        val osName = System.getProperty("os.name").lowercase()
-        val executableName = when {
-            osName.contains("windows") -> "pypackpack.exe"
-            else -> "pypackpack"
-        }
-        
-        val buildDir = layout.buildDirectory.get().asFile
-        val nativeExecutable = File(buildDir, "native/nativeCompile/$executableName")
-        val outputDir = File(buildDir, "distributions")
-        outputDir.mkdirs()
-        
-        if (nativeExecutable.exists()) {
-            val targetFile = File(outputDir, executableName)
-            nativeExecutable.copyTo(targetFile, overwrite = true)
-            println("Native executable created: ${targetFile.absolutePath}")
-        } else {
-            throw GradleException("Native executable not found: ${nativeExecutable.absolutePath}")
-        }
-    }
-}
-
-tasks.register("buildAllPlatforms") {
-    group = "native"
-    description = "Build native executables for all supported platforms (requires Docker)"
-    
-    doLast {
-        println("Building for all platforms requires cross-compilation setup")
-        println("This task will be implemented when cross-compilation infrastructure is ready")
-    }
-}
-
-tasks.register("packageNative") {
-    group = "distribution"
-    description = "Package native executable with resources"
-    dependsOn("buildNativeExecutable")
-    
-    doLast {
-        val buildDir = layout.buildDirectory.get().asFile
-        val distributionsDir = File(buildDir, "distributions")
-        val packageDir = File(distributionsDir, "pypackpack-native")
-        
-        packageDir.mkdirs()
-        
-        // Copy executable
-        val osName = System.getProperty("os.name").lowercase()
-        val executableName = when {
-            osName.contains("windows") -> "pypackpack.exe"
-            else -> "pypackpack"
-        }
-        
-        val executable = File(distributionsDir, executableName)
-        if (executable.exists()) {
-            executable.copyTo(File(packageDir, executableName), overwrite = true)
-        }
-        
-        // Copy resources if needed
-        val resourcesDir = File(projectDir, "src/main/resources")
-        if (resourcesDir.exists()) {
-            resourcesDir.copyRecursively(File(packageDir, "resources"), overwrite = true)
-        }
-        
-        // Create README
-        val readme = File(packageDir, "README.txt")
-        readme.writeText("""
-            PyPackPack Native Executable
-            ===========================
-            
-            This is a native executable built with GraalVM Native Image.
-            
-            Usage: ./$executableName <command> [options]
-            
-            For help: ./$executableName help
-        """.trimIndent())
-        
-        println("Native package created: ${packageDir.absolutePath}")
-    }
-}
-
-// Environment variable configuration
-tasks.named("nativeCompile") {
-    doFirst {
-        // Set GraalVM environment variables if not already set
-        val graalvmHome = System.getenv("GRAALVM_HOME")
-        if (graalvmHome == null) {
-            println("Warning: GRAALVM_HOME environment variable is not set")
-            println("Please set GRAALVM_HOME to your GraalVM installation directory")
-        }
-        
-        // Print build information
-        println("Building native image with the following configuration:")
-        println("- Java Version: ${System.getProperty("java.version")}")
-        println("- OS: ${System.getProperty("os.name")} ${System.getProperty("os.arch")}")
-        println("- GraalVM Home: ${graalvmHome ?: "Not set"}")
-    }
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-        vendor.set(JvmVendorSpec.GRAAL_VM)
-    }
-}
-
-graalvmNative {
-    binaries {
-        named("main") {
-            imageName.set("pypackpack")
-            mainClass.set("org.thisisthepy.python.multiplatform.packpack.util.CommandLineKt")
-            javaLauncher.set(javaToolchains.launcherFor {
-                languageVersion.set(JavaLanguageVersion.of(21))
-                vendor.set(JvmVendorSpec.GRAAL_VM)
-            })
-            
-            // Build arguments for optimization
-            buildArgs.addAll(
-                "--no-fallback",
-                "--enable-preview",
-                "--install-exit-handlers",
-                "--initialize-at-build-time=kotlin,kotlinx.coroutines,org.koin",
-                "--initialize-at-run-time=org.thisisthepy.python.multiplatform.packpack.util.Downloader,kotlin.uuid.SecureRandomHolder",
-                "-H:+ReportExceptionStackTraces",
-                "-H:+AddAllCharsets",
-                "--gc=serial"
-            )
-            
-            // Platform-specific optimizations
-            val osName = System.getProperty("os.name").lowercase()
-            when {
-                osName.contains("windows") -> {
-                    // Windows-specific optimizations
-                    buildArgs.addAll(
-                        "-H:NativeLinkerOption=-Wl,--allow-multiple-definition"
-                    )
-                }
-                osName.contains("linux") -> {
-                    buildArgs.addAll(
-                        "--static",
-                        "-H:+StaticExecutableWithDynamicLibC"
-                    )
-                }
-                osName.contains("mac") -> {
-                    // macOS uses default dynamic linking - no additional flags needed
-                }
+// ---------------------------------------------------------------------------------------------
+// Publishing
+//
+// `toolchain` consumes this as an ordinary Maven dependency. `docs/SPEC.md` names the coordinate,
+// and `group`/`version` above already carry it, so the publication only has to name the component.
+//
+// `from(components["java"])` and not the shadow/native artefacts: what a consumer needs is the
+// library, and the CLI binary is a different deliverable of the same source, published separately
+// from `:cli`. Publishing the application distribution here would put a launcher script and every
+// runtime jar on the consumer's compile classpath.
+//
+// Clikt (and the rest of the CLI's own dependencies) no longer reach a consumer of this artifact:
+// the CLI moved to `:cli`, which depends on this module rather than the other way around. Ktor and
+// zstd-jni stay here because the library itself uses them (`utils/Downloader.kt`,
+// `utils/Archive.kt`), not just the CLI, so they are still `implementation` (POM scope `runtime`)
+// and still visible to a consumer -- that part of the leak was never CLI-specific and is unchanged
+// by this split.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "packpack"
+            from(components["java"])
+            pom {
+                name.set("packpack")
+                description.set(
+                    "Python packaging for Kotlin Multiplatform: distribution management, " +
+                        "dependency resolution, cross-compilation environments and bundling."
+                )
             }
-            
-            // Debug build configuration
-            debug.set(false)
-            verbose.set(true)
-            
-            // Resource configuration
-            resources.autodetect()
         }
     }
-    toolchainDetection.set(false)
 }

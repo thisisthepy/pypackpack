@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-title-en="Using the library · pypackpack" data-title-ko="라이브러리로 쓰기 · pypackpack">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using the library · pypackpack</title>
+<meta name="description" content="pypackpack: build a Python project once and distribute it to desktop, mobile and the web.">
+<meta name="theme-color" content="#0f9d76">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<header class="site-header"><div class="wrap">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect x="1.5" y="1.5" width="21" height="21" rx="6" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/><rect x="6" y="6" width="5.5" height="5.5" rx="1.4" fill="#0f9d76"/><rect x="12.5" y="12.5" width="5.5" height="5.5" rx="1.4" fill="#0f9d76"/><path d="M14.5 6.5h2.5a1 1 0 0 1 1 1V10M9.5 18H7a1 1 0 0 1-1-1v-2.5" stroke="#0f9d76" stroke-width="1.8" stroke-linecap="round"/></svg><span translate="no">pypackpack</span></a>
+<nav class="top-nav" aria-label="Main" data-label-en="Main" data-label-ko="주 메뉴"><a href="index.html"><span data-lang="en">Home</span><span data-lang="ko">홈</span></a><a href="getting-started.html"><span data-lang="en">Start</span><span data-lang="ko">시작</span></a><a href="guide-projects.html"><span data-lang="en">Guides</span><span data-lang="ko">가이드</span></a><a href="guide-library.html" aria-current="page"><span data-lang="en">Library</span><span data-lang="ko">라이브러리</span></a><a href="status.html"><span data-lang="en">Status</span><span data-lang="ko">상태</span></a></nav>
+<div class="controls">
+<button class="ctl" id="lang-toggle" type="button" aria-label="Switch language" data-label-en="Switch language to Korean" data-label-ko="언어를 영어로 전환"><span data-lang="en">한국어</span><span data-lang="ko">English</span></button>
+<button class="ctl" id="theme-toggle" type="button" aria-label="Toggle theme" data-label-en="Toggle light or dark theme" data-label-ko="밝은 테마와 어두운 테마 전환"><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</div>
+</div></header>
+<main>
+<div class="wrap doc"><nav class="doc-side" aria-label="Documentation" data-label-en="Documentation" data-label-ko="문서"><p data-lang="en">Documentation</p><p data-lang="ko">문서</p><a href="getting-started.html"><span data-lang="en">Getting started</span><span data-lang="ko">시작하기</span></a><a href="guide-projects.html"><span data-lang="en">Projects, targets & dependencies</span><span data-lang="ko">프로젝트, 타깃, 의존성</span></a><a href="guide-python.html"><span data-lang="en">Python distributions</span><span data-lang="ko">Python 배포판</span></a><a href="guide-build.html"><span data-lang="en">Build levels & bundles</span><span data-lang="ko">빌드 레벨과 번들</span></a><a href="guide-compile-slot.html"><span data-lang="en">The native compile slot</span><span data-lang="ko">native 컴파일 슬롯</span></a><a href="guide-library.html" aria-current="page"><span data-lang="en">Using the library</span><span data-lang="ko">라이브러리로 쓰기</span></a><a href="status.html"><span data-lang="en">Status & known issues</span><span data-lang="ko">상태와 알려진 문제</span></a></nav><article class="doc-body">
+<h1><span data-lang="en">Using the library</span><span data-lang="ko">라이브러리로 쓰기</span></h1>
+<p data-lang="en" class="muted">The same work, called from Kotlin: how toolchain and any JVM build use pypackpack.</p><p data-lang="ko" class="muted">같은 작업을 Kotlin 에서 호출하기: toolchain 과 모든 JVM 빌드가 pypackpack 을 쓰는 방법.</p>
+
+<section>
+<h2 id="depend"><span data-lang="en">Depend on it</span><span data-lang="ko">의존성 추가</span></h2>
+<p data-lang="en">Published to Maven Local only for now. Publish it from a checkout, then depend on it:</p><p data-lang="ko">지금은 Maven Local 에만 배포됩니다. 체크아웃에서 배포한 뒤 의존하세요.</p>
+<pre><code class="language-shell">./gradlew :packpack:publishToMavenLocal</code></pre>
+<pre><code class="language-kotlin">repositories { mavenLocal() }
+dependencies { implementation(&quot;org.thisisthepy.python.multiplatform:packpack:0.1.0&quot;) }</code></pre>
+<p data-lang="en">It needs a Java 21 runtime and is compiled with Kotlin <code>apiVersion</code> 1.9, so a Gradle 8.9+ build (Kotlin 1.9 stdlib) can load it.</p><p data-lang="ko">Java 21 런타임이 필요하며, Kotlin <code>apiVersion</code> 1.9 로 컴파일되어 Gradle 8.9 이상 (Kotlin 1.9 stdlib) 빌드에서 읽힙니다.</p>
+</section>
+
+<section>
+<h2 id="bundle"><span data-lang="en">Bundle a package</span><span data-lang="ko">패키지 번들링</span></h2>
+<p data-lang="en">This is the call toolchain makes for every variant:</p><p data-lang="ko">toolchain 이 변형마다 하는 호출입니다.</p>
+<pre><code class="language-kotlin">val result = BundlerInterface.create(BundleType.RESOURCE).bundle(
+    BundleRequest(
+        packageDir = packageDir,            // pyproject.toml + src/main/…
+        target = &quot;aarch64-linux-android&quot;,
+        buildType = &quot;release&quot;,
+        buildLevel = &quot;bytecode&quot;,            // instant | bytecode
+        outputDir = outputDir,
+        overwrite = true,
+        minSdk = 24,
+        metaDirs = metaDirs,                // overlaid after src/&lt;family&gt;
+        libDirs = libDirs,                  // e.g. build/crossenv/&lt;triple&gt;
+        versionName = &quot;1.0&quot;, versionCode = 1,
+    )
+)
+val bundle = result.getOrElse { throw it }   // bundle.outputDir, bundle.manifestFile, bundle.fileCount</code></pre>
+</section>
+
+<section>
+<h2 id="deps"><span data-lang="en">Install dependencies for a target</span><span data-lang="ko">타깃용 의존성 설치</span></h2>
+<pre><code class="language-kotlin">BackendInterface.create(BackendType.UV).installDependenciesToTarget(
+    targetDir = &quot;build/crossenv/arm64-apple-ios&quot;,
+    pythonPlatform = &quot;arm64-apple-ios&quot;,
+    extraArgs = mapOf(&quot;python-version&quot; to &quot;3.14&quot;),
+    workingDir = projectDir,
+    requirements = listOf(&quot;pillow&gt;=11&quot;, &quot;six&quot;),   // null: -r pyproject.toml
+)</code></pre>
+<p data-lang="en">With <code>requirements</code>, the specifiers go to uv as arguments and <code>workingDir</code> needs no <code>pyproject.toml</code>. An empty list is a successful no-op.</p><p data-lang="ko"><code>requirements</code> 를 주면 지정자가 uv 인자로 넘어가고, <code>workingDir</code> 에 <code>pyproject.toml</code> 이 없어도 됩니다. 빈 목록은 성공하는 no-op 입니다.</p>
+</section>
+
+<section>
+<h2 id="rules"><span data-lang="en">Two rules the API keeps</span><span data-lang="ko">API 가 지키는 두 규칙</span></h2>
+<div class="table-wrap"><table><thead><tr><th><span data-lang="en">Rule</span><span data-lang="ko">규칙</span></th><th><span data-lang="en">Why</span><span data-lang="ko">이유</span></th></tr></thead><tbody><tr><td><span data-lang="en">Backend calls take an explicit <code>workingDir</code> or <code>installDir</code>.</span><span data-lang="ko">백엔드 호출은 <code>workingDir</code> 나 <code>installDir</code> 를 명시적으로 받습니다.</span></td><td><span data-lang="en">A Gradle daemon's <code>user.dir</code> is not your project.</span><span data-lang="ko">Gradle 데몬의 <code>user.dir</code> 는 내 프로젝트가 아닙니다.</span></td></tr><tr><td><span data-lang="en">Anything unimplemented returns a failed <code>Result</code>.</span><span data-lang="ko">구현되지 않은 것은 실패한 <code>Result</code> 를 돌려줍니다.</span></td><td><span data-lang="en">A caller can tell "not yet" from "done" without reading logs.</span><span data-lang="ko">호출자가 로그를 읽지 않고도 "아직" 과 "완료" 를 구분합니다.</span></td></tr></tbody></table></div>
+</section>
+</article></div>
+</main>
+<footer class="site-footer"><div class="wrap">
+<nav aria-label="All pages" data-label-en="All pages" data-label-ko="모든 페이지"><a href="index.html"><span data-lang="en">Home</span><span data-lang="ko">홈</span></a><a href="getting-started.html"><span data-lang="en">Getting started</span><span data-lang="ko">시작하기</span></a><a href="guide-projects.html"><span data-lang="en">Projects, targets & dependencies</span><span data-lang="ko">프로젝트, 타깃, 의존성</span></a><a href="guide-python.html"><span data-lang="en">Python distributions</span><span data-lang="ko">Python 배포판</span></a><a href="guide-build.html"><span data-lang="en">Build levels & bundles</span><span data-lang="ko">빌드 레벨과 번들</span></a><a href="guide-compile-slot.html"><span data-lang="en">The native compile slot</span><span data-lang="ko">native 컴파일 슬롯</span></a><a href="guide-library.html"><span data-lang="en">Using the library</span><span data-lang="ko">라이브러리로 쓰기</span></a><a href="status.html"><span data-lang="en">Status & known issues</span><span data-lang="ko">상태와 알려진 문제</span></a></nav>
+<p data-lang="en">Part of the thisisthepy ecosystem, beside <a href="https://github.com/thisisthepy/toolchain">toolchain</a> and <a href="https://github.com/thisisthepy/python-multiplatform">python-multiplatform</a>. Apache-2.0 licensed. Source: <a href="https://github.com/thisisthepy/pypackpack">github.com/thisisthepy/pypackpack</a>.</p><p data-lang="ko"><a href="https://github.com/thisisthepy/toolchain">toolchain</a>, <a href="https://github.com/thisisthepy/python-multiplatform">python-multiplatform</a> 과 함께하는 thisisthepy 생태계의 일부입니다. Apache-2.0 라이선스. 소스: <a href="https://github.com/thisisthepy/pypackpack">github.com/thisisthepy/pypackpack</a>.</p>
+</div></footer>
+</body>
+</html>

@@ -1,52 +1,47 @@
+# The PyPI distribution of pypackpack. The wheel carries the native command line (GraalVM Native
+# Image) and is assembled per platform by .github/scripts/pypi/build_wheel.py in publish-pypi.yml,
+# which reads [project] below. Its version must equal cli/build.gradle.kts's: the workflow refuses
+# to publish unless the installed binary prints it.
+#
+# Installing from source (`uv pip install .`) gives only the Python package, without the binary; `ppp`
+# then says so and exits.
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pypackpack"
-version = "0.1.0"
+version = "0.2.0"
 description = "PyPackPack (PPP) - A multiplatform solution to distribute python project"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "thisisthepy", email = "thisisthepy@gmail.com" },
 ]
-keywords = [
-]
+keywords = ["packaging", "cross-compilation", "android", "ios", "kotlin-multiplatform", "uv"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Software Development :: Build Tools",
 ]
 requires-python = ">=3.9"
-dependencies = [
-]
+dependencies = []
+
+[project.scripts]
+ppp = "pypackpack.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/thisisthepy/PyPackPack"
-Documentation = "https://pypackpack.readthedocs.io"
-Repository = "https://github.com/thisisthepy/PyPackPack"
-"Bug Tracker" = "https://github.com/thisisthepy/PyPackPack/issues"
-"Discussions" = "https://github.com/thisisthepy/PyPackPack/discussions"
-Changelog = "https://github.com/thisisthepy/PyPackPack/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/thisisthepy/pypackpack"
+Documentation = "https://thisisthepy.github.io/pypackpack/"
+Repository = "https://github.com/thisisthepy/pypackpack"
+Issues = "https://github.com/thisisthepy/pypackpack/issues"
 
 [tool.setuptools]
-packages = ["packpack/src/main/python"]
-
-[tool.setuptools.package-data]
-your_package = [
-    "packpack/build/native/nativeCompile/*.exe",
-    "packpack/build/native/nativeCompile/*.dll",
-    "packpack/build/native/nativeCompile/*.so",
-]
+package-dir = { pypackpack = "packpack/src/main/python" }
+packages = ["pypackpack"]

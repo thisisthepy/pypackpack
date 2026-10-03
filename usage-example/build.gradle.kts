@@ -3,6 +3,6 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":usage-example"))
+    implementation(project(":packpack"))
     testImplementation(kotlin("test"))
 }

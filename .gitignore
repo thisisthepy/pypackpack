@@ -178,8 +178,12 @@ cython_debug/
 # Project Settings
 ########################################################################################################################
 # Distribution
-/tools/
+/tools/*
 /sources/
+
+# Agent worktrees and scratch files (AGENTS.md rule 2)
+.worktrees/
+.tmp/
 
 
 ########################################################################################################################
@@ -228,34 +232,9 @@ bin/
 
 ### VS Code ###
 .vscode/
-
-### Cursor ###
-.cursor/
-.cursorignore
-
-### Taskmaster AI ###
-.taskmaster/
+.github/skills
 
 ### Mac OS ###
 .DS_Store
 
-# Added by Task Master AI
-# Logs
-logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-dev-debug.log
-# Dependency directories
-node_modules/
-# Environment variables
-# Editor directories and files
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-# OS specific
-# Task files
-tasks.json
-tasks/ 
+.claude

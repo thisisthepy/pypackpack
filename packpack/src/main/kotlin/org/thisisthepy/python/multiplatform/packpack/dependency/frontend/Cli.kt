@@ -1,26 +1,26 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.frontend
 
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.BaseInterface as MiddlewareBaseInterface
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.DefaultInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.DefaultMiddleware
+import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MiddlewareInterface
 
 /**
  * CLI interface for dependency management
  */
-class Cli : BaseInterface {
-    private lateinit var middleware: MiddlewareBaseInterface
+class Cli : FrontendInterface {
+    private lateinit var middleware: MiddlewareInterface
 
     /**
      * Initialize CLI interface
      */
     override fun initialize() {
-        middleware = DefaultInterface()
+        middleware = DefaultMiddleware()
         middleware.initialize()
     }
 
     /**
      * Get middleware interface
      */
-    override fun getMiddleware(): MiddlewareBaseInterface {
+    override fun getMiddleware(): MiddlewareInterface {
         if (!::middleware.isInitialized) {
             initialize()
         }
