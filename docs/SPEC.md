@@ -273,6 +273,9 @@ pypackpack version
 - The pypackpack version is `cli/build.gradle.kts`'s `version`, which the build writes into the CLI's
   resources (`build-info.properties`, read by `BuildInfo`). It is the PyPI wheel's version too.
 - If uv is not detected, downloads uv into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
+- The download is uv's release archive for the host. The `.tar.gz` archives (Linux, macOS) keep their
+  files under one top-level directory, which is stripped; the Windows `.zip` holds `uv.exe` at its root.
+  A binary missing after extraction is a failure, not a success (`packpack/.../dependency/backend/external/UVInstallTest.kt`).
 
 Limitation
 
@@ -542,7 +545,7 @@ pypackpack add <pypi name>...
 
 - Finds the project root, then runs `uv add` in the root working directory.
 - `add`/`remove`/`sync`/`tree` (and their per-package equivalents, `pypackpack <package> add/remove/sync/tree` and `pypackpack package sync/tree <name>`) accept unrecognized `--flag [value]` tokens and forward them as `extraArgs` to the backend (`UVBackend.appendOptions`, which turns an arbitrary map into `--key [value]`). E.g. `pypackpack add requests --dev` and `pypackpack mypackage add numpy --target windows linux --extra-index-url https://pypi.org/simple` both work.
-- The split between "dependency name" and "passthrough flag" is heuristic: every flag an earlier draft of this spec named (`--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`) is boolean in real `uv`, so any `--flag` defaults to a bare flag (no value) unless it is in a small value-taking allowlist (`--extra-index-url`, `--index-url`, `--index-strategy`, `--python`, `--resolution`) hardcoded in `parsePassthroughArgs` (`cli/CommandExtension.kt`).
+- The split between "dependency name" and "passthrough flag" is heuristic: every flag an earlier draft of this spec named (`--dev`, `--editable`, `--no-sync`, `--upgrade`, `--reinstall`, `--refresh`, `--frozen`, `--locked`, `--preview`, `--raw-sources`, `--quiet`, `--verbose`) is boolean in real `uv`, so any `--flag` defaults to a bare flag (no value) unless it is written `--flag=value` or is in a small value-taking allowlist (`--extra-index-url`, `--index-url`, `--index-strategy`, `--index`, `--default-index`, `--find-links`, `--python`, `--python-version`, `--only-binary`, `--resolution`) hardcoded in `parsePassthroughArgs` (`cli/CommandExtension.kt`). Test: `cli/.../CommandExtensionTest.kt`.
 
 ```bash
 pypackpack remove <pypi name>...
@@ -589,6 +592,8 @@ pypackpack mypackage add numpy --target windows linux
 - `pypackpack package sync <name> [--target ...]` and `pypackpack package tree <name> [--target ...]` invoke the same logic as an explicit alternative to the dynamic `sync`/`tree` forms.
 - The target package is resolved among workspace members by name or relative path.
 - `add` computes a marker for each target (`platform_system == '<system>' and platform_machine == '<machine>'`) and repeatedly calls `uv add --package <name> --marker <marker>`.
+- `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Pyodide. Status: implemented — `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
+- Markers written before #49 (`arm64` for Linux/Android/Windows aarch64, `i686` for 32-bit Windows) never matched, so those dependencies were not installed. `remove --target` still finds them under the corrected target (`MarkerPolicyTest`); to install them, remove and add them again.
 - If `--target` is absent, uses the `[tool.ppp.dependencies].platforms` value from the package's `pyproject.toml` as the default target.
 - If there is no default target and `--target` is also empty, raises an error.
 
@@ -629,6 +634,9 @@ not the host's.
   e.g. `3.13`) through the extra arguments when the host's differs. A dependency with no wheel for the
   target is built from its sdist with the host compiler and then rejected as incompatible; pass
   `--only-binary :all:` to fail at resolution instead ("has no usable wheels").
+- `sync` sends each extra argument only to the uv commands that accept it: `--python-version` to
+  `uv tree` and `uv pip install`, `--only-binary` to `uv pip install`, neither to `uv sync` (which
+  manages the host `.venv`). Test: `CrossEnvTest.syncDependenciesSendsTargetInstallOptionsOnlyToTheUvCommandsThatHaveThem`.
 - If a package has no wheel for a target, the failure names the package spec and the target and says whether only an sdist exists (`NoWheelForTargetException`, with uv's raw text appended). Recognized uv texts (`parseMissingWheel`): `Failed to download and build ... is not compatible with the target Python` (only an sdist exists), `has no wheels with a matching platform tag` (wheels for other platforms only, no sdist) and `has no usable wheels` (building disabled, sdist unknown). Any other uv error passes through unchanged. Status: implemented — `packpack/.../dependency/backend/MissingWheelTest.kt` (fixtures are real uv 0.12.3 output).
 - If `--target` is absent, uses a single host target as the default.
 
