@@ -179,7 +179,7 @@ object Platforms {
                     canonicalTarget = canonical,
                     family = "windows",
                     markerSystem = "Windows",
-                    markerMachine = markerMachine(canonical),
+                    markerMachine = markerMachine(canonical, "windows"),
                 )
             }
 
@@ -188,7 +188,7 @@ object Platforms {
                     canonicalTarget = canonical,
                     family = "android",
                     markerSystem = "Android",
-                    markerMachine = markerMachine(canonical),
+                    markerMachine = markerMachine(canonical, "android"),
                 )
             }
 
@@ -197,7 +197,7 @@ object Platforms {
                     canonicalTarget = canonical,
                     family = "ios",
                     markerSystem = "iOS",
-                    markerMachine = markerMachine(canonical),
+                    markerMachine = markerMachine(canonical, "ios"),
                 )
             }
 
@@ -206,7 +206,7 @@ object Platforms {
                     canonicalTarget = canonical,
                     family = "wasm",
                     markerSystem = "Emscripten",
-                    markerMachine = markerMachine(canonical),
+                    markerMachine = markerMachine(canonical, "wasm"),
                 )
             }
 
@@ -215,7 +215,7 @@ object Platforms {
                     canonicalTarget = canonical,
                     family = "macos",
                     markerSystem = "Darwin",
-                    markerMachine = markerMachine(canonical),
+                    markerMachine = markerMachine(canonical, "macos"),
                 )
             }
 
@@ -224,7 +224,7 @@ object Platforms {
                     canonicalTarget = canonical,
                     family = "linux",
                     markerSystem = "Linux",
-                    markerMachine = markerMachine(canonical),
+                    markerMachine = markerMachine(canonical, "linux"),
                 )
             }
 
@@ -340,7 +340,27 @@ object Platforms {
         return dp[s1.length][s2.length]
     }
 
-    private fun markerMachine(target: String): String = target.substringBefore('-').replace("aarch64", "arm64")
+    /**
+     * The `platform_machine` value uv evaluates for [target] under `--python-platform` (#49): Apple
+     * spells 64-bit ARM `arm64`, Windows `ARM64` and 32-bit x86 `x86`, Linux and Android keep the
+     * triple's `aarch64`. `MarkerPolicyUvTest` checks every canonical target against uv itself.
+     */
+    private fun markerMachine(
+        target: String,
+        family: String,
+    ): String {
+        val arch = target.substringBefore('-')
+        return when (family) {
+            "macos", "ios" -> if (arch == "aarch64") "arm64" else arch
+            "windows" ->
+                when (arch) {
+                    "aarch64" -> "ARM64"
+                    "i686" -> "x86"
+                    else -> arch
+                }
+            else -> arch
+        }
+    }
 
     /**
      * Validates a `BundleRequest.minSdk` (Android min SDK / API level) against the [family] it was
