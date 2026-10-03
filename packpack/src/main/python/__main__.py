@@ -25,7 +25,7 @@ def _binary() -> Path:
         tried.append(str(path))
     sys.exit(
         "pypackpack: the native binary is not installed beside this Python "
-        f"(looked for {', '.join(tried)}). Install a platform wheel: pip install pypackpack"
+        f"(looked for {', '.join(tried)}). Install a platform wheel: uv tool install pypackpack"
     )
 
 
