@@ -30,7 +30,7 @@ data class PythonDistribution(
  * `PY3_13_0`, in the `toolchain` repository's `dsl/DSLCore.kt`).
  *
  * 3.14.7 follows python-multiplatform (the runtime's source of truth; its `gradle.properties`
- * `pythonVersion=3.14.7`, `pythonBuildStandaloneRelease=20260807`, `pythonAppleSupportBuild=b10`,
+ * `pythonVersion=3.14.7`, `pythonBuildStandaloneRelease=20260807`, `pythonAppleSupportBuild=b11`,
  * and `docs/platforms/python-version-acquisition.md`): python-build-standalone for desktop,
  * python.org for Android, BeeWare Python-Apple-support for iOS. Every 3.14.7 digest was copied from
  * python-multiplatform's lockfile `python-checksums.properties` and cross-checked against the
@@ -93,12 +93,13 @@ object PythonDistributions {
             version = "3.14.7",
             target = target,
             // One XCframework holds every iOS slice (ios-arm64, ios-arm64_x86_64-simulator).
-            // python-multiplatform pairs pythonVersion=3.14.7 with b10; b10's release notes say it
-            // carries CPython 3.14.6 -- the newest BeeWare 3.14 build there is.
-            url = "$BEEWARE/3.14-b10/Python-3.14-iOS-support.b10.tar.gz",
-            sha256 = "200ef60eb67be0483ceb638daa9048f84f41a9a952707a5ad4c3198037c7b583",
+            // b11 carries CPython 3.14.7 (b10 was 3.14.6; pypackpack#35, python-multiplatform#47).
+            // python-multiplatform's download tasks now fail when patchlevel.h disagrees with
+            // pythonVersion, so this pairing is checked upstream.
+            url = "$BEEWARE/3.14-b11/Python-3.14-iOS-support.b11.tar.gz",
+            sha256 = "b591f3301bd22a4f423c49c746cac9e55558b909fd14d6eb8327ccc62234ab7b",
             provenance =
-                "$LOCKFILE `ios-3.14-b10`; equals the GitHub release asset digest " +
+                "$LOCKFILE `ios-3.14-b11`; equals the GitHub release asset digest " +
                     "(BeeWare publishes no checksum file or signature)",
             stripComponents = 0,
             prefixFilter = null,

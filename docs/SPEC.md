@@ -347,7 +347,7 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 | 3.14.7 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-build-standalone `20260807`, `install_only.tar.gz` | python-multiplatform's `python-checksums.properties`, equal to the release's `SHA256SUMS` |
 | 3.14.7 | `aarch64-unknown-linux-gnu`, `aarch64-pc-windows-msvc` | same | the release's `SHA256SUMS` only |
 | 3.14.7 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.14.7-<arch>-linux-android.tar.gz` | python-multiplatform's lockfile (python.org publishes no checksum file) |
-| 3.14.7 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | BeeWare Python-Apple-support `3.14-b10` (one XCframework for all three) | python-multiplatform's lockfile, equal to the GitHub release asset digest |
+| 3.14.7 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | BeeWare Python-Apple-support `3.14-b11` (one XCframework for all three) | python-multiplatform's lockfile, equal to the GitHub release asset digest |
 | 3.13.0 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-multiplatform `release` branch `binary/` (copies of python-build-standalone `20241008` `full.tar.zst`) | python-build-standalone `20241008` `SHA256SUMS` |
 
 - A pair not in the table fails with `Python <version> is not available for <target>. Supported: <version/target, ...>`.
@@ -358,8 +358,6 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 
 Limitation
 
-- BeeWare's `3.14-b10`, which python-multiplatform pairs with `pythonVersion=3.14.7`, carries CPython
-  3.14.6 according to its release notes; it is the newest BeeWare 3.14 build.
 - Free-threaded builds and Sigstore verification (both available in python-multiplatform's build) are
   not offered here.
 
