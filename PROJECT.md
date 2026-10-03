@@ -97,8 +97,8 @@ bash .github/scripts/release/test-sync-release.sh   # release 동기화 스크�
 
 ## 열린 질문
 
-1. ~~3.13.0 모바일 배포판의 SHA-256 고정~~ **필요 없음 (2026-10-04):** 지원 범위가 3.14 이상이다
-   (3.15 이상으로 바뀔 수 있음, python-multiplatform #158). 3.13.0 항목과 `cp313` 태그는 정리 대상이다 (#70).
+1. ~~3.13.0 모바일 배포판의 SHA-256 고정~~ **필요 없음 (2026-10-04):** 지원 범위가 CPython 3.15 이상,
+   free-threaded 전용이다 (python-multiplatform #158, 기준 3.15t, PEP 803 `abi3t`). 3.13.0·3.14.7 항목과 `cp313` 태그는 정리 대상이다 (#70).
 2. ~~WASM 을 첫 릴리스 범위에 넣을 것인가~~ **결정 (2026-10-04):** 넣는다.
 3. ~~`build` 가 번들까지 할 것인가~~ **결정 (메인테이너 사양서 `spec.md`, 686b1ad):** `build` 가 번들을
    인자로 받는다 (`build <package> source [<bundle type>]`, `build <package> resource`). `bundle` 명령은 없다.

@@ -85,9 +85,9 @@ need patches to build), `pip-central` (a closed-source service distributing them
 
 ## 4. Open questions for the maintainer
 
-1. ~~**Python versions.**~~ **Answered (2026-10-04):** 3.14 and later. This may become 3.15 and
-   later, following python-multiplatform's GIL discussion (#158 there: free-threaded by default,
-   3.15 `abi3t`).
+1. ~~**Python versions.**~~ **Answered (2026-10-04):** CPython 3.15 and later, free-threaded only
+   (python-multiplatform #158: the free-threaded build is the default and the only build, there is
+   no GIL build option; the base is 3.15t, with PEP 803's `abi3t`).
 2. ~~**WASM.**~~ **Answered (2026-10-04):** in the first release's scope.
 3. ~~**`build` and `bundle`.**~~ **Answered by the maintainer's spec sheet** (`spec.md`, 686b1ad,
    2025-05-04; `docs/spec_ko.md` until 27b1eb3): `build` is the orchestration stage and takes the

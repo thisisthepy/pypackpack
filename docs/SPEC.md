@@ -38,9 +38,17 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 
 Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 
-- Python: 3.14 and later. It may become 3.15 and later (python-multiplatform #158: free-threaded by
-  default, 3.15 `abi3t`). 3.13.0 is still installable and `SingleWheelBundler` still writes `cp313`
-  tags; both are to be brought in line.
+- Python: CPython 3.15 and later, free-threaded only (python-multiplatform #158: the free-threaded
+  build is the default and the only one; the base is 3.15t). Today `python install` offers 3.14.7
+  and 3.13.0 (GIL builds) and `SingleWheelBundler` writes `cp313` tags; both are to be brought in
+  line (#70).
+- Extension modules are free-threaded by default (planned):
+  - Builds target PEP 803's `abi3t`, so one extension serves every free-threaded 3.15+ runtime.
+    This covers the compile slot (#19, #60), Meson's `py.extension_module()` and the wheel tags.
+  - The Cargo backend (#65) builds with PyO3's `gil_used = false` and `abi3t` by default.
+  - A dependency whose extension does not declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` makes CPython
+    re-enable the GIL when it is imported. The build warns at that point, naming the module and
+    saying that it re-enables the GIL, because the app would otherwise silently run with the GIL.
 - WASM (`wasm32-pyodide2024`) is in the first release's scope. Nothing installs or compiles for it yet.
 - `build` bundles: it takes the bundle as an argument (see *Package build*). There is no `bundle`
   command.
