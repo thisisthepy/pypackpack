@@ -3,6 +3,8 @@ package org.thisisthepy.python.multiplatform.packpack.utils
 import com.github.luben.zstd.ZstdInputStream
 import java.io.EOFException
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.zip.GZIPInputStream
 import java.util.zip.ZipFile
 
@@ -78,6 +80,14 @@ fun extractArchive(
                                             remaining -= read
                                         }
                                     }
+                                    // An interpreter whose bin/python3.x lost its x bit cannot run.
+                                    if ((tarEntryMode(header) and 0b001_001_001) != 0) {
+                                        outputFile.setExecutable(true, false)
+                                    }
+                                }
+
+                                '2' -> {
+                                    createContainedSymlink(destDir, entryName, header.tarString(157, 100))
                                 }
 
                                 else -> {
@@ -119,6 +129,43 @@ private fun outputFileForArchiveEntry(
     require(outputFile.toPath().startsWith(destRoot.toPath())) { "Archive entry escapes destination: $entryName" }
     return outputFile
 }
+
+/**
+ * Recreates a tar symbolic link (python-build-standalone's `bin/python -> python3.14`). The link
+ * must be relative and must resolve inside [destDir]; anything else is rejected like a `..` entry.
+ * A file system that cannot hold symlinks (Windows without the privilege) skips it, as before.
+ */
+private fun createContainedSymlink(
+    destDir: File,
+    entryName: String,
+    linkTarget: String,
+) {
+    require(linkTarget.isNotEmpty() && !linkTarget.startsWith("/") && !linkTarget.contains('\\')) {
+        "Archive symlink escapes destination: $entryName -> $linkTarget"
+    }
+    val destRoot = destDir.canonicalFile.toPath()
+    // Not canonicalised: canonicalising a path that is already a symlink would follow it.
+    val link = destRoot.resolve(entryName).normalize()
+    require(link.startsWith(destRoot) && link != destRoot) { "Archive entry escapes destination: $entryName" }
+    val resolved = link.parent.resolve(linkTarget).normalize()
+    require(resolved.startsWith(destRoot)) { "Archive symlink escapes destination: $entryName -> $linkTarget" }
+    Files.createDirectories(link.parent)
+    Files.deleteIfExists(link)
+    try {
+        Files.createSymbolicLink(link, Paths.get(linkTarget))
+    } catch (e: UnsupportedOperationException) {
+        // This file system has no symlinks; the entry is skipped, as every symlink was before.
+    } catch (e: java.nio.file.FileSystemException) {
+        // e.g. Windows without SeCreateSymbolicLinkPrivilege; skipped as above.
+    }
+}
+
+private fun tarEntryMode(header: ByteArray): Int =
+    header
+        .tarString(100, 8)
+        .trim()
+        .ifBlank { "0" }
+        .toInt(8)
 
 private fun tarEntryName(header: ByteArray): String {
     val name = header.tarString(0, 100)

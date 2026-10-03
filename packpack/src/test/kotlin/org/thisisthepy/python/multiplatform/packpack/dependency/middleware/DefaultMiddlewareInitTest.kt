@@ -93,6 +93,7 @@ class DefaultMiddlewareInitTest {
             pythonPlatform: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
+            requirements: List<String>?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun showDependencyTree(
@@ -110,6 +111,7 @@ class DefaultMiddlewareInitTest {
         override suspend fun installPython(
             pythonVersion: String,
             targetPlatform: String?,
+            installDir: File?,
         ): Result<String> = Result.success("ok")
 
         override fun uninstallPython(pythonVersion: String): Result<String> = Result.success("ok")

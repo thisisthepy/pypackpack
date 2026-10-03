@@ -40,8 +40,9 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
     Rust (`Cargo.kt`) is an empty placeholder.
 - (2). Support crossenv for multi-platform code
   - Status: partial — per-target dependency markers and per-target install directories
-    (`build/crossenv/<target>`), see *Per-package target dependency management*. No cross
-    interpreter environment is created.
+    (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
+    install of Android and iOS wheels is tested (`packpack/.../dependency/backend/UVBackendRealInstallTest.kt`).
+    No cross interpreter environment is created.
 - (3). Support Python code compilation/optimization/minification (nuitka, lpython, etc.)
   - Status: planned — `Nuitka.kt`, `Cython.kt`, `Lpython.kt`, `transcompile/` and `minification/`
     are empty placeholders. (The `bytecode` level of the `resource` bundle uses `compileall`, which
@@ -106,7 +107,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
       - utils
         - Platforms.kt  # supported targets, aliases, families, markers, min SDK validation
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader); also defines DownloadSpec
-        - Archive.kt  # zip/tar.gz/tar.zst archive extraction
+        - Archive.kt  # zip/tar.gz/tar.zst archive extraction (with contained symlinks and executable bits)
+        - Checksum.kt  # SHA-256 of a file, and verification against a pinned digest
         - Workspace.kt  # project/workspace root discovery, workspace member listing
         - toml
           - TomlEditor.kt  # style-preserving TOML editor (tables/arrays/values)
@@ -127,7 +129,9 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - UV.kt  # uv downloader
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # shared Python-version install/list/find/uninstall logic
+          - PythonDistributions.kt  # (version, target) -> interpreter archive URL and pinned SHA-256
           - UVBackend.kt
+          - MissingWheel.kt  # parses uv's "no wheel for this target" failure
       - compile
         - frontend
           - FrontendInterface.kt  # factory pattern
@@ -324,22 +328,103 @@ pypackpack python uninstall <python version>
 
 #### Installing a ppp Python distribution
 
-Status: partial — `packpack/.../dependency/backend/DefaultBackendTest.kt` covers only the refusals
-(`installPython_returnsFailureForUnsupportedPythonVersion`,
-`installPython_returnsFailureForUnsupportedTargetPlatform`) and the archive layout
-(`extractArchive_stripsTwoComponentsForPythonInstall`). No test downloads.
-
 ```bash
 pypackpack python install <python version> [<target platform>]
 ```
 
-- Downloads a prebuilt CPython distribution from `thisisthepy/python-multiplatform`'s GitHub release binaries (`raw/release/binary`) for the given (or host) target platform, and extracts its `python/install/` tree into `<project>/.venv` (host target) or `<project>/<target-dir-name>` (cross target, e.g. `windows_amd64`).
-- Writes a `version=absolutePath` entry to `~/.pypackpack/python/registry.properties`, so `find`/`list`/`uninstall` can locate the project-relative install.
+##### Version and target selection
+
+Status: implemented — `packpack/.../dependency/backend/PythonDistributionsTest.kt` (every pair's URL
+and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
+(`installPython_refusesAnUnsupportedVersionWithTheSupportedList`,
+`installPython_returnsFailureForUnsupportedTargetPlatform`).
+
+- The installable versions are the ones `toolchain` can ask for (`PY3_14_7`, `PY3_13_0` in `toolchain`'s
+  `dsl/DSLCore.kt`). `3.14` and `3.13` are accepted as shorthands for `3.14.7` and `3.13.0`.
+- Every (version, canonical target) pair maps to one archive URL and one pinned SHA-256 in
+  `dependency/backend/PythonDistributions.kt`, which cites where each digest came from:
+
+| Version | Targets | Source | Digest provenance |
+|---|---|---|---|
+| 3.14.7 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-build-standalone `20260807`, `install_only.tar.gz` | python-multiplatform's `python-checksums.properties`, equal to the release's `SHA256SUMS` |
+| 3.14.7 | `aarch64-unknown-linux-gnu`, `aarch64-pc-windows-msvc` | same | the release's `SHA256SUMS` only |
+| 3.14.7 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.14.7-<arch>-linux-android.tar.gz` | python-multiplatform's lockfile (python.org publishes no checksum file) |
+| 3.14.7 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | BeeWare Python-Apple-support `3.14-b11` (one XCframework for all three) | python-multiplatform's lockfile, equal to the GitHub release asset digest |
+| 3.13.0 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-multiplatform `release` branch `binary/` (copies of python-build-standalone `20241008` `full.tar.zst`) | python-build-standalone `20241008` `SHA256SUMS` |
+
+- A pair not in the table fails with `Python <version> is not available for <target>. Supported: <version/target, ...>`.
+- A pair that is known but has no pin fails closed (`... has no pinned SHA-256, so it is refused rather
+  than installed unverified`) without downloading anything. Today that is 3.13.0 for Android and iOS
+  (`binary/*.tar.xz`, `binary/*.zip`): nothing publishes their digest and computing one needs the full
+  download (a TODO in `PythonDistributions.kt`).
 
 Limitation
 
-- `install` only accepts Python `3.13`; any other version is rejected ("Only Python 3.13 is supported due to python-mutliplatform limitations", spelling as in the code).
-- The project root is located through `user.dir` (`findProjectRoot()`), not an explicit working directory.
+- Free-threaded builds and Sigstore verification (both available in python-multiplatform's build) are
+  not offered here.
+
+##### Digest verification and placement
+
+Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt`
+(`installPython_matchingDigestExtractsIntoTheCrossTargetDirectory`,
+`installPython_hostTargetGoesToTheProjectVenv`, `installPython_mismatchedDigestRefusesAndLeavesNothingBehind`,
+`installPython_mismatchedDigestLeavesAnExistingInstallUntouched`,
+`installPython_archiveWithAnUnexpectedLayoutIsRefused`, `installPython_refusesAPairWithNoPinnedDigestWithoutDownloading`)
+and `utils/ArchiveTest.kt` (`extractArchive_recreatesRelativeSymlinksAndExecutableBits`,
+`extractArchive_rejectsSymlinksThatEscapeTheDestination`). The tests use small fake archives; no test downloads.
+
+- The archive is downloaded into a staging directory beside the install directory
+  (`<project>/.<install dir>.pypackpack-staging`), and its SHA-256 is compared with the pin **before**
+  anything is extracted.
+- A mismatch fails with `SHA-256 mismatch for <archive>: expected <pin>, actual <digest>` and registers nothing.
+- The archive is extracted inside the staging directory and only then moved to `<project>/.venv`
+  (host target) or `<project>/<target-dir-name>` (cross target: `windows_amd64`, `windows_arm64`,
+  `linux_x86_64`, `linux_arm64`, `macos_arm64`, `macos_x86_64`, `android_arm64`, `android_x86_64`,
+  `ios_arm64`, `ios_simulator_arm64`, `ios_simulator_x86_64`). A missing install directory is created by
+  a rename; an existing one (a `.venv` uv already made) has the tree copied over it.
+- Whatever happens, the staging directory is deleted, so a refused or failed install leaves neither the
+  archive nor a partial tree, and an existing install directory untouched.
+- Only the interpreter tree is installed: `python/` of an `install_only` archive, `python/install/` of a
+  `full` archive, the whole `./` tree of a python.org Android archive, the whole XCframework archive for
+  iOS. An archive that verifies but yields nothing under that prefix is refused.
+- tar symbolic links are recreated when they are relative and stay inside the install directory (others
+  are rejected), and executable bits are kept, so `bin/python` exists and runs.
+- On success it writes a `version=absolutePath` entry to `~/.pypackpack/python/registry.properties`, keyed
+  by the version string as given, so `find`/`list`/`uninstall` can locate the project-relative install.
+
+##### Installing into an explicit directory
+
+Status: implemented — `packpack/.../dependency/backend/DefaultBackendTest.kt`
+(`installPython_explicitInstallDirReceivesTheTreeAndNothingElse`,
+`installPython_explicitInstallDirReplacesAPreviousInstallForTheHostToo`,
+`installPython_explicitInstallDirStillRefusesAnUnpinnedPairBeforeDownloading`,
+`installPython_explicitInstallDirIsLeftAsItWasOnADigestMismatch`). The tests use small fake archives; no test downloads.
+
+```kotlin
+suspend fun installPython(pythonVersion: String, targetPlatform: String?, installDir: File? = null): Result<String>
+```
+
+- This is the backend-layer form `toolchain` calls from a Gradle daemon (AGENTS.md rule 13), e.g. into
+  `build/pythonRuntime/<triple>/<version>/`. The CLI does not expose it.
+- The (version, target) pair is resolved and refused exactly as above, before anything is downloaded or
+  created.
+- The archive is downloaded and extracted in a staging directory beside `installDir`
+  (`<parent>/.<name>.pypackpack-staging`), and its SHA-256 is verified before extraction.
+- The extracted tree then **replaces** `installDir`: a previous `installDir` is renamed aside into the
+  staging directory, the new tree is renamed into place (if that rename fails the previous tree is
+  renamed back), and the staging directory is deleted. Nothing is merged into an existing tree.
+- `projectRoot()` (and so `user.dir`), `<project>/.venv` and the registry are not touched, so
+  `find`/`list`/`uninstall` do not see such an install; the caller owns the directory.
+- A refused pair, a digest mismatch or an unexpected archive layout leaves `installDir` as it was.
+- When `installDir` is `null`, the project-relative placement above applies unchanged.
+
+Limitation
+
+- Without `installDir`, the project root is located through `user.dir` (`findProjectRoot()`), not an
+  explicit working directory.
+- `Downloader` holds the whole archive in memory before writing it.
+- `utils/Archive.kt` reads ustar names (100-byte name + 155-byte prefix) and skips PAX (`x`/`g`) and GNU
+  long-name (`L`) records, and has no `.tar.xz` support.
 
 ### Package management features
 
@@ -467,6 +552,8 @@ pypackpack mypackage add numpy --target windows linux
 - `pypackpack package sync <name> [--target ...]` and `pypackpack package tree <name> [--target ...]` invoke the same logic as an explicit alternative to the dynamic `sync`/`tree` forms.
 - The target package is resolved among workspace members by name or relative path.
 - `add` computes a marker for each target (`platform_system == '<system>' and platform_machine == '<machine>'`) and repeatedly calls `uv add --package <name> --marker <marker>`.
+- `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Pyodide. Status: implemented — `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
+- Markers written before #49 (`arm64` for Linux/Android/Windows aarch64, `i686` for 32-bit Windows) never matched, so those dependencies were not installed. `remove --target` still finds them under the corrected target (`MarkerPolicyTest`); to install them, remove and add them again.
 - If `--target` is absent, uses the `[tool.ppp.dependencies].platforms` value from the package's `pyproject.toml` as the default target.
 - If there is no default target and `--target` is also empty, raises an error.
 
@@ -491,9 +578,23 @@ pypackpack <package name> sync [--target <target1> <target2> ...]
 
 Status: implemented — `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
 (`syncDependenciesInstallsPerTargetCrossenvDirectories`) and
-`packpack/.../dependency/backend/UVBackendTest.kt` (`installDependenciesToTarget_*`).
+`packpack/.../dependency/backend/UVBackendTest.kt` (`installDependenciesToTarget_*`) check the
+calls against a recording backend. `packpack/.../dependency/backend/UVBackendRealInstallTest.kt`
+(`installDependenciesToTarget_installsAndroidWheelsIntoCrossenvDirectory`,
+`installDependenciesToTarget_installsIosWheelsIntoCrossenvDirectory`; tagged `network`, needs
+network access and `uv`) runs the real install for `aarch64-linux-android` and `arm64-apple-ios`
+with a pure-Python package (`six`) and a native one (`markupsafe`), and checks that the extension
+module and its wheel tag are the target's (`android_24_arm64_v8a`, `ios_13_0_arm64_iphoneos`),
+not the host's.
 
 - `sync` first calls `uv sync --package <name>`. Then, for each target, it calls `uv tree --package <name> --python-platform <target>` to verify the target resolves, and installs that target's dependencies with `uv pip install -r pyproject.toml --target <package>/build/crossenv/<canonical target> --python-platform <target>`.
+- `BackendInterface.installDependenciesToTarget(..., requirements: List<String>? = null)`: when `requirements` is given, those PEP 508 specifiers (markers and extras included) are passed to uv as positional arguments (`uv pip install <spec>... --target <dir> --python-platform <target>`, no shell) instead of `-r pyproject.toml`, so `workingDir` needs no `pyproject.toml`. `null` keeps `-r pyproject.toml`; an empty list is a successful no-op; a blank or `-`-leading entry fails. The missing-wheel mapping (`NoWheelForTargetException`) applies either way. Test: `UVBackendTest` (`installDependenciesToTarget_*Requirements*`) and, tagged `network`, `UVBackendRealInstallTest.installDependenciesToTarget_installsRequirementListWithoutPyproject`.
+- uv selects wheels by `--python-platform` and by the Python version, which defaults to the
+  interpreter uv finds on the host, not the target runtime's. Pass `--python-version` (the runtime's,
+  e.g. `3.13`) through the extra arguments when the host's differs. A dependency with no wheel for the
+  target is built from its sdist with the host compiler and then rejected as incompatible; pass
+  `--only-binary :all:` to fail at resolution instead ("has no usable wheels").
+- If a package has no wheel for a target, the failure names the package spec and the target and says whether only an sdist exists (`NoWheelForTargetException`, with uv's raw text appended). Recognized uv texts (`parseMissingWheel`): `Failed to download and build ... is not compatible with the target Python` (only an sdist exists), `has no wheels with a matching platform tag` (wheels for other platforms only, no sdist) and `has no usable wheels` (building disabled, sdist unknown). Any other uv error passes through unchanged. Status: implemented — `packpack/.../dependency/backend/MissingWheelTest.kt` (fixtures are real uv 0.12.3 output).
 - If `--target` is absent, uses a single host target as the default.
 
 ```bash

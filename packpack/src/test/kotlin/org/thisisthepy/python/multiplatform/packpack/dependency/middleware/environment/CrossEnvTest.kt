@@ -418,6 +418,7 @@ class CrossEnvTest {
             pythonPlatform: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
+            requirements: List<String>?,
         ): Result<String> {
             targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir)
             return Result.success("ok")
@@ -438,6 +439,7 @@ class CrossEnvTest {
         override suspend fun installPython(
             pythonVersion: String,
             targetPlatform: String?,
+            installDir: File?,
         ): Result<String> = Result.success("ok")
 
         override fun uninstallPython(pythonVersion: String): Result<String> = Result.success("ok")

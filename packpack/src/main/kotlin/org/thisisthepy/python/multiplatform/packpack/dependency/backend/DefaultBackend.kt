@@ -5,7 +5,13 @@ import org.thisisthepy.python.multiplatform.packpack.utils.Downloader
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.extractArchive
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.verifySha256
 import java.io.File
+import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.StandardCopyOption
 
 abstract class DefaultBackend : BackendInterface {
     protected open fun pythonInstallRoot(): File = File(System.getProperty("user.home"), ".pypackpack/python")
@@ -64,108 +70,217 @@ abstract class DefaultBackend : BackendInterface {
         }
     }
 
+    /** The project `installPython` places the interpreter in. A seam for tests; see rule 13 in AGENTS.md. */
+    // No pyproject.toml above the working directory: the working directory itself, which is what
+    // the previous `File(findProjectRoot(), …)` resolved to when the root was null.
+    protected open fun projectRoot(): File = findProjectRoot() ?: File(System.getProperty("user.dir"))
+
+    /** The host's canonical target triple. A seam for tests. */
+    protected open fun hostTarget(): String = Platforms.detectHostTarget()
+
+    /** The pinned archive for a (version, canonical target) pair. A seam for tests. */
+    protected open fun resolveDistribution(
+        pythonVersion: String,
+        canonicalTarget: String,
+    ): Result<PythonDistribution> = PythonDistributions.resolve(pythonVersion, canonicalTarget)
+
+    /** Downloads [url] to `destDir/fileName`. A seam so tests never touch the network. */
+    protected open suspend fun downloadArchive(
+        url: String,
+        fileName: String,
+        destDir: File,
+    ): Result<File> {
+        val result = Downloader().use { downloader -> downloader.download(DownloadSpec(url, fileName, destDir)) }
+        return if (result.success) {
+            Result.success(File(result.filePath))
+        } else {
+            Result.failure(IllegalStateException("Download of $url failed: ${result.error}"))
+        }
+    }
+
+    /**
+     * Installs the pinned CPython for ([pythonVersion], [targetPlatform]) (`docs/SPEC.md`,
+     * "Installing a ppp Python distribution"):
+     *
+     * 1. resolve the pair in [PythonDistributions] -- an unknown or unpinned pair is refused with the
+     *    supported list;
+     * 2. download into a staging directory beside the install directory;
+     * 3. verify the archive's SHA-256 against the pin -- a mismatch fails naming the artifact, the
+     *    expected and the actual digest;
+     * 4. extract into the staging directory, then move the tree into place.
+     *
+     * The install directory is [installDir] when given: the tree replaces whatever is there, and
+     * neither [projectRoot] nor the registry is touched. Otherwise it is `<project>/.venv` (host) or
+     * `<project>/<target-dir-name>`, and the location is registered for `find`/`list`/`uninstall`.
+     *
+     * Any failure deletes the staging directory, so a refused or broken download leaves neither the
+     * archive nor a partial tree behind, and the install directory untouched.
+     */
     override suspend fun installPython(
         pythonVersion: String,
         targetPlatform: String?,
+        installDir: File?,
     ): Result<String> {
-        if (pythonVersion != "3.13") {
-            return Result.failure(IllegalArgumentException("Only Python 3.13 is supported due to python-mutliplatform limitations"))
-        } // TODO: Remove when python-multiplatform supports more versions
-
-        val targetPlatform =
-            Platforms.normalizeTarget(targetPlatform ?: Platforms.detectHostTarget())
+        val canonicalTarget =
+            Platforms.normalizeTarget(targetPlatform ?: hostTarget())
                 ?: return Result.failure(IllegalArgumentException("Unsupported target platform: $targetPlatform"))
 
-        val (downloadFileName, fileName) =
-            when (targetPlatform) {
-                "windows", "x86_64-pc-windows-msvc" -> {
-                    "cpython-3.13.0+20241008-x86_64-pc-windows-msvc-shared-pgo-full.tar.zst" to "x86_64-pc-windows-msvc"
-                }
+        val distribution = resolveDistribution(pythonVersion, canonicalTarget).getOrElse { return Result.failure(it) }
+        val expectedSha256 =
+            distribution.sha256
+                ?: return Result.failure(IllegalStateException("No pinned SHA-256 for ${distribution.fileName}"))
 
-                "linux", "x86_64-unknown-linux-gnu" -> {
-                    "cpython-3.13.0+20241008-x86_64_v4-unknown-linux-gnu-lto-full.tar.zst" to "x86_64-unknown-linux-gnu"
-                }
-
-                "macos", "aarch64-apple-darwin" -> {
-                    "cpython-3.13.0+20241008-aarch64-apple-darwin-pgo+lto-full.tar.zst" to "aarch64-apple-darwin"
-                }
-
-                "x86_64-apple-darwin" -> {
-                    "cpython-3.13.0+20241008-x86_64-apple-darwin-pgo+lto-full.tar.zst" to "x86_64-apple-darwin"
-                }
-
-                "aarch64-linux-android" -> {
-                    "aarch64-linux-android.tar.xz" to "aarch64-linux-android"
-                }
-
-                "x86_64-linux-android" -> {
-                    "x86_64-linux-android.tar.xz" to "x86_64-linux-android"
-                }
-
-                "arm64-apple-ios" -> {
-                    "arm64-iphoneos.zip" to "arm64-apple-ios"
-                }
-
-                "arm64-apple-ios-simulator" -> {
-                    "arm64-iphonesimulator.zip" to "arm64-apple-ios-simulator"
-                }
-
-                "x86_64-apple-ios-simulator" -> {
-                    "x86_64-iphonesimulator.zip" to "x86_64-apple-ios-simulator"
-                }
-
-                else -> {
-                    return Result.failure(IllegalArgumentException("Unsupported target platform: $targetPlatform"))
-                }
-            }
-        val baseUrl = "https://github.com/thisisthepy/python-multiplatform/raw/release/binary"
-        val url = "$baseUrl/$downloadFileName"
-
-        val hostPlatform = Platforms.detectHostTarget()
-
-        val installDir: File =
-            if (targetPlatform == hostPlatform) {
-                File(findProjectRoot(), ".venv")
+        val destination =
+            if (installDir != null) {
+                installDir.absoluteFile
             } else {
                 val dirName =
-                    when (targetPlatform) {
-                        "windows", "x86_64-pc-windows-msvc" -> "windows_amd64"
-                        "linux", "x86_64-unknown-linux-gnu" -> "linux_x86_64"
-                        "macos", "aarch64-apple-darwin" -> "macos_arm64"
-                        "x86_64-apple-darwin" -> "macos_x86_64"
-                        "aarch64-linux-android" -> "android_arm64"
-                        "x86_64-linux-android" -> "android_x86_64"
-                        "arm64-apple-ios" -> "ios_arm64"
-                        "arm64-apple-ios-simulator" -> "ios_simulator_arm64"
-                        "x86_64-apple-ios-simulator" -> "ios_simulator_x86_64"
-                        else -> return Result.failure(IllegalArgumentException("Unsupported target platform: $targetPlatform"))
+                    if (canonicalTarget == hostTarget()) {
+                        ".venv"
+                    } else {
+                        installDirName(canonicalTarget)
+                            ?: return Result.failure(IllegalArgumentException("Unsupported target platform: $canonicalTarget"))
                     }
-                File(findProjectRoot(), dirName)
+                File(projectRoot(), dirName)
+            }
+        val parent =
+            destination.parentFile
+                ?: return Result.failure(IllegalArgumentException("Install directory has no parent: ${destination.path}"))
+
+        val staging = File(parent, ".${destination.name}.pypackpack-staging")
+        return try {
+            staging.deleteRecursively()
+            val downloadDir = File(staging, "download")
+            val extractDir = File(staging, "extract")
+
+            val archive =
+                downloadArchive(distribution.url, distribution.fileName, downloadDir).getOrElse { return Result.failure(it) }
+            verifySha256(archive, expectedSha256, distribution.fileName).getOrElse { return Result.failure(it) }
+
+            extractArchive(archive, extractDir, distribution.stripComponents, distribution.prefixFilter)
+            if (extractDir.listFiles().isNullOrEmpty()) {
+                return Result.failure(
+                    IllegalStateException(
+                        "${distribution.fileName} matched its SHA-256 but extracted nothing under " +
+                            "'${distribution.prefixFilter ?: ""}'; its layout is not the one expected",
+                    ),
+                )
+            }
+            if (installDir != null) {
+                // An explicit directory belongs to the caller (e.g. toolchain's
+                // build/pythonRuntime/<triple>/<version>/): replace it whole and register nothing.
+                replaceWithExtractedTree(extractDir, destination, File(staging, "previous"))
+            } else {
+                placeExtractedTree(extractDir, destination)
+
+                // Bridge the project-relative install location back to the version registry so that
+                // `find`/`list`/`uninstall` (which only take a version, not a project/target) can locate it.
+                // See the KDoc on registerInstalledVersion/registryFile for why this indirection exists.
+                registerInstalledVersion(pythonVersion, destination)
             }
 
-        val downloadSpec = DownloadSpec(url, downloadFileName, installDir)
-        val result = Downloader().use { downloader -> downloader.download(downloadSpec) }
-        println("Downloaded path: ${result.filePath}")
-
-        if (!result.success) throw RuntimeException("Download failed: ${result.error}")
-
-        // We use prefixFilter = "python/install/" to prevent sibling directories in the full tarball
-        // (like python/build/, python/licenses/, and python/PYTHON.json) from being mistakenly
-        // extracted into the root of the installation directory.
-        extractArchive(
-            File(result.filePath),
-            installDir,
-            stripComponents = 2,
-            prefixFilter = "python/install/"
-        )
-
-        // Bridge the project-relative install location back to the version registry so that
-        // `find`/`list`/`uninstall` (which only take a version, not a project/target) can locate it.
-        // See the KDoc on registerInstalledVersion/registryFile for why this indirection exists.
-        registerInstalledVersion(pythonVersion, installDir)
-
-        return Result.success("Downloaded ${result.filePath} for Python $pythonVersion")
+            Result.success(
+                "Installed Python ${distribution.version} for $canonicalTarget into ${destination.absolutePath} " +
+                    "(${distribution.fileName}, sha256 $expectedSha256)",
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        } finally {
+            staging.deleteRecursively()
+        }
     }
+
+    /**
+     * Replaces [installDir] with [extractDir] by renames within one parent directory: a previous
+     * [installDir] is first moved aside to [previous] (inside the staging directory, which the caller
+     * deletes), then [extractDir] is renamed into place. If that rename fails, the previous tree is
+     * moved back, so [installDir] is either the old tree or the new one.
+     */
+    private fun replaceWithExtractedTree(
+        extractDir: File,
+        installDir: File,
+        previous: File,
+    ) {
+        val hadPrevious = Files.exists(installDir.toPath(), LinkOption.NOFOLLOW_LINKS)
+        if (hadPrevious) rename(installDir, previous)
+        try {
+            rename(extractDir, installDir)
+        } catch (e: Exception) {
+            if (hadPrevious) rename(previous, installDir)
+            throw e
+        }
+        // A previous symbolic link is removed as a link, so deleting the staging directory never
+        // reaches through it.
+        if (Files.isSymbolicLink(previous.toPath())) Files.delete(previous.toPath())
+    }
+
+    private fun rename(
+        from: File,
+        to: File,
+    ) {
+        try {
+            Files.move(from.toPath(), to.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: AtomicMoveNotSupportedException) {
+            Files.move(from.toPath(), to.toPath())
+        }
+    }
+
+    /**
+     * Moves a fully extracted tree to [installDir]. A missing [installDir] is replaced by a rename;
+     * an existing one (a host `.venv` uv already made) has the tree copied over it, which is what
+     * extracting straight into it used to do.
+     */
+    private fun placeExtractedTree(
+        extractDir: File,
+        installDir: File,
+    ) {
+        if (!installDir.exists()) {
+            installDir.parentFile?.mkdirs()
+            try {
+                Files.move(extractDir.toPath(), installDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                return
+            } catch (e: IOException) {
+                // Different file store, or no atomic rename; fall through to the copy.
+            }
+        }
+        Files.walk(extractDir.toPath()).use { paths ->
+            paths.forEach { source ->
+                val target = installDir.toPath().resolve(extractDir.toPath().relativize(source).toString())
+                when {
+                    Files.isSymbolicLink(source) -> {
+                        Files.deleteIfExists(target)
+                        Files.createDirectories(target.parent)
+                        Files.copy(source, target, LinkOption.NOFOLLOW_LINKS)
+                    }
+
+                    Files.isDirectory(source) -> {
+                        Files.createDirectories(target)
+                    }
+
+                    else -> {
+                        Files.createDirectories(target.parent)
+                        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun installDirName(canonicalTarget: String): String? =
+        when (canonicalTarget) {
+            "x86_64-pc-windows-msvc" -> "windows_amd64"
+            "aarch64-pc-windows-msvc" -> "windows_arm64"
+            "x86_64-unknown-linux-gnu" -> "linux_x86_64"
+            "aarch64-unknown-linux-gnu" -> "linux_arm64"
+            "aarch64-apple-darwin" -> "macos_arm64"
+            "x86_64-apple-darwin" -> "macos_x86_64"
+            "aarch64-linux-android" -> "android_arm64"
+            "x86_64-linux-android" -> "android_x86_64"
+            "arm64-apple-ios" -> "ios_arm64"
+            "arm64-apple-ios-simulator" -> "ios_simulator_arm64"
+            "x86_64-apple-ios-simulator" -> "ios_simulator_x86_64"
+            else -> null
+        }
 
     override fun uninstallPython(pythonVersion: String): Result<String> =
         runCatching {

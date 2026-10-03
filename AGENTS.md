@@ -31,6 +31,16 @@ ask first.**
 
 Writing to *another* repository is not an exception either. Do it only when told to work there.
 
+### Do not add top-level folders
+
+**Never add a new directory (or a new file) at the repository root on your own.** The root layout is
+the maintainer's: source modules, `docs/`, `gradle/`, `.github/` and the files that tools require
+there. Work belongs inside an existing module or directory — sources under `src/<sourceSet>/`,
+CI-only scripts under `.github/scripts/`, temporary files under the git-ignored `.tmp/`. If you think
+a new top-level entry is needed, propose it (what, why, which alternatives inside existing
+directories you ruled out) and wait for approval. This was added after unapproved root folders
+(`ksp-fixtures/`, `tools/`, `kotlin-js-store/`, `iosApp/`, `sample/python`) had to be dismantled.
+
 ## 3. Worktrees link large artefacts instead of copying them
 
 A worktree is a full checkout. Copying large untracked artefacts (prebuilt runtimes, vendored trees,
@@ -47,10 +57,16 @@ build caches, model weights, `node_modules`) into every worktree is how 86 workt
 
 | Branch | Who writes to it |
 |---|---|
-| `work/<topic>` | You. All work happens here. |
-| `develop` | Merged into from work branches after verification. Never commit to it directly. |
+| `feat/<topic>` | You. All work happens here. Never name a branch `work/...`. |
+| `develop` | Merged into from `feat/` branches after verification. Never commit to it directly. |
 | `release` | **CI only.** Not a standing branch: CI regenerates it from every push to `develop`, in the main-only file layout, and opens the PR into `main`. It may not exist. Never write to it. |
 | `main` | **Pull request from `release` only.** Never push or merge to it directly. |
+
+Only `main`, `develop` and `release` are standing branches. A `feat/` branch lives until its pull
+request merges: merge with `gh pr merge --delete-branch`, then delete the local branch and its
+worktree. Periodically delete every branch already merged into `develop`, remote and local
+(`git branch -r --merged origin/develop`); an unmerged branch older than a few days is either
+landed or reported, not left. Branches named `release-*` are preserved snapshots: keep them.
 
 `main` carries a reduced layout: of the Markdown files, only `README.md` stays at the repository
 root, and `docs/` keeps only its subdirectories (no Markdown files directly under `docs/`).
@@ -63,7 +79,7 @@ Every new feature goes through an issue and a pull request:
 1. Before starting, search the repository's issues (`gh issue list --state all --search "<keywords>"`).
 2. If no issue covers the work, open one (`gh issue create`) stating what and why, and the
    completion criterion — which tests must pass.
-3. Work on a `work/<topic>` branch, push every commit, and open a pull request into `develop`
+3. Work on a `feat/<topic>` branch, push every commit, and open a pull request into `develop`
    whose body contains `Closes #<number>`.
 4. Merge into `develop` through that pull request (`gh pr merge`), not by a local merge, so the
    issue is linked.
@@ -135,6 +151,10 @@ to implement", say what you counted against.
   counts, lifetimes, class loaders) gets the strongest tier; work a test will catch can use a
   cheaper one.
 - Give every agent prompt the absolute paths it may write to, and repeat rule 2 in it.
+- **Subagents do not run heavy local builds.** Subagents write code, design, investigate, review
+  and document. Gradle builds, cargo builds, the test gate and model runs are done by the session
+  itself — one at a time on this machine — or by CI (GitHub Actions) on a pushed branch. Several
+  sessions share one machine; parallel local builds slow every one of them.
 
 ---
 
@@ -187,8 +207,9 @@ is acceptable for the CLI and nowhere else.
   (`workingDir: File?`, or `BundleRequest.packageDir`). Do not add one that reads `user.dir`.
 - Known exceptions, which predate the rule and are defects, not precedent:
   `compile/backend/DefaultBackend.compile` (finds the workspace from `user.dir`) and
-  `dependency/backend/DefaultBackend.installPython` (calls `findProjectRoot()`). Fixing either is a
-  public signature change: rule 14 applies.
+  `dependency/backend/DefaultBackend.installPython` when called without `installDir` (it then calls
+  `findProjectRoot()`; pass `installDir` from any daemon-hosted caller). Fixing `compile` is a public
+  signature change: rule 14 applies.
 
 ## 14. `toolchain` consumes this library from `mavenLocal`
 
@@ -256,8 +277,12 @@ There are no Python tests in this repository.
 - `Status: implemented` requires a test in this repository that exercises the behaviour; cite it.
   Wiring with no test is `partial`.
 - A behaviour change updates `docs/SPEC.md` in the same change.
-- There is no `docs/guide/` (GitHub Pages site) yet, so there is no `pages.yml` workflow. Add both
-  together, or neither.
+- `docs/guide/` is the GitHub Pages site (English and Korean on every page, plain HTML, no build
+  step), deployed by `.github/workflows/pages.yml` on every push to `main`. Its structure follows
+  `toolchain`'s guide. `python3 docs/guide/check_guide.py` is its test (CI job `guide`): every
+  visible string in both languages, no dead link, every page in the navigation. A behaviour change
+  that the guide describes updates the guide in the same change, and `docs/SPEC.md` stays the
+  contract when the two disagree.
 - KDoc comments cite `docs/SPEC.md` (this repository's) and `toolchain` files such as `DSLBuild.kt`
   and `(플러그인예시)build.gradle.kts` (another repository's). When you touch such a comment, name
   the repository.

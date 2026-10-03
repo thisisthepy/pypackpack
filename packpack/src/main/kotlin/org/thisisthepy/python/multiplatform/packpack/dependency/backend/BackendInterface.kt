@@ -113,6 +113,8 @@ interface BackendInterface {
      * @param pythonPlatform `--python-platform` value (a [org.thisisthepy.python.multiplatform.packpack.utils.Platforms] canonical target triple or alias)
      * @param extraArgs Extra arguments (optional)
      * @param workingDir Directory containing the `pyproject.toml` whose dependencies are installed
+     * @param requirements When non-null, install exactly these requirement specifiers (PEP 508, markers and extras allowed)
+     *   instead of reading `pyproject.toml`; `workingDir` then needs no `pyproject.toml`. An empty list is a successful no-op.
      * @return Result of the install
      */
     suspend fun installDependenciesToTarget(
@@ -120,6 +122,7 @@ interface BackendInterface {
         pythonPlatform: String,
         extraArgs: Map<String, String>? = null,
         workingDir: File? = null,
+        requirements: List<String>? = null,
     ): Result<String>
 
     /**
@@ -157,11 +160,17 @@ interface BackendInterface {
     /**
      * Install a specific Python version
      * @param pythonVersion Python version
+     * @param targetPlatform Target platform (alias or canonical triple); `null` means the host
+     * @param installDir Directory to install the interpreter tree into. When given, the tree replaces
+     * whatever is there and nothing else is written: no project directory (so `user.dir` is never
+     * consulted) and no registry entry. When `null`, the project-relative placement applies
+     * (`docs/SPEC.md`, "Installing a ppp Python distribution").
      * @return Result of Python version installation
      */
     suspend fun installPython(
         pythonVersion: String,
         targetPlatform: String?,
+        installDir: File? = null,
     ): Result<String>
 
     /**

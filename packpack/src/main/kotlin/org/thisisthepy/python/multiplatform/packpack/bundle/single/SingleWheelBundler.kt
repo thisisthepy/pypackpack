@@ -57,11 +57,11 @@ import java.util.zip.ZipOutputStream
  * against the full (non-limited) C API -- `abi3` would be a false promise.
  *
  * The platform tag is derived from [Platforms.describeTarget] per family, deliberately **not** reusing
- * [Platforms.TargetDescriptor.markerMachine]: that field folds `aarch64` -> `arm64` unconditionally for
- * PEP 508 dependency markers, which happens to match macOS/iOS's own `platform.machine()` spelling but
- * is *wrong* for Linux/Android wheel tags, where the ecosystem convention keeps `aarch64` (manylinux/
- * musllinux) or uses the Android NDK ABI spelling `arm64_v8a` (PEP 738) -- neither of which is `arm64`.
- * This class computes its own per-family arch spelling instead of risking that cross-contamination.
+ * [Platforms.TargetDescriptor.markerMachine]: that field is the PEP 508 `platform_machine` value
+ * (`arm64` on Apple, `ARM64`/`x86` on Windows, `aarch64` on Linux/Android), which is not the wheel
+ * tag's spelling either: tags use `win_arm64`/`win32`, keep `aarch64` for manylinux/musllinux, and
+ * the Android NDK ABI `arm64_v8a` (PEP 738). This class computes its own per-family arch spelling
+ * instead of risking that cross-contamination.
  *
  * Standards used, by family:
  *

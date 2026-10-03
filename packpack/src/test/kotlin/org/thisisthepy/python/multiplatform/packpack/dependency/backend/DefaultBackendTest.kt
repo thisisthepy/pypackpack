@@ -1,11 +1,14 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.utils.ChecksumMismatchException
 import org.thisisthepy.python.multiplatform.packpack.utils.extractArchive
+import org.thisisthepy.python.multiplatform.packpack.utils.sha256Hex
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
@@ -87,17 +90,17 @@ class DefaultBackendTest {
     }
 
     @Test
-    fun installPython_returnsFailureForUnsupportedPythonVersion() =
+    fun installPython_refusesAnUnsupportedVersionWithTheSupportedList() =
         runBlocking {
             val backend = TestDefaultBackend(tempDir)
 
             val result = backend.installPython("3.12", "macos")
 
             assertTrue(result.isFailure)
-            assertEquals(
-                "Only Python 3.13 is supported due to python-mutliplatform limitations",
-                result.exceptionOrNull()?.message,
-            )
+            val message = result.exceptionOrNull()?.message.orEmpty()
+            assertTrue(message.startsWith("Python 3.12 is not available for aarch64-apple-darwin."), message)
+            assertTrue("3.14.7/aarch64-apple-darwin" in message, message)
+            assertTrue("3.13.0/x86_64-unknown-linux-gnu" in message, message)
         }
 
     @Test
@@ -110,6 +113,245 @@ class DefaultBackendTest {
             assertTrue(result.isFailure)
             assertEquals("Unsupported target platform: unknown-target", result.exceptionOrNull()?.message)
         }
+
+    @Test
+    fun installPython_refusesAPairWithNoPinnedDigestWithoutDownloading() =
+        runBlocking {
+            val backend = TestDefaultBackend(tempDir, projectRoot = File(tempDir, "project"))
+
+            val result = backend.installPython("3.13.0", "aarch64-linux-android")
+
+            assertTrue(result.isFailure)
+            val message = result.exceptionOrNull()?.message.orEmpty()
+            assertTrue("no pinned SHA-256" in message, message)
+            assertTrue("aarch64-linux-android.tar.xz" in message, message)
+            assertEquals(0, backend.downloads, "an unpinned archive must not even be downloaded")
+            assertFalse(File(tempDir, "project").exists())
+        }
+
+    @Test
+    fun installPython_matchingDigestExtractsIntoTheCrossTargetDirectory() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val project = File(tempDir, "project")
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = sha256Hex(archive),
+                )
+
+            val result = backend.installPython("3.14.7", "x86_64-linux-android")
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            val installDir = File(project, "android_x86_64")
+            assertEquals("python-binary", File(installDir, "bin/python3.14").readText())
+            assertFalse(File(installDir, "PYTHON.json").exists(), "only python/ is installed")
+            assertEquals(listOf("android_x86_64"), project.list()!!.toList(), "no staging or archive is left behind")
+            assertEquals(installDir.absolutePath, backend.findPython("3.14.7").getOrThrow())
+            assertEquals("https://example.invalid/3.14.7/x86_64-linux-android/fake-python.tar.gz", backend.lastUrl)
+        }
+
+    @Test
+    fun installPython_hostTargetGoesToTheProjectVenv() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val project = File(tempDir, "project")
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = sha256Hex(archive).uppercase(),
+                )
+
+            val result = backend.installPython("3.14.7", null)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            assertEquals("python-binary", File(project, ".venv/bin/python3.14").readText())
+            assertEquals(listOf(".venv"), project.list()!!.toList())
+        }
+
+    @Test
+    fun installPython_mismatchedDigestRefusesAndLeavesNothingBehind() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val project = File(tempDir, "project")
+            val wrong = "0".repeat(64)
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = wrong,
+                )
+
+            val result = backend.installPython("3.14.7", "aarch64-linux-android")
+
+            assertTrue(result.isFailure)
+            val error = assertIs<ChecksumMismatchException>(result.exceptionOrNull())
+            assertEquals("fake-python.tar.gz", error.artifact)
+            assertEquals(wrong, error.expected)
+            assertEquals(sha256Hex(archive), error.actual)
+            val message = error.message.orEmpty()
+            assertTrue("fake-python.tar.gz" in message && wrong in message && sha256Hex(archive) in message, message)
+            assertEquals(1, backend.downloads)
+            assertTrue(project.list().isNullOrEmpty(), "neither the archive nor a partial tree may remain: ${project.list()?.toList()}")
+            assertTrue(backend.findPython("3.14.7").isFailure, "a refused install must not be registered")
+        }
+
+    @Test
+    fun installPython_mismatchedDigestLeavesAnExistingInstallUntouched() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val project = File(tempDir, "project")
+            val existing = File(project, ".venv/pyvenv.cfg")
+            existing.parentFile.mkdirs()
+            existing.writeText("home = /old")
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = "f".repeat(64),
+                )
+
+            val result = backend.installPython("3.14.7", null)
+
+            assertTrue(result.isFailure)
+            assertEquals(listOf("pyvenv.cfg"), File(project, ".venv").list()!!.toList())
+            assertEquals("home = /old", existing.readText())
+            assertEquals(listOf(".venv"), project.list()!!.toList())
+        }
+
+    @Test
+    fun installPython_archiveWithAnUnexpectedLayoutIsRefused() =
+        runBlocking {
+            val archive = File(tempDir, "other.tar.gz")
+            java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
+                gzip.write(tarFile("elsewhere/bin/python", "x".toByteArray()))
+                gzip.write(ByteArray(1024))
+            }
+            val project = File(tempDir, "project")
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = sha256Hex(archive),
+                )
+
+            val result = backend.installPython("3.14.7", "aarch64-linux-android")
+
+            assertTrue(result.isFailure)
+            assertTrue("extracted nothing" in result.exceptionOrNull()?.message.orEmpty())
+            assertTrue(project.list().isNullOrEmpty())
+        }
+
+    // An explicit installDir (issue #37): toolchain installs into build/pythonRuntime/<triple>/<version>/
+    // from a Gradle daemon, so neither projectRoot() (user.dir) nor the global registry may be used.
+
+    @Test
+    fun installPython_explicitInstallDirReceivesTheTreeAndNothingElse() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val registry = File(tempDir, "registry")
+            val project = File(tempDir, "project")
+            val runtime = File(tempDir, "build/pythonRuntime/aarch64-linux-android")
+            val installDir = File(runtime, "3.14.7")
+            val backend =
+                TestDefaultBackend(registry, projectRoot = project, fakeArchive = archive, pinnedSha256 = sha256Hex(archive))
+
+            val result = backend.installPython("3.14.7", "aarch64-linux-android", installDir)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            assertEquals("python-binary", File(installDir, "bin/python3.14").readText())
+            assertFalse(File(installDir, "PYTHON.json").exists(), "only python/ is installed")
+            assertEquals(listOf("3.14.7"), runtime.list()!!.toList(), "no staging or archive is left behind")
+            assertEquals(0, backend.projectRootCalls, "an explicit installDir must not locate the project")
+            assertFalse(project.exists(), "nothing may be created under projectRoot()")
+            assertFalse(registry.exists(), "the registry must not be touched")
+            assertTrue(backend.findPython("3.14.7").isFailure, "an explicit install is not registered")
+            assertEquals(1, backend.downloads)
+        }
+
+    @Test
+    fun installPython_explicitInstallDirReplacesAPreviousInstallForTheHostToo() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val project = File(tempDir, "project")
+            val installDir = File(tempDir, "runtime/host")
+            File(installDir, "stale.txt").apply { parentFile.mkdirs() }.writeText("old")
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = sha256Hex(archive),
+                )
+
+            val result = backend.installPython("3.14.7", null, installDir)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            assertEquals(listOf("bin"), installDir.list()!!.toList(), "the previous tree is replaced, not merged")
+            assertEquals("python-binary", File(installDir, "bin/python3.14").readText())
+            assertEquals(listOf("host"), File(tempDir, "runtime").list()!!.toList())
+            assertFalse(project.exists(), "the host target must not fall back to <project>/.venv")
+            assertEquals(0, backend.projectRootCalls)
+        }
+
+    @Test
+    fun installPython_explicitInstallDirStillRefusesAnUnpinnedPairBeforeDownloading() =
+        runBlocking {
+            val runtime = File(tempDir, "runtime")
+            val installDir = File(runtime, "3.13.0")
+            val backend = TestDefaultBackend(File(tempDir, "registry"), projectRoot = File(tempDir, "project"))
+
+            val result = backend.installPython("3.13.0", "aarch64-linux-android", installDir)
+
+            assertTrue(result.isFailure)
+            assertTrue("no pinned SHA-256" in result.exceptionOrNull()?.message.orEmpty())
+            assertEquals(0, backend.downloads, "an unpinned archive must not even be downloaded")
+            assertFalse(runtime.exists(), "a refused pair must not create anything")
+            assertFalse(File(tempDir, "project").exists())
+        }
+
+    @Test
+    fun installPython_explicitInstallDirIsLeftAsItWasOnADigestMismatch() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val runtime = File(tempDir, "runtime")
+            val installDir = File(runtime, "3.14.7")
+            val existing = File(installDir, "bin/python3.14")
+            existing.parentFile.mkdirs()
+            existing.writeText("old-binary")
+            val registry = File(tempDir, "registry")
+            val backend =
+                TestDefaultBackend(registry, projectRoot = File(tempDir, "project"), fakeArchive = archive, pinnedSha256 = "0".repeat(64))
+
+            val result = backend.installPython("3.14.7", "aarch64-linux-android", installDir)
+
+            assertIs<ChecksumMismatchException>(result.exceptionOrNull())
+            assertEquals(1, backend.downloads)
+            assertEquals(listOf("bin"), installDir.list()!!.toList())
+            assertEquals(listOf("python3.14"), File(installDir, "bin").list()!!.toList())
+            assertEquals("old-binary", existing.readText())
+            assertEquals(listOf("3.14.7"), runtime.list()!!.toList(), "the staging directory is removed")
+            assertFalse(registry.exists())
+            assertFalse(File(tempDir, "project").exists())
+        }
+
+    private fun fakePbsArchive(archive: File): File {
+        java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
+            gzip.write(tarHeader("python/", 0, '5'))
+            gzip.write(tarHeader("python/bin/", 0, '5'))
+            gzip.write(tarFile("python/bin/python3.14", "python-binary".toByteArray()))
+            gzip.write(tarFile("PYTHON.json", "{}".toByteArray()))
+            gzip.write(ByteArray(1024))
+        }
+        return archive
+    }
 
     @Test
     fun uninstallPython_removesInstalledVersion() {
@@ -188,10 +430,58 @@ class DefaultBackendTest {
         assertEquals(pythonDir.absolutePath, result.getOrThrow())
     }
 
+    /**
+     * [DefaultBackend] with its seams replaced: no network, a fixed host, and -- when [fakeArchive]
+     * is set -- a distribution whose pin is [pinnedSha256] and whose download copies [fakeArchive].
+     */
     private class TestDefaultBackend(
         private val root: File,
+        private val projectRoot: File = File(root, "project"),
+        private val fakeArchive: File? = null,
+        private val pinnedSha256: String? = null,
     ) : DefaultBackend() {
+        var downloads = 0
+        var lastUrl: String? = null
+        var projectRootCalls = 0
+
         override fun pythonInstallRoot(): File = root
+
+        override fun projectRoot(): File {
+            projectRootCalls++
+            return projectRoot
+        }
+
+        override fun hostTarget(): String = "aarch64-apple-darwin"
+
+        override fun resolveDistribution(
+            pythonVersion: String,
+            canonicalTarget: String,
+        ): Result<PythonDistribution> {
+            val archive = fakeArchive ?: return super.resolveDistribution(pythonVersion, canonicalTarget)
+            return Result.success(
+                PythonDistribution(
+                    version = pythonVersion,
+                    target = canonicalTarget,
+                    url = "https://example.invalid/$pythonVersion/$canonicalTarget/${archive.name}",
+                    sha256 = pinnedSha256,
+                    provenance = "test",
+                    stripComponents = 1,
+                    prefixFilter = "python/",
+                ),
+            )
+        }
+
+        override suspend fun downloadArchive(
+            url: String,
+            fileName: String,
+            destDir: File,
+        ): Result<File> {
+            downloads++
+            lastUrl = url
+            val archive = fakeArchive ?: return Result.failure(IllegalStateException("tests never download"))
+            destDir.mkdirs()
+            return Result.success(archive.copyTo(File(destDir, fileName), overwrite = true))
+        }
 
         fun register(
             pythonVersion: String,
@@ -244,6 +534,7 @@ class DefaultBackendTest {
             pythonPlatform: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
+            requirements: List<String>?,
         ): Result<String> = Result.success("ok")
 
         override suspend fun showDependencyTree(
