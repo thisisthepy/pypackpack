@@ -34,6 +34,18 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 - Must be fast (build speed matters)
   - Status: planned. Nothing measures build speed today.
 
+#### Scope decisions
+
+Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
+
+- Python: 3.14 and later. It may become 3.15 and later (python-multiplatform #158: free-threaded by
+  default, 3.15 `abi3t`). 3.13.0 is still installable and `SingleWheelBundler` still writes `cp313`
+  tags; both are to be brought in line.
+- WASM (`wasm32-pyodide2024`) is in the first release's scope. Nothing installs or compiles for it yet.
+- `build` bundles: it takes the bundle as an argument (see *Package build*). There is no `bundle`
+  command.
+- Deploy destination follows the artefact: libraries go to PyPI, apps to FastTrack.
+
 ### <pypackpack> core
 
 - (1). Support building Python packages written in C, C++, Rust (except when patches are required)
@@ -678,7 +690,15 @@ pypackpack build <package name> [--type <build type: default debug>] [--level <b
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--type` is passed to Meson as `--buildtype=<type>`. `--type`, `--level` and `--target` select the directories: the Meson build directory is `<package>/build/packpack/single/<type>/<level>/<target>`, and `meson install` writes to `<package>/dist/<target>/<type>/<level>` (`<target>` is `default` when `--target` is omitted).
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
-- There is no `source`/`resource` bundle-type subcommand; `pypackpack build <package name> resource` does not exist.
+- There is no `source`/`resource` bundle-type subcommand yet; `pypackpack build <package name> resource` does not exist.
+- Planned shape, from the maintainer's spec sheet (`spec.md`, 686b1ad): `build` orchestrates
+  dependency check, compile and bundle, and takes the bundle as an argument. There is no separate
+  `bundle` command.
+
+```bash
+pypackpack build <package name> source [<bundle type: default binary>] [--type <build type>] [--level <build level>] [--target <target>]
+pypackpack build <package name> resource [--target <target>]
+```
 
 Limitation
 
@@ -774,7 +794,7 @@ pypackpack deploy <package name> [<deploy type: code (alias source) | resource |
 ```
 
 - `DeployInterface.create(DeployType)` returns `CodeAPI`, `ResourceAPI` or `WeightAPI`, each an `UnimplementedDeployer` that returns a failed `Result`. `PyPIPublishAPI`, `FastTrackAPI`, `ResourceHubAPI` and `BrainWaveAPI` are empty placeholders.
-- Need to specify the target deploy server (PyPI or FastTrack)
+- The destination follows the artefact: a library goes to PyPI (`PyPIPublishAPI`), an app to FastTrack (`FastTrackAPI`).
 - Implement patch feature
   - Let's go with a git-like concept for patch uploads (the concern is speed, parallel processing)
   - Need change upload, a server management page, client code

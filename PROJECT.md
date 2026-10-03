@@ -97,14 +97,14 @@ bash .github/scripts/release/test-sync-release.sh   # release 동기화 스크�
 
 ## 열린 질문
 
-1. 3.13.0 의 Android(`binary/*.tar.xz`)·iOS(`binary/*.zip`) 는 공개된 SHA-256 이 없어 거부된다
-   (`PythonDistributions.kt` 의 TODO). 한 번 내려받아 고정할 것인가, 3.13.0 모바일을 버릴 것인가.
-   (`.tar.xz` 는 `Archive.kt` 가 풀지도 못한다.)
-2. WASM 을 첫 릴리스 범위에 넣을 것인가 (`wasm32-pyodide2024` 는 타깃 목록에만 있음).
-3. `build` 가 번들까지 할 것인가, `bundle` 을 별도 명령으로 둘 것인가.
-4. `build --target` 이 별칭이나 생략(`default`)일 때, 번들러가 찾는 정규 트리플 경로와 어긋난다.
-   `build` 쪽에서 정규화할 것인가.
-5. `deploy` 대상 서버 (PyPI 또는 FastTrack).
+1. ~~3.13.0 모바일 배포판의 SHA-256 고정~~ **필요 없음 (2026-10-04):** 지원 범위가 3.14 이상이다
+   (3.15 이상으로 바뀔 수 있음, python-multiplatform #158). 3.13.0 항목과 `cp313` 태그는 정리 대상이다 (#70).
+2. ~~WASM 을 첫 릴리스 범위에 넣을 것인가~~ **결정 (2026-10-04):** 넣는다.
+3. ~~`build` 가 번들까지 할 것인가~~ **결정 (메인테이너 사양서 `spec.md`, 686b1ad):** `build` 가 번들을
+   인자로 받는다 (`build <package> source [<bundle type>]`, `build <package> resource`). `bundle` 명령은 없다.
+4. ~~`build --target` 별칭·생략 시 경로 불일치~~ **질문이 아니라 결함:** 위 결정 사항 "타깃 이름은 정규 트리플"
+   대로 `build` 가 `Platforms.normalizeTarget` 으로 정규화해야 한다 (SPEC *Package build* Limitation).
+5. ~~`deploy` 대상 서버~~ **고를 문제가 아니었다 (2026-10-04):** 라이브러리는 PyPI, 앱은 FastTrack.
 6. ~~루트 `pyproject.toml` 의 Python 래퍼로 PyPI 배포를 할 것인가.~~ **결정 (2026-10-03):** 한다. 플랫폼마다 네이티브 바이너리를 담은 휠을 `publish-pypi.yml` 이 올린다 (#52).
 7. ~~`README.md` 의 배지와 `scripts/build-native.sh` 가 없는 것을 가리킨다.~~ **해결 (2026-10-03, #58):**
    README 를 SPEC 과 가이드 기준으로 다시 썼다 (PyPI 페이지가 된다).
