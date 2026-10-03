@@ -28,9 +28,10 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes a dry run; a release run is never cancelled.
 concurrency:
   group: publish-pypi-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   version:
