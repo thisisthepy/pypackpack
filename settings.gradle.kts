@@ -22,7 +22,6 @@ plugins {
 include(":packpack")
 // The CLI (Clikt, `application`, GraalVM native-image) is a separate subproject from the library
 // so that a consumer of `:packpack` (e.g. `toolchain`) never resolves Clikt on its classpath.
-include(":cli")
 include(":usage-example")
 
 rootProject.name = "PyPackPack"

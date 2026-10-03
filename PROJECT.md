@@ -55,8 +55,8 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 ## 구조
 
 ```
-packpack/        라이브러리 (dependency/, compile/, bundle/, deploy/, utils/): Maven 게시
-cli/             pypackpack / ppp CLI (Clikt, application, GraalVM native image)
+packpack/        라이브러리 (src/main: dependency/, compile/, bundle/, deploy/, utils/): Maven 게시
+                 + CLI (src/cli: pypackpack / ppp, Clikt, GraalVM native image; 게시 대상 아님, #73)
 usage-example/   :packpack 에 의존하는 빌드 파일 (소스 없음)
 docs/            INTENT.md, SPEC.md, issues/, locale/
 .github/scripts/release/   main 용 release 브랜치 생성 스크립트와 테스트
@@ -71,19 +71,20 @@ docs/            INTENT.md, SPEC.md, issues/, locale/
 export JAVA_HOME=/Users/ibrew/Library/Java/JavaVirtualMachines/jdk-21.0.12+8/Contents/Home
 rm -rf packpack/build/test-results
 ./gradlew :packpack:test --rerun --console=plain > .tmp/packpack-test.log 2>&1; echo "EXIT=$?"
-rm -rf cli/build/test-results
-./gradlew :cli:test --rerun --console=plain > .tmp/cli-test.log 2>&1; echo "EXIT=$?"
+rm -rf packpack/build/test-results/cliTest
+./gradlew :packpack:cliTest --rerun --console=plain > .tmp/cli-test.log 2>&1; echo "EXIT=$?"
 ./gradlew :packpack:publishToMavenLocal   # toolchain 을 이 변경으로 빌드하기 전에 반드시
 bash .github/scripts/release/test-sync-release.sh   # release 동기화 스크립트 테스트
 ```
 
-결과는 `<module>/build/test-results/test/*.xml` 에서 센다. 2026-10-03 기준 `:packpack` 135개,
-`:cli` 26개, 실패 0. Python 테스트는 없다.
+결과는 `packpack/build/test-results/{test,cliTest}/*.xml` 에서 센다. 2026-10-03 기준 라이브러리 135개,
+CLI 26개, 실패 0 (CLI 가 아직 `:cli` 모듈이던 때). Python 테스트는 없다.
 
 ## 결정 사항
 
-- **라이브러리와 CLI 분리**: `:cli` 가 `:packpack` 에 의존하고 반대는 없다. 라이브러리 소비자
-  (`toolchain`)가 Clikt 를 받지 않게 하기 위함.
+- **라이브러리와 CLI 분리**: CLI 는 `:packpack` 의 `cli` 소스셋이고 `main` 에 의존하며 반대는 없다.
+  게시되는 컴포넌트는 `main` 뿐이라 라이브러리 소비자(`toolchain`)가 Clikt 를 받지 않는다. 루트 `cli/` 모듈은
+  사용자 허락 없이 만든 것이라 되돌렸다 (#73, 첫 사양서 `spec.md` 의 배치를 따름).
 - **백엔드 계층은 `workingDir` 를 명시적으로 받는다**: `toolchain` 은 Gradle 데몬 안에서 호출하므로
   JVM 전역 `user.dir` 에 의존하면 안 된다. 예외(`compile` 의 `DefaultBackend.compile`,
   `installDir` 없이 호출한 `installPython`)는 결함으로 기록. `installPython(version, target, installDir)` 은

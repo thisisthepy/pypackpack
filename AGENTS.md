@@ -163,8 +163,7 @@ to implement", say what you counted against.
 
 | Module | What it is |
 |---|---|
-| `:packpack` | The library (`org.thisisthepy.python.multiplatform.packpack`). `dependency/`, `compile/`, `bundle/`, `deploy/` (each a frontend → middleware → backend stack, or a factory for `bundle`/`deploy`) and `utils/` (`Platforms`, `Workspace`, `Downloader`, `Archive`, `toml/`). Published to Maven with `maven-publish`. |
-| `:cli` | The `pypackpack` / `ppp` command line (Clikt, `application`, GraalVM native image). Depends on `:packpack` as a project, never the other way round, so a consumer of the library never resolves Clikt. |
+| `:packpack` | The library (`org.thisisthepy.python.multiplatform.packpack`, source set `main`): `dependency/`, `compile/`, `bundle/`, `deploy/` (each a frontend → middleware → backend stack, or a factory for `bundle`/`deploy`) and `utils/` (`Platforms`, `Workspace`, `Downloader`, `Archive`, `toml/`). Published to Maven with `maven-publish`. The `pypackpack` / `ppp` command line is the module's `cli` source set (Clikt, GraalVM native image, launcher `installCliDist`), placed as the first spec sheet has it (`utils/CommandLine.kt` the endpoint, each domain's `frontend/` its commands). It depends on `main`, never the other way round, and is not part of the published component, so a consumer of the library never resolves Clikt (#73). |
 | `:usage-example` | A build file that depends on `:packpack`. It has no sources. |
 
 - `docs/SPEC.md` holds the directory tree of both modules and of a user project. When you add, move
@@ -176,7 +175,7 @@ to implement", say what you counted against.
   wheel per OS that carries the native CLI as the `pypackpack` script, plus a small Python package
   (`packpack/src/main/python/`, published as `pypackpack`) whose `ppp` and `python -m pypackpack` run
   that binary. `.github/workflows/publish-pypi.yml` builds, smoke-tests and uploads the wheels; its
-  version must equal `cli/build.gradle.kts`'s. Keep that Python package a launcher: the work stays in
+  version must equal `packpack/build.gradle.kts`'s `cliVersion`. Keep that Python package a launcher: the work stays in
   Kotlin.
 
 ## 12. pypackpack owns the work
@@ -250,15 +249,16 @@ Run each module separately (rule 8), with output to a file under `.tmp/`:
 ```bash
 rm -rf packpack/build/test-results
 ./gradlew :packpack:test --rerun --console=plain > .tmp/packpack-test.log 2>&1; echo "EXIT=$?"
-rm -rf cli/build/test-results
-./gradlew :cli:test --rerun --console=plain > .tmp/cli-test.log 2>&1; echo "EXIT=$?"
+rm -rf packpack/build/test-results/cliTest
+./gradlew :packpack:cliTest --rerun --console=plain > .tmp/cli-test.log 2>&1; echo "EXIT=$?"
 ```
 
-Count results from `<module>/build/test-results/test/*.xml`, not from the log.
+Count results from `packpack/build/test-results/{test,cliTest}/*.xml`, not from the log.
 
 ```bash
 ./gradlew :packpack:publishToMavenLocal       # before building toolchain against a change here
-./gradlew :cli:nativeCompile                  # GraalVM native binary
+./gradlew :packpack:nativeCompile             # GraalVM native binary of the CLI
+./gradlew :packpack:installCliDist            # JVM launcher: packpack/build/install/pypackpack/bin/pypackpack
 bash .github/scripts/release/test-sync-release.sh       # tests for the release-branch generator
 ```
 

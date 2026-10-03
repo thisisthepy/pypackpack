@@ -1,6 +1,6 @@
 # The PyPI distribution of pypackpack. The wheel carries the native command line (GraalVM Native
 # Image) and is assembled per platform by .github/scripts/pypi/build_wheel.py in publish-pypi.yml,
-# which reads [project] below. Its version must equal cli/build.gradle.kts's: the workflow refuses
+# which reads [project] below. Its version must equal packpack/build.gradle.kts's cliVersion: the workflow refuses
 # to publish unless the installed binary prints it.
 #
 # Installing from source (`uv pip install .`) gives only the Python package, without the binary; `ppp`

@@ -12,7 +12,8 @@ Every feature item carries one `Status:` line:
 
 Test paths below are abbreviated: `packpack/.../X.kt` means
 `packpack/src/test/kotlin/org/thisisthepy/python/multiplatform/packpack/X.kt`, and `cli/.../X.kt`
-means `cli/src/test/kotlin/org/thisisthepy/python/multiplatform/packpack/cli/X.kt`.
+means the command line's tests, `packpack/src/cliTest/kotlin/org/thisisthepy/python/multiplatform/packpack/<package>/X.kt`
+(`utils/`, `dependency/frontend/` or `deploy/frontend/`; run with `./gradlew :packpack:cliTest`).
 
 `docs/INTENT.md` is the boundary of this file: nothing here may go beyond it. Defects and open
 questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.md`.
@@ -24,9 +25,9 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 #### Goals to achieve
 
 - No OS dependency (Desktop, macOS, linux) via GraalVM Native Image
-  - Status: partial. `:cli` applies `org.graalvm.buildtools.native` (`cli/build.gradle.kts`:
-    `nativeCompile`, `buildNativeExecutable`, `packageNative`). No test or CI job builds the native
-    image, and `buildAllPlatforms` only prints a message.
+  - Status: partial. `:packpack` applies `org.graalvm.buildtools.native` to its `cli` source set
+    (`./gradlew :packpack:nativeCompile`). publish-pypi.yml builds and smoke-tests the native image
+    on four platforms for every pull request that touches it; no other job does.
 - Must be easy to install and use (let's not make users configure paths for Python, JVM, etc.)
   - Status: partial. `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
     installed through `uv tool install` when absent (see *CLI Version* and *Package build*).
@@ -111,21 +112,24 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
 
 ```
 - pypackpack
-  - cli                          # Gradle module :cli -- the `pypackpack` / `ppp` command line
-    - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack/cli
-      - Command.kt               # main entry point, root command, dynamic package command dispatch
-      - CommandExtension.kt      # CLI helper, validation, progress display, passthrough-flag parsing
-      - DependencyCommand.kt     # handles root-level 'add', 'remove', 'sync', 'tree'
-      - DynamicPackageCommand.kt # handles '<package> add/remove/sync/tree'
-      - PackageCommand.kt        # handles 'package add/remove/sync/tree'
-      - ProjectCommand.kt        # handles 'version', 'init'
-      - PythonCommand.kt         # handles 'python' related commands
-      - TargetCommand.kt         # handles 'target' related commands
-      - BuildCommand.kt          # handles 'build' command
-      - DeployCommand.kt         # handles 'deploy' (registered; every deploy type refuses today)
-      - BuildInfo.kt             # the CLI's version, from build-info.properties that cli/build.gradle.kts generates
-  - packpack                     # Gradle module :packpack -- the library, published to Maven
+  - packpack                     # Gradle module :packpack -- the library (`main`, published to Maven) and the command line (`cli`)
     - src/main/python            # the PyPI launcher package `pypackpack` (__init__.py, __main__.py); see *Distribution through PyPI*
+    - src/cli/kotlin/org/thisisthepy/python/multiplatform/packpack   # the `pypackpack` / `ppp` command line (Clikt); not published to Maven (#73)
+      - utils
+        - CommandLine.kt         # CLI endpoint: main(), root command, dynamic package command dispatch
+        - CommandExtension.kt    # CLI helper, validation, progress display, passthrough-flag parsing
+        - BuildInfo.kt           # the CLI's version, from build-info.properties that packpack/build.gradle.kts generates (cliVersion)
+      - dependency/frontend
+        - DependencyCommand.kt   # handles root-level 'add', 'remove', 'sync', 'tree'
+        - DynamicPackageCommand.kt # handles '<package> add/remove/sync/tree'
+        - PackageCommand.kt      # handles 'package add/remove/sync/tree'
+        - ProjectCommand.kt      # handles 'version', 'init'
+        - PythonCommand.kt       # handles 'python' related commands
+        - TargetCommand.kt       # handles 'target' related commands
+      - compile/frontend
+        - BuildCommand.kt        # handles 'build' command
+      - deploy/frontend
+        - DeployCommand.kt       # handles 'deploy' (registered; every deploy type refuses today)
     - src/main/kotlin/org/thisisthepy/python/multiplatform/packpack
       - utils
         - Platforms.kt  # supported targets, aliases, families, markers, min SDK validation
@@ -290,7 +294,7 @@ pypackpack version
 ```
 
 - Prints the pypackpack version and the detected uv version.
-- The pypackpack version is `cli/build.gradle.kts`'s `version`, which the build writes into the CLI's
+- The pypackpack version is `packpack/build.gradle.kts`'s `cliVersion`, which the build writes into the CLI's
   resources (`build-info.properties`, read by `BuildInfo`). It is the PyPI wheel's version too.
 - If uv is not detected, downloads uv into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
 - The download is uv's release archive for the host. The `.tar.gz` archives (Linux, macOS) keep their
@@ -300,7 +304,7 @@ pypackpack version
 Limitation
 
 - `pypackpack --version`, `pypackpack -v` and `pypackpack v` fail (`no such option --version`,
-  `no such option -v`, `no such subcommand v`; observed by running the `:cli:installDist` launcher).
+  `no such option -v`, `no such subcommand v`; observed by running the `:packpack:installCliDist` launcher).
   `VersionCommand.aliases()` declares them, but Clikt applies `aliases()` to a command's own
   subcommands, and `VersionCommand` has none.
 
@@ -322,11 +326,11 @@ ppp --help                 # the same binary, through the `pypackpack` Python pa
   pypackpack` run that binary.
 - The platform tag is read from the binary (`.github/scripts/pypi/build_wheel.py`): the highest
   `GLIBC_` symbol version on Linux, whose `NEEDED` libraries must be glibc's or `libz`; the
-  `LC_BUILD_VERSION` minimum on macOS, which the build sets to 11.0 (`cli/build.gradle.kts`).
+  `LC_BUILD_VERSION` minimum on macOS, which the build sets to 11.0 (`packpack/build.gradle.kts`).
 - There is no sdist: building needs a JDK and GraalVM, so an sdist would install the launcher without
   the binary. On an unsupported platform the installer finds no matching wheel.
 - Before uploading, the workflow requires the release tag to be `v<version>`, `pyproject.toml` and
-  `cli/build.gradle.kts` to carry the same version, the version to be new on PyPI, and every wheel
+  `packpack/build.gradle.kts`'s `cliVersion` to carry the same version, the version to be new on PyPI, and every wheel
   to pass `.github/scripts/pypi/smoke_wheel.py`: installed into a fresh venv, `pypackpack --help`
   works, `pypackpack`/`ppp`/`python -m pypackpack version` print that version, and
   `pypackpack init` creates a project.
