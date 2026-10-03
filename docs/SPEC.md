@@ -550,6 +550,8 @@ pypackpack mypackage add numpy --target windows linux
 - `pypackpack package sync <name> [--target ...]` and `pypackpack package tree <name> [--target ...]` invoke the same logic as an explicit alternative to the dynamic `sync`/`tree` forms.
 - The target package is resolved among workspace members by name or relative path.
 - `add` computes a marker for each target (`platform_system == '<system>' and platform_machine == '<machine>'`) and repeatedly calls `uv add --package <name> --marker <marker>`.
+- `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Pyodide. Status: implemented — `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
+- Markers written before #49 (`arm64` for Linux/Android/Windows aarch64, `i686` for 32-bit Windows) never matched, so those dependencies were not installed. `remove --target` still finds them under the corrected target (`MarkerPolicyTest`); to install them, remove and add them again.
 - If `--target` is absent, uses the `[tool.ppp.dependencies].platforms` value from the package's `pyproject.toml` as the default target.
 - If there is no default target and `--target` is also empty, raises an error.
 

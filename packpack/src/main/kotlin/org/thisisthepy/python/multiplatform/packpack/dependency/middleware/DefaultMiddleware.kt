@@ -384,8 +384,20 @@ internal object MarkerPolicy {
                 ?: clauses["sys_platform"]?.let { MARKER_SYSTEM_BY_SYS_PLATFORM[it] }
                 ?: return null
 
-        return system to machine
+        return system to (LEGACY_MACHINE[system to machine] ?: machine)
     }
+
+    /**
+     * Machine values written before #49, which never matched their target, mapped to the value
+     * [markerForTarget] writes now, so `remove --target` still finds those entries.
+     */
+    private val LEGACY_MACHINE: Map<Pair<String, String>, String> =
+        mapOf(
+            ("Linux" to "arm64") to "aarch64",
+            ("Android" to "arm64") to "aarch64",
+            ("Windows" to "arm64") to "ARM64",
+            ("Windows" to "i686") to "x86",
+        )
 
     /** The (family, machine) key [targetKeyFor] would parse back out of [markerForTarget]'s own output. */
     fun targetKeyForTarget(target: String): Pair<String, String> {

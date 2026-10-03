@@ -67,7 +67,6 @@ ppp target add aarch64-linux-android arm64-apple-ios</code></pre>
 ppp core add six --target arm64-apple-ios     # only for that target
 ppp core sync                                 # → packages/core/build/crossenv/&lt;triple&gt;/
 ppp core tree --target arm64-apple-ios</code></pre>
-<div class="note"><p data-lang="en">Known bug <a href="https://github.com/thisisthepy/pypackpack/issues/49">#49</a>: for <code>aarch64-linux-android</code> and <code>aarch64-unknown-linux-gnu</code> the marker says <code>platform_machine == 'arm64'</code>, which never matches there, so <code>sync</code> reports success and installs nothing for that target.</p><p data-lang="ko">알려진 버그 <a href="https://github.com/thisisthepy/pypackpack/issues/49">#49</a>: <code>aarch64-linux-android</code> 와 <code>aarch64-unknown-linux-gnu</code> 에서 마커가 <code>platform_machine == 'arm64'</code> 로 적혀 맞지 않으므로, <code>sync</code> 가 성공을 알리면서도 그 타깃에는 아무것도 설치하지 않습니다.</p></div>
 </section>
 
 <section>
