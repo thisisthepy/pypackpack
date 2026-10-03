@@ -13,16 +13,19 @@ import java.io.File
  *
  * This is a backend-layer API in the sense of `AGENTS.md` rule 13: every directory it touches is a
  * parameter ([ExtensionCompileRequest.workingDir], [ExtensionCompileRequest.buildDir],
- * [ExtensionCompileRequest.outputDir], [ExtensionCompileRequest.pythonHome]); nothing reads
- * `user.dir`. It is blocking, not `suspend`, because its one planned caller,
+ * [ExtensionCompileRequest.outputDir], [ExtensionCompileRequest.includeDir],
+ * [ExtensionCompileRequest.libDir]); nothing reads `user.dir`, and nothing is downloaded: the
+ * CPython headers and `libpython` come in through the request, from `python-multiplatform`'s
+ * `CPythonIncludeDirectories` providers (`includeDir`, and `libDir` from `python-multiplatform`
+ * #56), resolved by the Gradle side. It is blocking, not `suspend`, because its one planned caller,
  * `ResourceBundler.bundle`, is blocking and runs inside a Gradle task action.
  */
 
 /**
  * The C toolchain adapter that builds for a target family. Each maps onto an existing placeholder
  * under `compile/backend/external/` (`Clang.kt`, `NDK.kt`, `XCode.kt`). For 2026-11: [CLANG] for
- * desktop is required, [NDK] for `aarch64-linux-android` only if that backend lands, [XCODE] (iOS)
- * is out of scope.
+ * macOS is required (M3, first), Linux at host arch after it, Windows later; [NDK] for
+ * `aarch64-linux-android` only if that backend lands; [XCODE] (iOS) is out of scope.
  */
 enum class NativeToolchain(
     val id: String,
@@ -47,39 +50,23 @@ data class PythonAbi(
 )
 
 /**
- * The plain-Python twin of an extension module: the code that runs, interpreted, when a call cannot
- * keep CPython semantics in C. It is an ordinary module with its own import name, a sibling of the
- * extension in the same package, which the generated C imports by that name (never by file path).
- * Being ordinary Python it follows the build level's bytecode rules like any other module.
+ * One extension module to build. It becomes exactly one artefact: the extension, which carries the
+ * module's source and its interpreted fallback inside it, so nothing is placed beside it.
  *
- * @param moduleName the fallback's full dotted name; same parent package as the extension, and a
- *   different last component (`app.physics._nbody_fallback` for `app.physics.nbody`).
- * @param source the `.py` file.
- */
-data class FallbackModule(
-    val moduleName: String,
-    val source: File,
-)
-
-/**
- * One extension module to build.
- *
- * @param moduleName the full dotted import name (`app.physics.nbody`). It fixes the placement
- *   (`app/physics/nbody<EXT_SUFFIX>` under the output root); the C sources must define the matching
- *   init function (`PyInit_nbody`). A package's `__init__` is not accepted in this version.
+ * @param moduleName the full dotted import name of the `.py` file it replaces
+ *   (`app.physics.nbody`). It fixes the placement (`app/physics/nbody<EXT_SUFFIX>` under the output
+ *   root); the C sources must define the matching init function (`PyInit_nbody`). A package's
+ *   `__init__` is not accepted in this version.
  * @param sources the module's generated C translation units (`.c`), compiled and linked into one
  *   extension. At least one.
- * @param fallback the module's `.py` fallback, placed beside the extension. TypedPython always
- *   passes one; `null` for a consumer whose extensions have none.
- * @param includeDirs header directories for this module only. The target's CPython include
- *   directory is added by the slot and is not passed here.
+ * @param includeDirs header directories for this module only, after
+ *   [ExtensionCompileRequest.includeDir].
  * @param defines preprocessor macros for this module only, added after
  *   [ExtensionCompileOptions.defines]; a `null` value defines the name without a value.
  */
 data class ExtensionModuleSource(
     val moduleName: String,
     val sources: List<File>,
-    val fallback: FallbackModule? = null,
     val includeDirs: List<File> = emptyList(),
     val defines: Map<String, String?> = emptyMap(),
 )
@@ -89,14 +76,13 @@ data class ExtensionModuleSource(
  *
  * The slot applies build-type defaults first (`debug`: no optimisation, debug info; `release`:
  * optimised, `NDEBUG`, stripped) and the target's required flags (position-independent code, the
- * shared-object link mode, `Py_GIL_DISABLED` where the target's `pyconfig.h` does not set it).
+ * shared-object link mode, `libpython` where the target links it).
  * These flags are appended after the defaults and so win over them.
  *
  * @param includeDirs header directories for every module (for example a consumer's runtime
- *   headers). The target's CPython include directory is added by the slot, first, and is not
- *   passed here.
- * @param cFlags raw C compiler flags, passed verbatim. They are toolchain-specific (`-O3` for
- *   Clang/NDK, `/O2` for MSVC); see the design note's open questions.
+ *   headers), after [ExtensionCompileRequest.includeDir].
+ * @param cFlags raw C compiler flags, passed verbatim. They are toolchain-specific; see the design
+ *   note's open questions.
  * @param defines preprocessor macros; a `null` value defines the name without a value.
  * @param linkFlags raw linker flags, passed verbatim.
  */
@@ -112,18 +98,28 @@ data class ExtensionCompileOptions(
  *
  * @param modules what to build; non-empty, with unique [ExtensionModuleSource.moduleName]s.
  * @param target a target accepted by `Platforms.normalizeTarget` (alias or canonical triple).
- * @param pythonAbi the runtime's CPython ABI; selects the headers, `libpython` and `EXT_SUFFIX`.
+ * @param pythonAbi the runtime's CPython ABI. The slot checks it against [includeDir]'s headers
+ *   (`PY_VERSION`, `Py_GIL_DISABLED`).
  * @param buildType `debug` / `release`, as in `BundleRequest.buildType`.
  * @param workingDir the ppp package directory (the one holding `pyproject.toml`); the base for
  *   relative paths in diagnostics.
  * @param buildDir intermediates the slot owns: object files and a per-module cache. Kept between
  *   runs; the caller keys it by target and ABI.
  * @param outputDir where the results go, shaped like the bundle's `python/` root
- *   (`<outputDir>/app/physics/nbody<EXT_SUFFIX>` and its fallback `.py`). Must be absent or empty.
- * @param pythonHome the root of an extracted CPython distribution for [target] and [pythonAbi]
- *   (`include/`, `lib/`, sysconfig data), when the caller already has one -- for example the very
- *   distribution the app embeds. `null` lets pypackpack acquire it. Either way the slot checks that
- *   its version and flavour equal [pythonAbi].
+ *   (`<outputDir>/app/physics/nbody<EXT_SUFFIX>`). Must be absent or empty.
+ * @param includeDir the directory that directly contains `Python.h` for [target] and [pythonAbi]
+ *   (`include/python3.14`, `include/python3.14t`), used as the first `-I` as is. The Gradle side
+ *   takes it from `python-multiplatform`'s `CPythonIncludeDirectories.includeDir(target, flavour)`.
+ * @param extensionSuffix the target's `EXT_SUFFIX` for [pythonAbi] (`.cpython-314-darwin.so`,
+ *   `.cpython-314t-darwin.so`, `.cpython-314-aarch64-linux-android.so`), supplied with [includeDir];
+ *   the slot does not derive it.
+ * @param libDir the directory holding `libpython`, set only where the target links it
+ *   (`isLinkRequired(target)` in `python-multiplatform` #56: Android, later Windows). macOS and
+ *   Linux build unlinked and ignore it. An Android or Windows request without it is refused with a
+ *   [NoCompileBackendException].
+ * @param libraryName the library's file name in [libDir] as `python-multiplatform` #56 reports it
+ *   (`libpython3.14.so`, `python314.lib`); the slot derives the linker's form (`-lpython3.14`, or the
+ *   `.lib` path). Set together with [libDir].
  * @param minSdk the Android API level for the NDK compiler's target triple; `null` uses the floor
  *   of the Android CPython build. Meaningful for the `android` family only.
  * @param options flags shared by every module.
@@ -136,26 +132,24 @@ data class ExtensionCompileRequest(
     val workingDir: File,
     val buildDir: File,
     val outputDir: File,
-    val pythonHome: File? = null,
+    val includeDir: File,
+    val extensionSuffix: String,
+    val libDir: File? = null,
+    val libraryName: String? = null,
     val minSdk: Int? = null,
     val options: ExtensionCompileOptions = ExtensionCompileOptions(),
 )
 
 /**
- * One built extension module.
+ * One built extension module: the only artefact for [moduleName].
  *
  * @param relativePath the extension's path under [ExtensionCompileResult.outputDir], `/`-separated
  *   (`app/physics/nbody.cpython-314-darwin.so`); the same path is valid under the bundle's
  *   `python/` root.
- * @param fallbackModuleName the fallback's dotted name, or `null` when the request had none.
- * @param fallbackPath the fallback's path under the same root (`app/physics/_nbody_fallback.py`),
- *   or `null`.
  */
 data class CompiledExtension(
     val moduleName: String,
     val relativePath: String,
-    val fallbackModuleName: String?,
-    val fallbackPath: String?,
 )
 
 /**
@@ -164,10 +158,8 @@ data class CompiledExtension(
  *
  * @param target the canonical target triple.
  * @param toolchain the adapter that built it.
- * @param extensionSuffix the target's `EXT_SUFFIX` for [pythonAbi], read from the target
- *   distribution's own sysconfig data (`.cpython-314-darwin.so`, `.cp314-win_amd64.pyd`,
- *   `.cpython-314-aarch64-linux-android.so`).
- * @param pythonHome the CPython distribution whose headers were used.
+ * @param extensionSuffix the suffix the extensions were written with, as
+ *   [ExtensionCompileRequest.extensionSuffix].
  * @param toolVersions the tools that ran, for the manifest (`"cc"` -> `"Apple clang 17.0.0"`).
  */
 data class ExtensionCompileResult(
@@ -176,7 +168,6 @@ data class ExtensionCompileResult(
     val pythonAbi: PythonAbi,
     val toolchain: NativeToolchain,
     val extensionSuffix: String,
-    val pythonHome: File,
     val modules: List<CompiledExtension>,
     val toolVersions: Map<String, String>,
 )
@@ -214,9 +205,11 @@ sealed class ExtensionCompileException(
 ) : RuntimeException(message)
 
 /**
- * The target has no backend: no toolchain adapter exists for it, the toolchain is not installed,
- * the host cannot build it, or no CPython headers and `libpython` for [pythonAbi] are available
- * for it. Returned before anything is compiled.
+ * The target has no backend: no toolchain adapter exists for it or it is out of scope (iOS,
+ * Windows for 2026-11), the toolchain is not installed, the host cannot build it, the request's
+ * CPython headers are missing or of another version or flavour than [pythonAbi], or the target
+ * links `libpython` and the request has no `libDir`/`libraryName`. Returned before anything is
+ * compiled.
  *
  * @param toolchain the adapter the target maps to, or `null` when none does.
  */
@@ -250,12 +243,16 @@ interface ExtensionCompilerInterface {
      * Whether this host can build extension modules for [target] and [pythonAbi]: a success, or a
      * failure carrying a [NoCompileBackendException]. Cheap enough to call before bundling starts.
      *
-     * @param pythonHome as [ExtensionCompileRequest.pythonHome].
+     * @param includeDir as [ExtensionCompileRequest.includeDir].
+     * @param libDir as [ExtensionCompileRequest.libDir]; required for Android (and, later, Windows).
+     * @param libraryName as [ExtensionCompileRequest.libraryName]; required with [libDir].
      */
     fun checkSupport(
         target: String,
         pythonAbi: PythonAbi,
-        pythonHome: File? = null,
+        includeDir: File,
+        libDir: File? = null,
+        libraryName: String? = null,
     ): Result<Unit>
 
     /**
