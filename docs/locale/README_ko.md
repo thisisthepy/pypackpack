@@ -123,10 +123,10 @@ BundlerInterface.create(BundleType.RESOURCE).bundle(
 
 | 영역 | 상태 |
 |---|---|
-| Python 배포판 (install, list, find, uninstall, 고정 SHA-256) | ✅ 구현됨 |
+| Python 배포판 (install, list, find, uninstall, 고정 SHA-256) | ✅ 구현 |
 | 타깃과 타깃별 의존성 (`add`, `remove`, `sync`, `tree`) | 🟡 동작함. 일부는 아직 테스트 없음 |
 | Meson 을 통한 C/C++ 확장 | 🟡 호스트만, 크로스 컴파일은 아직 |
-| 번들: `resource`, `single`, `fat`, `patch` | ✅ 구현됨 |
+| 번들: `resource`, `single`, `fat`, `patch` | ✅ 구현 |
 | 빌드 레벨: `instant` / `bytecode` | ✅ / 🟡 (`resource` 만) |
 | 빌드 레벨: `native` / `mixed` | ⏳ 계획. 의미는 결정됨, 컴파일 슬롯은 초안 |
 | `deploy`, 코드 푸시, `binary` 번들 | ⏳ 계획 |

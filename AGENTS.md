@@ -21,8 +21,7 @@ files) lives **inside this repository's root directory.**
 |---|---|
 | Worktrees | `.worktrees/<name>` (git-ignored) |
 | Temporary files | `.tmp/` (git-ignored); delete when done |
-| Benchmarks | `benchmarks/` |
-| Developer tooling | `tools/` |
+| CI-only scripts | `.github/scripts/` |
 
 Before writing a file, check that its absolute path starts with this repository's root. If it does
 not, stop. The only exceptions are a path the user names explicitly, and caches that build tools
@@ -49,7 +48,7 @@ build caches, model weights, `node_modules`) into every worktree is how 86 workt
 
 - Create worktrees under `.worktrees/<name>`.
 - **Symlink** large untracked directories from the main checkout instead of copying or rebuilding
-  them. If `tools/worktree-add.sh` exists, use it: it does the linking.
+  them.
 - Delete a worktree once its branch is merged: `git worktree remove .worktrees/<name>`.
 - Periodically delete `build/` directories inside worktrees; they only grow.
 
@@ -70,7 +69,7 @@ landed or reported, not left. Branches named `release-*` are preserved snapshots
 
 `main` carries a reduced layout: of the Markdown files, only `README.md` stays at the repository
 root, and `docs/` keeps only its subdirectories (no Markdown files directly under `docs/`).
-CI runs `tools/release/sync-release.sh` (`.github/workflows/release-sync.yml`) to produce that layout; do not hand-edit `release` or `main`.
+CI runs `.github/scripts/release/sync-release.sh` (`.github/workflows/release-sync.yml`) to produce that layout; do not hand-edit `release` or `main`.
 
 ### Issues and pull requests
 
@@ -260,7 +259,7 @@ Count results from `<module>/build/test-results/test/*.xml`, not from the log.
 ```bash
 ./gradlew :packpack:publishToMavenLocal       # before building toolchain against a change here
 ./gradlew :cli:nativeCompile                  # GraalVM native binary
-bash tools/release/test-sync-release.sh       # tests for the release-branch generator
+bash .github/scripts/release/test-sync-release.sh       # tests for the release-branch generator
 ```
 
 There are no Python tests in this repository.

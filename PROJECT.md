@@ -16,7 +16,7 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 ## 현재 상태 (2026-10-03, 코드와 테스트를 읽고 판정)
 
-**구현됨 (테스트 있음)**
+**구현 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
 - `python install`: 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
   와 3.13.0 (python-multiplatform `release` 브랜치 `binary/`, 데스크톱만). 모든 아카이브를
@@ -59,7 +59,7 @@ packpack/        라이브러리 (dependency/, compile/, bundle/, deploy/, utils
 cli/             pypackpack / ppp CLI (Clikt, application, GraalVM native image)
 usage-example/   :packpack 에 의존하는 빌드 파일 (소스 없음)
 docs/            INTENT.md, SPEC.md, issues/, locale/
-tools/release/   main 용 release 브랜치 생성 스크립트와 테스트
+.github/scripts/release/   main 용 release 브랜치 생성 스크립트와 테스트
 ```
 
 ## 빌드와 테스트
@@ -74,7 +74,7 @@ rm -rf packpack/build/test-results
 rm -rf cli/build/test-results
 ./gradlew :cli:test --rerun --console=plain > .tmp/cli-test.log 2>&1; echo "EXIT=$?"
 ./gradlew :packpack:publishToMavenLocal   # toolchain 을 이 변경으로 빌드하기 전에 반드시
-bash tools/release/test-sync-release.sh   # release 동기화 스크립트 테스트
+bash .github/scripts/release/test-sync-release.sh   # release 동기화 스크립트 테스트
 ```
 
 결과는 `<module>/build/test-results/test/*.xml` 에서 센다. 2026-10-03 기준 `:packpack` 135개,
