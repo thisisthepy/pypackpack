@@ -6,6 +6,8 @@ English | [한국어](docs/locale/README_ko.md)
 [![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 
+📖 **Guide:** [thisisthepy.github.io/pypackpack](https://thisisthepy.github.io/pypackpack/) — getting started, targets and dependencies, build levels, the library API and current status, in English and 한국어 ([source](docs/guide/index.html)).
+
 ### Description
 
 A multiplatform solution to distribute python project.

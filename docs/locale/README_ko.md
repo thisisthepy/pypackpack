@@ -6,6 +6,8 @@
 [![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 
+📖 **가이드:** [thisisthepy.github.io/pypackpack](https://thisisthepy.github.io/pypackpack/) — 시작하기, 타깃과 의존성, 빌드 레벨, 라이브러리 API, 현재 상태를 영어와 한국어로 ([소스](../guide/index.html)).
+
 ### 설명
 
 Python 프로젝트를 배포하기 위한 멀티플랫폼 솔루션.

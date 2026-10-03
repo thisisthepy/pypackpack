@@ -277,8 +277,12 @@ There are no Python tests in this repository.
 - `Status: implemented` requires a test in this repository that exercises the behaviour; cite it.
   Wiring with no test is `partial`.
 - A behaviour change updates `docs/SPEC.md` in the same change.
-- There is no `docs/guide/` (GitHub Pages site) yet, so there is no `pages.yml` workflow. Add both
-  together, or neither.
+- `docs/guide/` is the GitHub Pages site (English and Korean on every page, plain HTML, no build
+  step), deployed by `.github/workflows/pages.yml` on every push to `main`. Its structure follows
+  `toolchain`'s guide. `python3 docs/guide/check_guide.py` is its test (CI job `guide`): every
+  visible string in both languages, no dead link, every page in the navigation. A behaviour change
+  that the guide describes updates the guide in the same change, and `docs/SPEC.md` stays the
+  contract when the two disagree.
 - KDoc comments cite `docs/SPEC.md` (this repository's) and `toolchain` files such as `DSLBuild.kt`
   and `(플러그인예시)build.gradle.kts` (another repository's). When you touch such a comment, name
   the repository.
