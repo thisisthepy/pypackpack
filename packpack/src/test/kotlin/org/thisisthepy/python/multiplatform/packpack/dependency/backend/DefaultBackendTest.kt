@@ -249,6 +249,99 @@ class DefaultBackendTest {
             assertTrue(project.list().isNullOrEmpty())
         }
 
+    // An explicit installDir (issue #37): toolchain installs into build/pythonRuntime/<triple>/<version>/
+    // from a Gradle daemon, so neither projectRoot() (user.dir) nor the global registry may be used.
+
+    @Test
+    fun installPython_explicitInstallDirReceivesTheTreeAndNothingElse() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val registry = File(tempDir, "registry")
+            val project = File(tempDir, "project")
+            val runtime = File(tempDir, "build/pythonRuntime/aarch64-linux-android")
+            val installDir = File(runtime, "3.14.7")
+            val backend =
+                TestDefaultBackend(registry, projectRoot = project, fakeArchive = archive, pinnedSha256 = sha256Hex(archive))
+
+            val result = backend.installPython("3.14.7", "aarch64-linux-android", installDir)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            assertEquals("python-binary", File(installDir, "bin/python3.14").readText())
+            assertFalse(File(installDir, "PYTHON.json").exists(), "only python/ is installed")
+            assertEquals(listOf("3.14.7"), runtime.list()!!.toList(), "no staging or archive is left behind")
+            assertEquals(0, backend.projectRootCalls, "an explicit installDir must not locate the project")
+            assertFalse(project.exists(), "nothing may be created under projectRoot()")
+            assertFalse(registry.exists(), "the registry must not be touched")
+            assertTrue(backend.findPython("3.14.7").isFailure, "an explicit install is not registered")
+            assertEquals(1, backend.downloads)
+        }
+
+    @Test
+    fun installPython_explicitInstallDirReplacesAPreviousInstallForTheHostToo() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val project = File(tempDir, "project")
+            val installDir = File(tempDir, "runtime/host")
+            File(installDir, "stale.txt").apply { parentFile.mkdirs() }.writeText("old")
+            val backend =
+                TestDefaultBackend(
+                    File(tempDir, "registry"),
+                    projectRoot = project,
+                    fakeArchive = archive,
+                    pinnedSha256 = sha256Hex(archive),
+                )
+
+            val result = backend.installPython("3.14.7", null, installDir)
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            assertEquals(listOf("bin"), installDir.list()!!.toList(), "the previous tree is replaced, not merged")
+            assertEquals("python-binary", File(installDir, "bin/python3.14").readText())
+            assertEquals(listOf("host"), File(tempDir, "runtime").list()!!.toList())
+            assertFalse(project.exists(), "the host target must not fall back to <project>/.venv")
+            assertEquals(0, backend.projectRootCalls)
+        }
+
+    @Test
+    fun installPython_explicitInstallDirStillRefusesAnUnpinnedPairBeforeDownloading() =
+        runBlocking {
+            val runtime = File(tempDir, "runtime")
+            val installDir = File(runtime, "3.13.0")
+            val backend = TestDefaultBackend(File(tempDir, "registry"), projectRoot = File(tempDir, "project"))
+
+            val result = backend.installPython("3.13.0", "aarch64-linux-android", installDir)
+
+            assertTrue(result.isFailure)
+            assertTrue("no pinned SHA-256" in result.exceptionOrNull()?.message.orEmpty())
+            assertEquals(0, backend.downloads, "an unpinned archive must not even be downloaded")
+            assertFalse(runtime.exists(), "a refused pair must not create anything")
+            assertFalse(File(tempDir, "project").exists())
+        }
+
+    @Test
+    fun installPython_explicitInstallDirIsLeftAsItWasOnADigestMismatch() =
+        runBlocking {
+            val archive = fakePbsArchive(File(tempDir, "fake-python.tar.gz"))
+            val runtime = File(tempDir, "runtime")
+            val installDir = File(runtime, "3.14.7")
+            val existing = File(installDir, "bin/python3.14")
+            existing.parentFile.mkdirs()
+            existing.writeText("old-binary")
+            val registry = File(tempDir, "registry")
+            val backend =
+                TestDefaultBackend(registry, projectRoot = File(tempDir, "project"), fakeArchive = archive, pinnedSha256 = "0".repeat(64))
+
+            val result = backend.installPython("3.14.7", "aarch64-linux-android", installDir)
+
+            assertIs<ChecksumMismatchException>(result.exceptionOrNull())
+            assertEquals(1, backend.downloads)
+            assertEquals(listOf("bin"), installDir.list()!!.toList())
+            assertEquals(listOf("python3.14"), File(installDir, "bin").list()!!.toList())
+            assertEquals("old-binary", existing.readText())
+            assertEquals(listOf("3.14.7"), runtime.list()!!.toList(), "the staging directory is removed")
+            assertFalse(registry.exists())
+            assertFalse(File(tempDir, "project").exists())
+        }
+
     private fun fakePbsArchive(archive: File): File {
         java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
             gzip.write(tarHeader("python/", 0, '5'))
@@ -349,10 +442,14 @@ class DefaultBackendTest {
     ) : DefaultBackend() {
         var downloads = 0
         var lastUrl: String? = null
+        var projectRootCalls = 0
 
         override fun pythonInstallRoot(): File = root
 
-        override fun projectRoot(): File = projectRoot
+        override fun projectRoot(): File {
+            projectRootCalls++
+            return projectRoot
+        }
 
         override fun hostTarget(): String = "aarch64-apple-darwin"
 

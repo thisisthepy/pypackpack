@@ -157,11 +157,17 @@ interface BackendInterface {
     /**
      * Install a specific Python version
      * @param pythonVersion Python version
+     * @param targetPlatform Target platform (alias or canonical triple); `null` means the host
+     * @param installDir Directory to install the interpreter tree into. When given, the tree replaces
+     * whatever is there and nothing else is written: no project directory (so `user.dir` is never
+     * consulted) and no registry entry. When `null`, the project-relative placement applies
+     * (`docs/SPEC.md`, "Installing a ppp Python distribution").
      * @return Result of Python version installation
      */
     suspend fun installPython(
         pythonVersion: String,
         targetPlatform: String?,
+        installDir: File? = null,
     ): Result<String>
 
     /**
