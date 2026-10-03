@@ -1,0 +1,124 @@
+name: Publish to PyPI
+
+# Publishing a GitHub Release `v<version>` builds the native CLI on each platform, wraps each binary
+# in a wheel (.github/scripts/pypi/build_wheel.py), installs and smoke-tests every wheel
+# (smoke_wheel.py), and only then uploads them all through trusted publishing (environment `pypi`,
+# no token). A pull request that touches the publishing files, or a manual run, does everything
+# except the upload.
+#
+# Why a published Release and not a pushed `v*` tag: a PyPI version can never be uploaded twice,
+# so the trigger is a deliberate, visible act with notes, not a tag push that a mistaken
+# `git push --tags` also fires. The `pypi` environment only accepts `v*` tag refs.
+#
+# No sdist: building pypackpack needs a JDK and GraalVM, so pip would install an sdist as the Python
+# shim without the binary. Without one, an unsupported platform gets pip's "no matching
+# distribution" instead of a silently useless install.
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - .github/workflows/publish-pypi.yml
+      - .github/scripts/pypi/**
+      - pyproject.toml
+      - packpack/src/main/python/**
+      - cli/build.gradle.kts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag, pyproject.toml and the CLI agree; the version is new on PyPI
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          IS_RELEASE: ${{ github.event_name == 'release' }}
+        run: |
+          py=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          cli=$(sed -n 's/^version = "\(.*\)"$/\1/p' cli/build.gradle.kts)
+          echo "pyproject.toml: $py   cli/build.gradle.kts: $cli   tag: ${TAG:-none (dry run)}"
+          if [ "$py" != "$cli" ]; then
+            echo "::error::pyproject.toml ($py) and cli/build.gradle.kts ($cli) must carry the same version"; exit 1
+          fi
+          if [ "$IS_RELEASE" = true ] && [ "$TAG" != "v$py" ]; then
+            echo "::error::release tag '$TAG' is not 'v$py'"; exit 1
+          fi
+          if curl -fsS -o /dev/null "https://pypi.org/pypi/pypackpack/$py/json"; then
+            if [ "$IS_RELEASE" = true ]; then echo "::error::pypackpack $py is already on PyPI"; exit 1; fi
+            echo "::warning::pypackpack $py is already on PyPI; bump the version before releasing"
+          fi
+
+  wheel:
+    needs: version
+    name: wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-22.04: the oldest glibc (2.35) a hosted runner offers, so the widest manylinux tag.
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Native image
+        run: ./gradlew --no-daemon :cli:nativeCompile
+
+      - name: Wheel
+        run: |
+          exe=cli/build/native/nativeCompile/pypackpack
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          python .github/scripts/pypi/build_wheel.py --binary "$exe" --out dist
+
+      - name: Install and smoke-test the wheel
+        run: python .github/scripts/pypi/smoke_wheel.py dist/*.whl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'release'
+    needs: wheel
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pypackpack/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+      - name: One wheel per platform
+        run: |
+          ls -la dist
+          test "$(ls dist/*.whl | wc -l)" -eq 4
+      - uses: pypa/gh-action-pypi-publish@release/v1

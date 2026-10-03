@@ -15,10 +15,8 @@ class VersionCommand : CliktCommand(name = "version") {
             "-v" to listOf("version"),
         )
 
-    private val pypackpackVersion: String = "0.1.0"
-
     override fun run() {
-        echo("PyPackPack version $pypackpackVersion")
+        echo("PyPackPack version ${BuildInfo.version}")
         requireMiddleware()
             .getToolVersion()
             .onSuccess { version ->

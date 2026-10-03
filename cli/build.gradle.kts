@@ -5,7 +5,10 @@ plugins {
 }
 
 group = "org.thisisthepy.python.multiplatform"
-version = "0.1.0"
+// The CLI's version, which `pypackpack version` prints and the PyPI wheel carries: publish-pypi.yml
+// refuses to publish unless it equals pyproject.toml's. `:packpack` versions separately, because
+// toolchain resolves `packpack:0.1.0` from mavenLocal.
+version = "0.2.0"
 
 repositories {
     mavenCentral()
@@ -31,7 +34,22 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("pypackpack.expectedVersion", project.version.toString())
 }
+
+// `BuildInfo` reads this resource, so the version is not a literal in the source.
+val generateBuildInfo by tasks.registering {
+    val cliVersion = project.version.toString()
+    val outputDir = layout.buildDirectory.dir("generated/build-info")
+    inputs.property("version", cliVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("org/thisisthepy/python/multiplatform/packpack/cli/build-info.properties").asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=$cliVersion\n")
+    }
+}
+sourceSets.main { resources.srcDir(generateBuildInfo) }
 
 // Custom tasks for native compilation
 tasks.register("buildNativeExecutable") {
@@ -172,7 +190,9 @@ graalvmNative {
                     // Static builds require a musl toolchain and separate setup.
                 }
                 osName.contains("mac") -> {
-                    // macOS uses default dynamic linking - no additional flags needed
+                    // Without this the binary's minimum macOS is the build host's (26.0 on a
+                    // macOS 26 runner), and the wheel's tag must say so (publish-pypi.yml).
+                    buildArgs.add("-H:NativeLinkerOption=-mmacosx-version-min=11.0")
                 }
             }
 

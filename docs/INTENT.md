@@ -96,6 +96,6 @@ need patches to build), `pip-central` (a closed-source service distributing them
    Should `build` take a bundle type, or should `bundle` become its own command?
 4. **Deploy destinations.** "Need to specify the target deploy server (PyPI or FastTrack)" is still
    open in the SPEC.
-5. **The Python wrapper.** `pyproject.toml` describes a Python package around the native binary
-   (`packpack/src/main/python/`, both files empty). Is distributing `pypackpack` through PyPI
-   intended?
+5. ~~**The Python wrapper.** Is distributing `pypackpack` through PyPI intended?~~ **Answered
+   (2026-10-03):** yes. The wheel carries the native binary per platform; see `docs/SPEC.md`,
+   *Distribution through PyPI*.
