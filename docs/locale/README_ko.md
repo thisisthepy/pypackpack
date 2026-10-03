@@ -66,9 +66,9 @@ GraalVM 이 필요하므로, sdist 는 바이너리 없이 런처만 설치하�
 ```shell
 git clone -b develop https://github.com/thisisthepy/pypackpack
 cd pypackpack
-./gradlew :cli:installDist                 # JDK 21
-alias ppp="$PWD/cli/build/install/cli/bin/cli"
-./gradlew :cli:nativeCompile               # 네이티브 바이너리. JAVA_HOME 이 GraalVM 이어야 함
+./gradlew :packpack:installCliDist          # JDK 21
+alias ppp="$PWD/packpack/build/install/pypackpack/bin/pypackpack"
+./gradlew :packpack:nativeCompile          # 네이티브 바이너리. JAVA_HOME 이 GraalVM 이어야 함
 ```
 
 </details>

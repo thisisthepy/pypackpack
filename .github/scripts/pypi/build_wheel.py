@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assemble the platform wheel that carries the native `pypackpack` binary (publish-pypi.yml).
 
-    python3 .github/scripts/pypi/build_wheel.py --binary cli/build/native/nativeCompile/pypackpack --out dist
+    python3 .github/scripts/pypi/build_wheel.py --binary packpack/build/native/nativeCompile/pypackpack --out dist
 
 The wheel holds:
   pypackpack/__init__.py, __main__.py        packpack/src/main/python/ (`python -m pypackpack`)

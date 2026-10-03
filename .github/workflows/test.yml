@@ -17,13 +17,17 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.module }}
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        module: [packpack, cli]
+        # Both live in :packpack (#73): the library's `test` and the command line's `cliTest`,
+        # still run as separate invocations (AGENTS.md section 8).
+        include:
+          - { name: packpack, task: test }
+          - { name: cli, task: cliTest }
     steps:
       - uses: actions/checkout@v4
 
@@ -40,8 +44,18 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: Test ${{ matrix.module }}
-        run: ./gradlew :${{ matrix.module }}:test --rerun --console=plain
+      - name: Test ${{ matrix.name }}
+        run: ./gradlew :packpack:${{ matrix.task }} --rerun --console=plain
+
+      - name: The published library carries no CLI dependency
+        if: matrix.task == 'test'
+        run: |
+          ./gradlew :packpack:generatePomFileForMavenPublication :packpack:generateMetadataFileForMavenPublication --console=plain
+          pom=packpack/build/publications/maven/pom-default.xml
+          module=packpack/build/publications/maven/module.json
+          ls -la "$pom" "$module"
+          if grep -n "clikt" "$pom" "$module"; then echo "::error::Clikt leaked into the packpack publication (#73)"; exit 1; fi
+          echo "no Clikt in the POM or the Gradle module metadata"
 
       - name: Count results
         if: always()
@@ -49,7 +63,7 @@ jobs:
           python3 - <<'PY'
           import glob, re
           t = f = e = s = 0
-          for x in glob.glob("${{ matrix.module }}/build/test-results/test/*.xml"):
+          for x in glob.glob("packpack/build/test-results/${{ matrix.task }}/*.xml"):
               m = re.search(r'tests="(\d+)" skipped="(\d+)" failures="(\d+)" errors="(\d+)"', open(x).read(4000))
               t += int(m[1]); s += int(m[2]); f += int(m[3]); e += int(m[4])
           print(f"tests={t} skipped={s} failures={f} errors={e}")
@@ -59,8 +73,8 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.module }}-test-reports
-          path: ${{ matrix.module }}/build/reports/tests/test/
+          name: ${{ matrix.name }}-test-reports
+          path: packpack/build/reports/tests/${{ matrix.task }}/
 
   guide:
     runs-on: ubuntu-latest

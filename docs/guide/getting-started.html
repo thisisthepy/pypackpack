@@ -36,11 +36,11 @@
 <p data-lang="en">There is no released binary yet. Build the launcher from a checkout:</p><p data-lang="ko">아직 배포된 바이너리가 없습니다. 체크아웃에서 런처를 빌드하세요.</p>
 <pre><code class="language-shell">git clone -b develop https://github.com/thisisthepy/pypackpack
 cd pypackpack
-./gradlew :cli:installDist
-alias ppp=&quot;$PWD/cli/build/install/cli/bin/cli&quot;
+./gradlew :packpack:installCliDist
+alias ppp=&quot;$PWD/packpack/build/install/pypackpack/bin/pypackpack&quot;
 ppp --help
 ppp version          # pypackpack and uv versions</code></pre>
-<p data-lang="en">For one self-contained binary, <code>./gradlew :cli:buildNativeExecutable</code> writes <code>cli/build/distributions/pypackpack</code> with GraalVM Native Image. No CI job builds it yet.</p><p data-lang="ko">실행 파일 하나로 쓰려면 <code>./gradlew :cli:buildNativeExecutable</code> 가 GraalVM Native Image 로 <code>cli/build/distributions/pypackpack</code> 를 만듭니다. 아직 CI 가 빌드하지 않습니다.</p>
+<p data-lang="en">For one self-contained binary, <code>./gradlew :packpack:nativeCompile</code> writes <code>packpack/build/native/nativeCompile/pypackpack</code> with GraalVM Native Image (GraalVM as <code>JAVA_HOME</code>). The PyPI wheels carry the same binary.</p><p data-lang="ko">실행 파일 하나로 쓰려면 <code>./gradlew :packpack:nativeCompile</code> 가 GraalVM Native Image 로 <code>packpack/build/native/nativeCompile/pypackpack</code> 를 만듭니다 (<code>JAVA_HOME</code> 이 GraalVM 이어야 함). PyPI 휠에 든 것과 같은 바이너리입니다.</p>
 </section>
 
 <section>

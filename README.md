@@ -70,9 +70,9 @@ building needs a JDK and GraalVM, and an sdist would install the launcher withou
 ```shell
 git clone -b develop https://github.com/thisisthepy/pypackpack
 cd pypackpack
-./gradlew :cli:installDist                 # JDK 21
-alias ppp="$PWD/cli/build/install/cli/bin/cli"
-./gradlew :cli:nativeCompile               # the native binary; needs GraalVM as JAVA_HOME
+./gradlew :packpack:installCliDist          # JDK 21
+alias ppp="$PWD/packpack/build/install/pypackpack/bin/pypackpack"
+./gradlew :packpack:nativeCompile          # the native binary; needs GraalVM as JAVA_HOME
 ```
 
 </details>
