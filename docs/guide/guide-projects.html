@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-title-en="Projects, targets & dependencies · pypackpack" data-title-ko="프로젝트, 타깃, 의존성 · pypackpack">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects, targets & dependencies · pypackpack</title>
+<meta name="description" content="pypackpack: build a Python project once and distribute it to desktop, mobile and the web.">
+<meta name="theme-color" content="#0f9d76">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<header class="site-header"><div class="wrap">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect x="1.5" y="1.5" width="21" height="21" rx="6" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/><rect x="6" y="6" width="5.5" height="5.5" rx="1.4" fill="#0f9d76"/><rect x="12.5" y="12.5" width="5.5" height="5.5" rx="1.4" fill="#0f9d76"/><path d="M14.5 6.5h2.5a1 1 0 0 1 1 1V10M9.5 18H7a1 1 0 0 1-1-1v-2.5" stroke="#0f9d76" stroke-width="1.8" stroke-linecap="round"/></svg><span translate="no">pypackpack</span></a>
+<nav class="top-nav" aria-label="Main" data-label-en="Main" data-label-ko="주 메뉴"><a href="index.html"><span data-lang="en">Home</span><span data-lang="ko">홈</span></a><a href="getting-started.html"><span data-lang="en">Start</span><span data-lang="ko">시작</span></a><a href="guide-projects.html" aria-current="page"><span data-lang="en">Guides</span><span data-lang="ko">가이드</span></a><a href="guide-library.html"><span data-lang="en">Library</span><span data-lang="ko">라이브러리</span></a><a href="status.html"><span data-lang="en">Status</span><span data-lang="ko">상태</span></a></nav>
+<div class="controls">
+<button class="ctl" id="lang-toggle" type="button" aria-label="Switch language" data-label-en="Switch language to Korean" data-label-ko="언어를 영어로 전환"><span data-lang="en">한국어</span><span data-lang="ko">English</span></button>
+<button class="ctl" id="theme-toggle" type="button" aria-label="Toggle theme" data-label-en="Toggle light or dark theme" data-label-ko="밝은 테마와 어두운 테마 전환"><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</div>
+</div></header>
+<main>
+<div class="wrap doc"><nav class="doc-side" aria-label="Documentation" data-label-en="Documentation" data-label-ko="문서"><p data-lang="en">Documentation</p><p data-lang="ko">문서</p><a href="getting-started.html"><span data-lang="en">Getting started</span><span data-lang="ko">시작하기</span></a><a href="guide-projects.html" aria-current="page"><span data-lang="en">Projects, targets & dependencies</span><span data-lang="ko">프로젝트, 타깃, 의존성</span></a><a href="guide-python.html"><span data-lang="en">Python distributions</span><span data-lang="ko">Python 배포판</span></a><a href="guide-build.html"><span data-lang="en">Build levels & bundles</span><span data-lang="ko">빌드 레벨과 번들</span></a><a href="guide-compile-slot.html"><span data-lang="en">The native compile slot</span><span data-lang="ko">native 컴파일 슬롯</span></a><a href="guide-library.html"><span data-lang="en">Using the library</span><span data-lang="ko">라이브러리로 쓰기</span></a><a href="status.html"><span data-lang="en">Status & known issues</span><span data-lang="ko">상태와 알려진 문제</span></a></nav><article class="doc-body">
+<h1><span data-lang="en">Projects, targets & dependencies</span><span data-lang="ko">프로젝트, 타깃, 의존성</span></h1>
+<p data-lang="en" class="muted">How a project is laid out, which targets exist, and how dependencies are scoped to them.</p><p data-lang="ko" class="muted">프로젝트 구조, 지원 타깃, 그리고 의존성을 타깃에 묶는 방법.</p>
+
+<section>
+<h2 id="layout"><span data-lang="en">Layout</span><span data-lang="ko">구조</span></h2>
+<p data-lang="en">A project is a uv workspace. Each package is a workspace member and, under toolchain, one Gradle module.</p><p data-lang="ko">프로젝트는 uv 워크스페이스입니다. 패키지마다 워크스페이스 멤버이며, toolchain 에서는 Gradle 모듈 하나입니다.</p>
+<pre><code class="language-text">&lt;project&gt;/
+├── .venv/                 # dev environment for building the project
+├── pyproject.toml, uv.lock
+└── &lt;package&gt;/
+    ├── pyproject.toml
+    ├── src/main/  src/&lt;family&gt;/  src/test/
+    ├── build/crossenv/&lt;triple&gt;/                               # per-target installs
+    ├── build/packpack/&lt;bundle type&gt;/&lt;build type&gt;/&lt;level&gt;/     # bundles
+    └── dist/&lt;triple&gt;/&lt;build type&gt;/&lt;level&gt;/                    # `ppp build` output</code></pre>
+</section>
+
+<section>
+<h2 id="targets"><span data-lang="en">Targets</span><span data-lang="ko">타깃</span></h2>
+<p data-lang="en">Targets are canonical triples; a few aliases are accepted and normalized. <code>ppp target list</code> prints them all.</p><p data-lang="ko">타깃은 정식 트리플이며, 몇 가지 별칭은 받아서 정규화합니다. <code>ppp target list</code> 가 전부 보여 줍니다.</p>
+<div class="table-wrap"><table><thead><tr><th><span data-lang="en">Family</span><span data-lang="ko">계열</span></th><th><span data-lang="en">Triples</span><span data-lang="ko">트리플</span></th><th><span data-lang="en">Aliases</span><span data-lang="ko">별칭</span></th></tr></thead><tbody><tr><td><span translate="no">Android</span></td><td><code>aarch64-linux-android</code>, <code>x86_64-linux-android</code></td><td><span data-lang="en"><code>android_24_arm64</code>, <code>android_24_x86_64</code> (and <code>android_21_…</code>)</span><span data-lang="ko"><code>android_24_arm64</code>, <code>android_24_x86_64</code> (<code>android_21_…</code> 도)</span></td></tr><tr><td><span translate="no">iOS</span></td><td><code>arm64-apple-ios</code>, <code>arm64-apple-ios-simulator</code>, <code>x86_64-apple-ios-simulator</code></td><td>—</td></tr><tr><td><span translate="no">macOS</span></td><td><code>aarch64-apple-darwin</code>, <code>x86_64-apple-darwin</code></td><td><code>macos</code>, <code>macos_arm64</code>, <code>macos_x86_64</code></td></tr><tr><td><span translate="no">Linux</span></td><td><span data-lang="en"><code>x86_64-unknown-linux-gnu</code>, <code>aarch64-unknown-linux-gnu</code>, musl and manylinux variants</span><span data-lang="ko"><code>x86_64-unknown-linux-gnu</code>, <code>aarch64-unknown-linux-gnu</code>, musl 과 manylinux 변형</span></td><td><code>linux</code>, <code>linux_amd64</code>, <code>linux_arm64</code></td></tr><tr><td><span translate="no">Windows</span></td><td><code>x86_64-pc-windows-msvc</code>, <code>aarch64-pc-windows-msvc</code>, <code>i686-pc-windows-msvc</code></td><td><code>windows</code>, <code>windows_amd64</code>, <code>windows_arm64</code></td></tr></tbody></table></div>
+<pre><code class="language-shell">ppp target add &lt;target&gt;...            # the project and every workspace member
+ppp target remove &lt;target&gt;...
+ppp core target add &lt;target&gt;...       # one package</code></pre>
+<p data-lang="en"><code>target add</code> edits <code>[tool.ppp.dependencies].platforms</code> and creates <code>src/&lt;family&gt;/__init__.py</code> in each affected package. A new package inherits the project's targets.</p><p data-lang="ko"><code>target add</code> 는 <code>[tool.ppp.dependencies].platforms</code> 를 고치고, 영향받는 패키지마다 <code>src/&lt;family&gt;/__init__.py</code> 를 만듭니다. 새 패키지는 프로젝트의 타깃을 물려받습니다.</p>
+</section>
+
+<section>
+<h2 id="dev-env"><span data-lang="en">The dev environment</span><span data-lang="ko">개발 환경</span></h2>
+<p data-lang="en">Root-level commands act on the project's <code>.venv</code> with plain uv:</p><p data-lang="ko">루트 수준 명령은 프로젝트의 <code>.venv</code> 에 그대로 uv 를 실행합니다.</p>
+<pre><code class="language-shell">ppp add &lt;pypi name&gt;...        # uv add, in the project root
+ppp remove &lt;pypi name&gt;...     # uv remove
+ppp sync                      # uv sync
+ppp tree [--target &lt;t&gt;...]    # uv tree --python-platform &lt;t&gt;, host by default</code></pre>
+</section>
+
+<section>
+<h2 id="per-target"><span data-lang="en">Per-package, per-target dependencies</span><span data-lang="ko">패키지별, 타깃별 의존성</span></h2>
+<div class="table-wrap"><table><thead><tr><th><span data-lang="en">Command</span><span data-lang="ko">명령</span></th><th><span data-lang="en">What it does</span><span data-lang="ko">하는 일</span></th></tr></thead><tbody><tr><td><code>ppp &lt;pkg&gt; add &lt;dep&gt; [--target …]</code></td><td><span data-lang="en"><code>uv add --package &lt;pkg&gt; --marker …</code> once per target. Without <code>--target</code>, the package's <code>platforms</code>; with neither, an error.</span><span data-lang="ko">타깃마다 <code>uv add --package &lt;pkg&gt; --marker …</code>. <code>--target</code> 이 없으면 패키지의 <code>platforms</code>, 둘 다 없으면 오류.</span></td></tr><tr><td><code>ppp &lt;pkg&gt; remove &lt;dep&gt; [--target …]</code></td><td><span data-lang="en">Removes only the entries for those targets from <code>project.dependencies</code>, then <code>uv lock</code>.</span><span data-lang="ko"><code>project.dependencies</code> 에서 그 타깃의 항목만 지우고 <code>uv lock</code>.</span></td></tr><tr><td><code>ppp &lt;pkg&gt; sync [--target …]</code></td><td><span data-lang="en"><code>uv sync --package</code>, a <code>uv tree</code> check per target, then <code>uv pip install --target build/crossenv/&lt;triple&gt; --python-platform &lt;triple&gt;</code>. Host target by default.</span><span data-lang="ko"><code>uv sync --package</code>, 타깃마다 <code>uv tree</code> 확인, 그다음 <code>uv pip install --target build/crossenv/&lt;triple&gt; --python-platform &lt;triple&gt;</code>. 기본은 호스트 타깃.</span></td></tr><tr><td><code>ppp &lt;pkg&gt; tree [--target …]</code></td><td><span data-lang="en"><code>uv tree --package --python-platform</code> per target.</span><span data-lang="ko">타깃마다 <code>uv tree --package --python-platform</code>.</span></td></tr></tbody></table></div>
+<p data-lang="en">A marker typed into the dependency string (<code>numpy; …</code>) is refused; use <code>--target</code>. <code>ppp package sync|tree &lt;pkg&gt;</code> are explicit spellings of the same commands.</p><p data-lang="ko">의존성 문자열에 직접 쓴 마커 (<code>numpy; …</code>) 는 거부됩니다. <code>--target</code> 을 쓰세요. <code>ppp package sync|tree &lt;pkg&gt;</code> 는 같은 명령의 명시적 형태입니다.</p>
+</section>
+
+<section>
+<h2 id="wheels"><span data-lang="en">Missing wheels and uv flags</span><span data-lang="ko">없는 휠과 uv 플래그</span></h2>
+<p data-lang="en">Whether a wheel exists for a target is only known by trying. When uv fails, the error names the package and the target and says whether only an sdist exists (<code>NoWheelForTargetException</code>).</p><p data-lang="ko">타깃용 휠이 있는지는 설치해 봐야 압니다. uv 가 실패하면 오류가 패키지와 타깃을 밝히고, sdist 만 있는지 알려 줍니다 (<code>NoWheelForTargetException</code>).</p>
+<p data-lang="en">Unknown <code>--flag [value]</code> tokens are passed to uv. Only <code>--extra-index-url</code>, <code>--index-url</code>, <code>--index-strategy</code>, <code>--python</code> and <code>--resolution</code> take a value; every other flag is passed bare.</p><p data-lang="ko">알 수 없는 <code>--flag [value]</code> 는 uv 로 넘어갑니다. 값을 받는 것은 <code>--extra-index-url</code>, <code>--index-url</code>, <code>--index-strategy</code>, <code>--python</code>, <code>--resolution</code> 뿐이고, 나머지는 값 없이 넘어갑니다.</p>
+<div class="note"><p data-lang="en">uv picks wheels for the host's Python version unless told otherwise, but <code>--python-version</code> cannot be passed through yet (<a href="https://github.com/thisisthepy/pypackpack/issues/50">#50</a>). Until then, run with a host Python that matches the runtime's.</p><p data-lang="ko">uv 는 따로 지정하지 않으면 호스트 Python 버전으로 휠을 고르는데, <code>--python-version</code> 은 아직 넘길 수 없습니다 (<a href="https://github.com/thisisthepy/pypackpack/issues/50">#50</a>). 그때까지는 런타임과 같은 버전의 호스트 Python 으로 실행하세요.</p></div>
+</section>
+</article></div>
+</main>
+<footer class="site-footer"><div class="wrap">
+<nav aria-label="All pages" data-label-en="All pages" data-label-ko="모든 페이지"><a href="index.html"><span data-lang="en">Home</span><span data-lang="ko">홈</span></a><a href="getting-started.html"><span data-lang="en">Getting started</span><span data-lang="ko">시작하기</span></a><a href="guide-projects.html"><span data-lang="en">Projects, targets & dependencies</span><span data-lang="ko">프로젝트, 타깃, 의존성</span></a><a href="guide-python.html"><span data-lang="en">Python distributions</span><span data-lang="ko">Python 배포판</span></a><a href="guide-build.html"><span data-lang="en">Build levels & bundles</span><span data-lang="ko">빌드 레벨과 번들</span></a><a href="guide-compile-slot.html"><span data-lang="en">The native compile slot</span><span data-lang="ko">native 컴파일 슬롯</span></a><a href="guide-library.html"><span data-lang="en">Using the library</span><span data-lang="ko">라이브러리로 쓰기</span></a><a href="status.html"><span data-lang="en">Status & known issues</span><span data-lang="ko">상태와 알려진 문제</span></a></nav>
+<p data-lang="en">Part of the thisisthepy ecosystem, beside <a href="https://github.com/thisisthepy/toolchain">toolchain</a> and <a href="https://github.com/thisisthepy/python-multiplatform">python-multiplatform</a>. MIT licensed. Source: <a href="https://github.com/thisisthepy/pypackpack">github.com/thisisthepy/pypackpack</a>.</p><p data-lang="ko"><a href="https://github.com/thisisthepy/toolchain">toolchain</a>, <a href="https://github.com/thisisthepy/python-multiplatform">python-multiplatform</a> 과 함께하는 thisisthepy 생태계의 일부입니다. MIT 라이선스. 소스: <a href="https://github.com/thisisthepy/pypackpack">github.com/thisisthepy/pypackpack</a>.</p>
+</div></footer>
+</body>
+</html>
