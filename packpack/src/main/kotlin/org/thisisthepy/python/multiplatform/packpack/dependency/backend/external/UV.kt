@@ -46,6 +46,26 @@ class UV {
                 }
             return File(installDir, binaryName)
         }
+
+        /**
+         * Extracts uv's release [archive] into [installDir] and returns the [binaryName] it holds.
+         * The `.tar.gz` archives put their files under one top-level directory
+         * (`uv-aarch64-apple-darwin/uv`), which is stripped; the Windows `.zip` holds `uv.exe` at its
+         * root (#61). A binary missing after extraction is a failure, never a success.
+         */
+        internal fun installFromArchive(
+            archive: File,
+            installDir: File,
+            binaryName: String,
+        ): Result<File> =
+            runCatching {
+                val stripComponents = if (archive.name.lowercase().endsWith(".zip")) 0 else 1
+                extractArchive(archive, installDir, stripComponents = stripComponents)
+                val binary = File(installDir, binaryName)
+                check(binary.isFile) { "${archive.name} did not contain $binaryName" }
+                if (!binaryName.endsWith(".exe")) binary.setExecutable(true)
+                binary
+            }
     }
 
     /**
@@ -138,15 +158,7 @@ class UV {
 
             val tempFile = File(downloadResult.filePath)
             try {
-                // Extract the archive
-                extractArchive(tempFile, installDir, stripComponents = 1)
-
-                // Make binary executable on Unix systems
-                val uvBinary = getUVBinaryPath()
-                if (!System.getProperty("os.name").lowercase().contains("windows")) {
-                    uvBinary.setExecutable(true)
-                }
-
+                val uvBinary = installFromArchive(tempFile, installDir, getUVBinaryPath().name).getOrThrow()
                 println("UV v$UV_VERSION installed successfully to: ${uvBinary.absolutePath}")
             } finally {
                 tempFile.delete()
