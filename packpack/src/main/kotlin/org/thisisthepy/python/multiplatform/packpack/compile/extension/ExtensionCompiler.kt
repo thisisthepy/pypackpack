@@ -3,9 +3,10 @@ package org.thisisthepy.python.multiplatform.packpack.compile.extension
 import java.io.File
 
 /*
- * The compile slot behind the `native` and `mixed` build levels: C sources that a consumer generated
+ * The compile slot behind the `native` build level: C sources that a consumer generated
  * (TypedPython, from its own typed IR) in, CPython extension modules for one target out, built with
- * that target's C toolchain.
+ * that target's C toolchain. (`mixed` ships the developer's modules as bytecode and does not call
+ * it; `docs/design/compile-slot.md` section 4.)
  *
  * Interface and data types only -- nothing implements [ExtensionCompilerInterface] yet, and no
  * caller reaches it. The design, the level semantics and the open questions are in this
@@ -79,10 +80,16 @@ data class ExtensionModuleSource(
  * shared-object link mode, `libpython` where the target links it).
  * These flags are appended after the defaults and so win over them.
  *
+ * Floating-point flags are semantics, not tuning: every build passes `-ffp-contract=off
+ * -fno-fast-math`, so results match CPython's bit for bit (clang contracts multiply-add by default),
+ * and no build type ever adds fast-math or contraction. A consumer that wants otherwise says so in
+ * [cFlags], which still come last.
+ *
  * @param includeDirs header directories for every module (for example a consumer's runtime
  *   headers), after [ExtensionCompileRequest.includeDir].
- * @param cFlags raw C compiler flags, passed verbatim. They are toolchain-specific; see the design
- *   note's open questions.
+ * @param cFlags raw clang/gcc flags, passed verbatim. Another toolchain (`clang-cl`, later) does not
+ *   receive them verbatim: its adapter maps the floating-point semantics itself (`/fp:precise`,
+ *   contraction off).
  * @param defines preprocessor macros; a `null` value defines the name without a value.
  * @param linkFlags raw linker flags, passed verbatim.
  */
@@ -102,9 +109,13 @@ data class ExtensionCompileOptions(
  *   (`PY_VERSION`, `Py_GIL_DISABLED`).
  * @param buildType `debug` / `release`, as in `BundleRequest.buildType`.
  * @param workingDir the ppp package directory (the one holding `pyproject.toml`); the base for
- *   relative paths in diagnostics.
- * @param buildDir intermediates the slot owns: object files and a per-module cache. Kept between
- *   runs; the caller keys it by target and ABI.
+ *   relative paths in diagnostics and for `-ffile-prefix-map=<workingDir>=.`, so no build path ends
+ *   up in the binary.
+ * @param buildDir intermediates the slot owns: object files and its cache, kept between runs. A
+ *   translation unit is recompiled unless its key is unchanged: the SHA-256 of the `.c` and of every
+ *   header its depfile (`-MMD`) lists, the full flag list, the compiler's identity and version, the
+ *   target, [minSdk] and [pythonAbi]. The caller keys the directory by target, ABI tag and build
+ *   type. (TypedPython keeps its own source-to-C cache; the request carries no cache field.)
  * @param outputDir where the results go, shaped like the bundle's `python/` root
  *   (`<outputDir>/app/physics/nbody<EXT_SUFFIX>`). Must be absent or empty.
  * @param includeDir the directory that directly contains `Python.h` for [target] and [pythonAbi]

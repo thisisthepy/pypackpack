@@ -666,10 +666,19 @@ Not yet implemented (target) — Status: planned
     with `compileall -b` (sibling `foo.pyc`, not `__pycache__/`) by the interpreter in the nearest
     `<project>/.venv`; `debug` keeps the `.py` beside the `.pyc`, `release` keeps only the `.pyc`.
     `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
-- `native`: Converts Python/native source into a native artifact.
+- `native`: native code where it exists. The developer's modules become CPython extensions built
+  from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`).
+  A developer module without C is allowed as an exception: it ships as bytecode, and the build
+  warns, naming the module and the reason. C that fails to compile fails the build. Libraries ship
+  their prebuilt native wheels.
   - Status: planned — every bundler rejects it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet`).
-- `mixed`: Converts only some modules to native, keeping the rest as source or bytecode.
+- `mixed`: bytecode for the developer's code, native code for libraries. The developer's modules ship
+  as bytecode and TypedPython's C is not applied; libraries ship their prebuilt native wheels.
   - Status: planned — every bundler rejects it.
+
+The two levels' meaning is the user's (2026-10-03), reading `toolchain`'s user-authored
+`(플러그인예시)build.gradle.kts`, which is specification (`AGENTS.md` rule 6):
+`compileLevel = "native"  // (native code only) or "mixed" (byte code (개발자 코드) + native code (라이브러리))`.
 
 The level is chosen per bundle request (`BundleRequest.buildLevel`) and names the output directory
 `<package>/build/packpack/<bundle type>/<build type>/<build level>`. `pypackpack build --level` does
