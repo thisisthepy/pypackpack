@@ -85,17 +85,16 @@ need patches to build), `pip-central` (a closed-source service distributing them
 
 ## 4. Open questions for the maintainer
 
-1. **Python versions.** `python install` accepts only 3.13, "due to python-multiplatform
-   limitations". Is 3.13 the only version pypackpack intends to support for now, or is the
-   restriction expected to follow python-multiplatform?
-2. **WASM.** The README lists WASM as a target with no architecture, and `Platforms.kt` accepts
-   `wasm32-pyodide2024` (family `wasm`), but `python install` has no WASM distribution and nothing
-   compiles for it. Is it in scope for the first release?
-3. **`build` and `bundle`.** The SPEC defines `build` as the stage that coordinates dependency
-   verification, compile and bundle, but bundling has no CLI command and `build` does not call it.
-   Should `build` take a bundle type, or should `bundle` become its own command?
-4. **Deploy destinations.** "Need to specify the target deploy server (PyPI or FastTrack)" is still
-   open in the SPEC.
+1. ~~**Python versions.**~~ **Answered (2026-10-04):** CPython 3.15 and later, free-threaded only
+   (python-multiplatform #158: the free-threaded build is the default and the only build, there is
+   no GIL build option; the base is 3.15t, with PEP 803's `abi3t`).
+2. ~~**WASM.**~~ **Answered (2026-10-04):** in the first release's scope.
+3. ~~**`build` and `bundle`.**~~ **Answered by the maintainer's spec sheet** (`spec.md`, 686b1ad,
+   2025-05-04; `docs/spec_ko.md` until 27b1eb3): `build` is the orchestration stage and takes the
+   bundle as an argument (`pypackpack build <package> source [<bundle type>] …`,
+   `pypackpack build <package> resource …`). There is no separate `bundle` command.
+4. ~~**Deploy destinations.**~~ **Not a choice (2026-10-04):** the destination follows the artefact.
+   Libraries go to PyPI, apps to FastTrack.
 5. ~~**The Python wrapper.** Is distributing `pypackpack` through PyPI intended?~~ **Answered
    (2026-10-03):** yes. The wheel carries the native binary per platform; see `docs/SPEC.md`,
    *Distribution through PyPI*.
