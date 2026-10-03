@@ -106,5 +106,5 @@ bash tools/release/test-sync-release.sh   # release 동기화 스크립트 테�
    `build` 쪽에서 정규화할 것인가.
 5. `deploy` 대상 서버 (PyPI 또는 FastTrack).
 6. 루트 `pyproject.toml` 이 가리키는 Python 래퍼 패키지(빈 파일 두 개)로 PyPI 배포를 할 것인가.
-7. `README.md` 의 배지(Build 워크플로, JetBrains Marketplace `MARKETPLACE_ID`)와
-   `scripts/build-native.sh` 는 이 저장소에 없는 것을 가리킨다. 정리할 것인가.
+7. ~~`README.md` 의 배지와 `scripts/build-native.sh` 가 없는 것을 가리킨다.~~ **해결 (2026-10-03, #58):**
+   README 를 SPEC 과 가이드 기준으로 다시 썼다 (PyPI 페이지가 된다).

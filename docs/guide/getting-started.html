@@ -65,7 +65,7 @@ ppp target add aarch64-linux-android arm64-apple-ios</code></pre>
 <h2><span data-lang="en">4. Dependencies per target</span><span data-lang="ko">4. 타깃별 의존성</span></h2>
 <pre><code class="language-shell">ppp core add requests                         # one marker per target in the package&#x27;s platforms
 ppp core add six --target arm64-apple-ios     # only for that target
-ppp core sync                                 # → packages/core/build/crossenv/&lt;triple&gt;/
+ppp core sync --target aarch64-linux-android arm64-apple-ios   # → packages/core/build/crossenv/&lt;triple&gt;/
 ppp core tree --target arm64-apple-ios</code></pre>
 </section>
 
