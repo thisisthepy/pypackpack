@@ -60,7 +60,7 @@ build caches, model weights, `node_modules`) into every worktree is how 86 workt
 | `feat/<topic>` | You. All work happens here. Never name a branch `work/...`. |
 | `develop` | Merged into from `feat/` branches after verification. Never commit to it directly. |
 | `release` | **CI only.** Not a standing branch: CI regenerates it from every push to `develop`, in the main-only file layout, and opens the PR into `main`. It may not exist. Never write to it. |
-| `main` | **Pull request from `release` only.** Never push or merge to it directly. |
+| `main` | **Pull request from `release` only.** Never push or merge to it directly. Repository settings enforce it (PR required, only administrators merge; `tools/release/protect-main.sh`); no workflow checks the source branch, so the maintainer checks that the PR's head is `release` before merging (decision 2026-10-03). |
 
 Only `main`, `develop` and `release` are standing branches. A `feat/` branch lives until its pull
 request merges: merge with `gh pr merge --delete-branch`, then delete the local branch and its
