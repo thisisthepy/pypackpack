@@ -13,6 +13,10 @@ import kotlin.test.assertTrue
  */
 class PythonDistributionsTest {
     private val pbs = "https://github.com/astral-sh/python-build-standalone/releases/download/20260807"
+    private val pbs315 = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013"
+    private val pyorg315 = "https://www.python.org/ftp/python/3.15.0"
+    private val ios315 = "$pyorg315/python-3.15.0-iOS-XCframework.tar.gz"
+    private val ios315Sha = "68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19"
     private val pm = "https://github.com/thisisthepy/python-multiplatform/raw/release/binary"
     private val ios314 = "https://github.com/beeware/Python-Apple-support/releases/download/3.14-b11/Python-3.14-iOS-support.b11.tar.gz"
     private val ios314Sha = "b591f3301bd22a4f423c49c746cac9e55558b909fd14d6eb8327ccc62234ab7b"
@@ -47,6 +51,51 @@ class PythonDistributionsTest {
             "3.14.7/arm64-apple-ios" to (ios314 to ios314Sha),
             "3.14.7/arm64-apple-ios-simulator" to (ios314 to ios314Sha),
             "3.14.7/x86_64-apple-ios-simulator" to (ios314 to ios314Sha),
+            "3.15.0/aarch64-apple-darwin" to
+                ("$pbs315/cpython-3.15.0+20261013-aarch64-apple-darwin-install_only.tar.gz" to
+                    "f5d1d82e2f5660d4decae5d2b7470631850bcd7bd39595d9c3cca3c5ee54eae7"),
+            "3.15.0t/aarch64-apple-darwin" to
+                ("$pbs315/cpython-3.15.0+20261013-aarch64-apple-darwin-freethreaded-install_only.tar.gz" to
+                    "9b982a1644405461bb0c96efecff18538e259c3ac253056f25a423fdce8fc069"),
+            "3.15.0/x86_64-apple-darwin" to
+                ("$pbs315/cpython-3.15.0+20261013-x86_64-apple-darwin-install_only.tar.gz" to
+                    "c4adbda246262a55920ec0804f5a6a9a3a1e5948f3423da71926320b2489e50e"),
+            "3.15.0t/x86_64-apple-darwin" to
+                ("$pbs315/cpython-3.15.0+20261013-x86_64-apple-darwin-freethreaded-install_only.tar.gz" to
+                    "40c0033260b35a88365dad616d22bfbf182e894de866271b0b290e3c87e7468b"),
+            "3.15.0/x86_64-unknown-linux-gnu" to
+                ("$pbs315/cpython-3.15.0+20261013-x86_64-unknown-linux-gnu-install_only.tar.gz" to
+                    "e02a368dd5dc76ffe0599e5109ad6c1ee84e597910758b0e006bab25372a8921"),
+            "3.15.0t/x86_64-unknown-linux-gnu" to
+                ("$pbs315/cpython-3.15.0+20261013-x86_64-unknown-linux-gnu-freethreaded-install_only.tar.gz" to
+                    "f8bf1b9cfe976fc415f656b3ae42a179e32ba3c7f34fa254ac0217948c43b34a"),
+            "3.15.0/x86_64-pc-windows-msvc" to
+                ("$pbs315/cpython-3.15.0+20261013-x86_64-pc-windows-msvc-install_only.tar.gz" to
+                    "0d9950ba8c6399203e60ed6a2452fc4e8def35c83fb6da00ec815784b7887483"),
+            "3.15.0t/x86_64-pc-windows-msvc" to
+                ("$pbs315/cpython-3.15.0+20261013-x86_64-pc-windows-msvc-freethreaded-install_only.tar.gz" to
+                    "3fd540d407f34dfcec3c51db57b84e35264cda209be0c4d43e113e4e67d0bbb5"),
+            "3.15.0/aarch64-unknown-linux-gnu" to
+                ("$pbs315/cpython-3.15.0+20261013-aarch64-unknown-linux-gnu-install_only.tar.gz" to
+                    "26a54e8fbde81bcc39ba35ad855a6a573295c023793c20fff1670a560649bcd7"),
+            "3.15.0t/aarch64-unknown-linux-gnu" to
+                ("$pbs315/cpython-3.15.0+20261013-aarch64-unknown-linux-gnu-freethreaded-install_only.tar.gz" to
+                    "05717335ecaa89b0dac64833c9c7c61a70e6db291e0a2c7ca707c80bfa20b0f5"),
+            "3.15.0/aarch64-pc-windows-msvc" to
+                ("$pbs315/cpython-3.15.0+20261013-aarch64-pc-windows-msvc-install_only.tar.gz" to
+                    "588a4d0817d74fd632c235868a8218f63baee4ce40126ebe16b5e1826a1b86ba"),
+            "3.15.0t/aarch64-pc-windows-msvc" to
+                ("$pbs315/cpython-3.15.0+20261013-aarch64-pc-windows-msvc-freethreaded-install_only.tar.gz" to
+                    "53cbedb81dce9885273da9117f2652a7b1cf31afe1b63cbb11f01971658c8d85"),
+            "3.15.0/aarch64-linux-android" to
+                ("$pyorg315/python-3.15.0-aarch64-linux-android.tar.gz" to
+                    "571e4cf4e0aee3d1ab54a52ca3d4e6845b85ec0bb327f7debfb873172f445dab"),
+            "3.15.0/x86_64-linux-android" to
+                ("$pyorg315/python-3.15.0-x86_64-linux-android.tar.gz" to
+                    "2413d51948d612cf42baefba25295bb83c2ed84df5726af6fe5bde2dec5d87e7"),
+            "3.15.0/arm64-apple-ios" to (ios315 to ios315Sha),
+            "3.15.0/arm64-apple-ios-simulator" to (ios315 to ios315Sha),
+            "3.15.0/x86_64-apple-ios-simulator" to (ios315 to ios315Sha),
             "3.13.0/aarch64-apple-darwin" to
                 ("$pm/cpython-3.13.0+20241008-aarch64-apple-darwin-pgo+lto-full.tar.zst" to
                     "834b674dd1430267ed3b2be6107e637ac42edc5007ef35dce0ac163a03038caf"),
@@ -134,5 +183,40 @@ class PythonDistributionsTest {
     fun minorVersionAliasesNameThePinnedPatchRelease() {
         assertEquals("3.14.7", PythonDistributions.resolve("3.14", "x86_64-linux-android").getOrThrow().version)
         assertEquals("3.13.0", PythonDistributions.resolve("3.13", "x86_64-apple-darwin").getOrThrow().version)
+    }
+
+    @Test
+    fun the315AliasesNameThePinnedPatchReleaseAndTheFreeThreadedBuild() {
+        assertEquals("3.15.0", PythonDistributions.canonicalVersion("3.15"))
+        assertEquals("3.15.0t", PythonDistributions.canonicalVersion("3.15t"))
+        assertEquals("3.15.0", PythonDistributions.resolve("3.15", "aarch64-apple-darwin").getOrThrow().version)
+        val ft = PythonDistributions.resolve("3.15t", "x86_64-unknown-linux-gnu").getOrThrow()
+        assertEquals("3.15.0t", ft.version)
+        assertTrue("-freethreaded-install_only.tar.gz" in ft.url, ft.url)
+        val gil = PythonDistributions.resolve("3.15", "x86_64-unknown-linux-gnu").getOrThrow()
+        assertTrue("-freethreaded" !in gil.url, gil.url)
+    }
+
+    @Test
+    fun the315DesktopTargetsHaveBothBuildsAndTheMobileTargetsHaveOnlyTheGilBuild() {
+        val desktop =
+            listOf(
+                "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu",
+                "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc",
+            )
+        for (target in desktop) {
+            assertTrue(PythonDistributions.resolve("3.15", target).isSuccess, target)
+            assertTrue(PythonDistributions.resolve("3.15t", target).isSuccess, target)
+        }
+        val mobile = listOf("aarch64-linux-android", "x86_64-linux-android", "arm64-apple-ios", "arm64-apple-ios-simulator", "x86_64-apple-ios-simulator")
+        for (target in mobile) {
+            assertTrue(PythonDistributions.resolve("3.15", target).isSuccess, target)
+            assertTrue(PythonDistributions.resolve("3.15t", target).isFailure, target)
+        }
+    }
+
+    @Test
+    fun theFourteenSevenRowsAreKept() {
+        assertTrue(PythonDistributions.ALL.count { it.version == "3.14.7" } == 11)
     }
 }

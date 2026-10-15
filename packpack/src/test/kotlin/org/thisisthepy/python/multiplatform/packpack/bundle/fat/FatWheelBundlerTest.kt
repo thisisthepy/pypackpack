@@ -342,4 +342,16 @@ class FatWheelBundlerTest {
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("definitely-not-a-target"))
     }
+
+    @Test
+    fun bundle_freeThreadedTargetProducesATTaggedWheel() {
+        workspacePyproject(listOf("core"))
+        val core = packageDir("core", "core")
+        writeDestdir(core, "core/__init__.py")
+
+        val result = bundler().bundle(BundleRequest(packageDir = core, target = "macos", pythonVersion = "3.15t")).getOrThrow()
+
+        assertTrue(result.artifactFile!!.name.contains("-cp315-cp315t-"), result.artifactFile!!.name)
+        assertTrue(zipEntryText(result.artifactFile!!, "core-0.1.0.dist-info/WHEEL").contains("Tag: cp315-cp315t-"))
+    }
 }

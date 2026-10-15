@@ -116,7 +116,7 @@ class SingleWheelBundlerTest {
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
 
         // PEP 427 filename escaping: runs of -_. -> _, uppercase -> lowercase, for the *name* component.
-        assertEquals("my_core-1.2.3-cp313-cp313-macosx_11_0_arm64.whl", result.artifactFile!!.name)
+        assertEquals("my_core-1.2.3-cp315-cp315t-macosx_11_0_arm64.whl", result.artifactFile!!.name)
     }
 
     @Test
@@ -220,7 +220,7 @@ class SingleWheelBundlerTest {
         val wheel = zipEntryText(result.artifactFile!!, "core-0.1.0.dist-info/WHEEL")
 
         assertTrue(wheel.contains("Wheel-Version:"), wheel)
-        assertTrue(wheel.contains("Tag: cp313-cp313-macosx_11_0_arm64"), wheel)
+        assertTrue(wheel.contains("Tag: cp315-cp315t-macosx_11_0_arm64"), wheel)
         assertTrue(wheel.contains("Root-Is-Purelib: false"), wheel)
     }
 
@@ -433,5 +433,35 @@ class SingleWheelBundlerTest {
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("macos"), result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun bundle_tagsFollowTheTargetInterpreterVersionAndBuild() {
+        val expected =
+            mapOf(
+                null to "cp315-cp315t",
+                "3.15t" to "cp315-cp315t",
+                "3.15.0" to "cp315-cp315",
+                "3.14.7" to "cp314-cp314",
+            )
+        for ((version, tags) in expected) {
+            val pkg = packageDir(name = "core", version = "0.1.0")
+            writeDestdir(pkg, "core/__init__.py")
+            val result =
+                bundler()
+                    .bundle(BundleRequest(packageDir = pkg, target = "macos", pythonVersion = version, overwrite = true))
+                    .getOrThrow()
+            assertEquals("core-0.1.0-$tags-macosx_11_0_arm64.whl", result.artifactFile!!.name, "pythonVersion=$version")
+            assertTrue(zipEntryText(result.artifactFile!!, "core-0.1.0.dist-info/WHEEL").contains("Tag: $tags-macosx_11_0_arm64"))
+        }
+    }
+
+    @Test
+    fun bundle_refusesAnUnparsablePythonVersion() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py")
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", pythonVersion = "latest"))
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("latest"))
     }
 }

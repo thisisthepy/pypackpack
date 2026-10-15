@@ -40,9 +40,9 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 
 - Python: CPython 3.15 and later, free-threaded only (python-multiplatform #158: the free-threaded
-  build is the default and the only one; the base is 3.15t). Today `python install` offers 3.14.7
-  and 3.13.0 (GIL builds) and `SingleWheelBundler` writes `cp313` tags; both are to be brought in
-  line (#70).
+  build is the default and the only one; the base is 3.15t). `python install` offers 3.15.0 (GIL and
+  free-threaded `3.15.0t`) beside 3.14.7 and 3.13.0 (GIL builds, kept until #70 retires them), and the
+  wheel bundlers derive their tags from the target interpreter (see *Wheel tags*).
 - Extension modules are free-threaded by default (planned):
   - Builds target PEP 803's `abi3t`, so one extension serves every free-threaded 3.15+ runtime.
     This covers the compile slot (#19, #60), Meson's `py.extension_module()` and the wheel tags.
@@ -404,12 +404,19 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 `installPython_returnsFailureForUnsupportedTargetPlatform`).
 
 - The installable versions are the ones `toolchain` can ask for (`PY3_14_7`, `PY3_13_0` in `toolchain`'s
-  `dsl/DSLCore.kt`). `3.14` and `3.13` are accepted as shorthands for `3.14.7` and `3.13.0`.
+  `dsl/DSLCore.kt`) plus 3.15.0. `3.15`, `3.14` and `3.13` are accepted as shorthands for `3.15.0`,
+  `3.14.7` and `3.13.0`; `3.15t` is the shorthand for `3.15.0t`, the free-threaded build (abi3t, PEP 803),
+  which is a separate version name because one target triple has a GIL archive and a free-threaded one.
+  `3.15.0t` is offered for the desktop targets only; the python.org Android and iOS builds are GIL builds.
 - Every (version, canonical target) pair maps to one archive URL and one pinned SHA-256 in
   `dependency/backend/PythonDistributions.kt`, which cites where each digest came from:
 
 | Version | Targets | Source | Digest provenance |
 |---|---|---|---|
+| 3.15.0 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | python-build-standalone `20261013`, `cpython-3.15.0+20261013-<triple>-install_only.tar.gz` | `shasum -a 256` of the download, equal to the release's `SHA256SUMS` |
+| 3.15.0t | the same six desktop targets | same release, `...-<triple>-freethreaded-install_only.tar.gz` | same |
+| 3.15.0 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.15.0-<arch>-linux-android.tar.gz` | `shasum -a 256` of the download (python.org publishes no checksum file) |
+| 3.15.0 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | python.org `python-3.15.0-iOS-XCframework.tar.gz` (one XCframework for all three) | `shasum -a 256` of the download |
 | 3.14.7 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-build-standalone `20260807`, `install_only.tar.gz` | python-multiplatform's `python-checksums.properties`, equal to the release's `SHA256SUMS` |
 | 3.14.7 | `aarch64-unknown-linux-gnu`, `aarch64-pc-windows-msvc` | same | the release's `SHA256SUMS` only |
 | 3.14.7 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.14.7-<arch>-linux-android.tar.gz` | python-multiplatform's lockfile (python.org publishes no checksum file) |
@@ -424,8 +431,22 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 
 Limitation
 
-- Free-threaded builds and Sigstore verification (both available in python-multiplatform's build) are
-  not offered here.
+- Sigstore verification (available in python-multiplatform's build) is not offered here. Free-threaded
+  builds are offered for 3.15.0 on desktop targets only (`3.15.0t`).
+
+##### Wheel tags
+
+Status: implemented. `packpack/.../bundle/PythonTagsTest.kt` (the mapping), and the `single`, `fat` and
+`patch` bundler tests (`bundle_tagsFollowTheTargetInterpreterVersionAndBuild` and its siblings).
+
+- `BundleRequest.pythonVersion` names the target interpreter: `X.Y` or `X.Y.Z`, with a trailing `t` for
+  the free-threaded build (`3.15`, `3.15.0`, `3.15t`, `3.15.0t`). Anything else fails the bundle.
+- The `single`, `fat` and `patch` bundlers write `cpXY`/`cpXY` for a GIL build and `cpXYt`/`cpXYt` for a
+  free-threaded one (`3.15t` gives `cp315-cp315t`) in the wheel file name, the `WHEEL` file's `Tag:`
+  line and the patch archive name. No version means the ecosystem interpreter, free-threaded 3.15
+  (`cp315t`). The old fixed `cp313` tag is gone.
+- The tags are the interpreter's own, not `abi3`/`abi3t`: extensions are still compiled against the full
+  C API, so a stable-ABI tag would be a false promise until the compile slot targets `abi3t` (#19, #60).
 
 ##### Digest verification and placement
 

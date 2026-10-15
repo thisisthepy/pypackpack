@@ -4,6 +4,7 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
+import org.thisisthepy.python.multiplatform.packpack.bundle.PythonTags
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
@@ -54,7 +55,7 @@ import java.util.zip.ZipOutputStream
  *
  * Once the payload (own package files plus each vendored sibling's files, merged by relative path)
  * is assembled, this class is deliberately identical to [SingleWheelBundler][org.thisisthepy.python.multiplatform.packpack.bundle.single.SingleWheelBundler]:
- * same destdir-lookup algorithm (per package), same `cp313`/`cp313` tag pinning, same per-family
+ * same destdir-lookup algorithm (per package), same tag derivation from the target interpreter (`PythonTags`), same per-family
  * platform tag scheme (PEP 425/600/656/730/738), same METADATA/WHEEL/RECORD shape, same determinism
  * (sorted entries, fixed 1980-01-01 zip timestamp), same `instant`-only build level restriction (for
  * the same reason: the compile stage does not yet select build levels). That logic is duplicated
@@ -75,8 +76,6 @@ class FatWheelBundler : BundlerInterface {
     private companion object {
         const val SUPPORTED_BUILD_LEVEL = "instant"
         const val SITE_PACKAGES_DIR_NAME = "site-packages"
-        const val PYTHON_TAG = "cp313"
-        const val ABI_TAG = "cp313"
         const val METADATA_VERSION = "2.1"
         const val WHEEL_VERSION = "1.0"
         const val GENERATOR = "pypackpack 0.1.0"
@@ -126,8 +125,9 @@ class FatWheelBundler : BundlerInterface {
 
             val escapedName = packageName.wheelEscaped()
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
+            val tags = PythonTags.of(request.pythonVersion)
             val distInfoDir = "$escapedName-$version.dist-info"
-            val wheelFileName = "$escapedName-$version-$PYTHON_TAG-$ABI_TAG-$platformTag.whl"
+            val wheelFileName = "$escapedName-$version-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl"
             val rootIsPurelib = payload.keys.none { it.substringAfterLast('.', "") in NATIVE_EXTENSION_EXTENSIONS }
 
             val outputDir = resolveOutputDir(request, packageDir)
@@ -141,6 +141,7 @@ class FatWheelBundler : BundlerInterface {
                 packageName = packageName,
                 version = version,
                 platformTag = platformTag,
+                tags = tags,
                 rootIsPurelib = rootIsPurelib,
             )
 
@@ -510,10 +511,11 @@ class FatWheelBundler : BundlerInterface {
         packageName: String,
         version: String,
         platformTag: String,
+        tags: PythonTags,
         rootIsPurelib: Boolean,
     ) {
         val metadata = renderMetadata(packageName, version)
-        val wheelFile = renderWheelFile(platformTag, rootIsPurelib)
+        val wheelFile = renderWheelFile(platformTag, tags, rootIsPurelib)
 
         val recordRows = mutableListOf<Triple<String, String, Long>>()
 
@@ -572,13 +574,14 @@ class FatWheelBundler : BundlerInterface {
 
     private fun renderWheelFile(
         platformTag: String,
+        tags: PythonTags,
         rootIsPurelib: Boolean,
     ): String =
         buildString {
             appendLine("Wheel-Version: $WHEEL_VERSION")
             appendLine("Generator: $GENERATOR")
             appendLine("Root-Is-Purelib: ${if (rootIsPurelib) "true" else "false"}")
-            appendLine("Tag: $PYTHON_TAG-$ABI_TAG-$platformTag")
+            appendLine("Tag: ${tags.pythonTag}-${tags.abiTag}-$platformTag")
         }
 
     private fun renderRecord(

@@ -18,7 +18,8 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **구현 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
-- `python install`: 3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
+- `python install`: 3.15.0 (python-build-standalone 20261013, GIL 과 free-threaded `3.15.0t` / python.org Android, iOS XCframework),
+  3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
   와 3.13.0 (python-multiplatform `release` 브랜치 `binary/`, 데스크톱만). 모든 아카이브를
   `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치나 고정값이 없는 쌍은
   실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
@@ -99,7 +100,7 @@ CLI 26개, 실패 0 (CLI 가 아직 `:cli` 모듈이던 때). Python 테스트�
 ## 열린 질문
 
 1. ~~3.13.0 모바일 배포판의 SHA-256 고정~~ **필요 없음 (2026-10-04):** 지원 범위가 CPython 3.15 이상,
-   free-threaded 전용이다 (python-multiplatform #158, 기준 3.15t, PEP 803 `abi3t`). 3.13.0·3.14.7 항목과 `cp313` 태그는 정리 대상이다 (#70).
+   free-threaded 전용이다 (python-multiplatform #158, 기준 3.15t, PEP 803 `abi3t`). 3.13.0·3.14.7 항목은 정리 대상이다 (#70). `cp313` 태그는 대상 인터프리터에서 유도하는 방식으로 바뀌었다 (기본 `cp315t`).
 2. ~~WASM 을 첫 릴리스 범위에 넣을 것인가~~ **결정 (2026-10-04):** 넣는다.
 3. ~~`build` 가 번들까지 할 것인가~~ **결정 (메인테이너 사양서 `spec.md`, 686b1ad):** `build` 가 번들을
    인자로 받는다 (`build <package> source [<bundle type>]`, `build <package> resource`). `bundle` 명령은 없다.
