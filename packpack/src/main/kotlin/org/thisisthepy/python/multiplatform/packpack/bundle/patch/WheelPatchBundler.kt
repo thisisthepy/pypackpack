@@ -4,6 +4,7 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
+import org.thisisthepy.python.multiplatform.packpack.bundle.PythonTags
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
@@ -81,8 +82,6 @@ class WheelPatchBundler : BundlerInterface {
     private companion object {
         const val SUPPORTED_BUILD_LEVEL = "instant"
         const val SITE_PACKAGES_DIR_NAME = "site-packages"
-        const val PYTHON_TAG = "cp313"
-        const val ABI_TAG = "cp313"
         const val PATCH_MANIFEST_FILE_NAME = "PATCH-MANIFEST"
         const val PATCH_FORMAT_VERSION = "1.0"
         const val ANDROID_MIN_SDK_FLOOR = 21
@@ -148,9 +147,10 @@ class WheelPatchBundler : BundlerInterface {
             val changedPaths = (added + modified).sorted()
 
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
+            val tags = PythonTags.of(request.pythonVersion)
             val distInfoDir = "$escapedName-$newVersion.dist-info"
             val artifactFileName =
-                "$escapedName-${baseVersion}_to_$newVersion-$PYTHON_TAG-$ABI_TAG-$platformTag.whl.patch"
+                "$escapedName-${baseVersion}_to_$newVersion-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl.patch"
 
             val outputDir = resolveOutputDir(request, packageDir)
             prepareOutputDir(outputDir, request.overwrite)

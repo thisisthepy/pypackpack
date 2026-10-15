@@ -74,6 +74,12 @@ data class BundleRequest(
      */
     val versionName: String? = null,
     val versionCode: Int? = null,
+    /**
+     * The target interpreter, which fixes the wheel's python and ABI tags (`X.Y`, `X.Y.Z`, with a
+     * trailing `t` for the free-threaded build: `3.15`, `3.15t`). `null` means the ecosystem
+     * interpreter, free-threaded 3.15 (`cp315t`). See [PythonTags].
+     */
+    val pythonVersion: String? = null,
 )
 
 /**

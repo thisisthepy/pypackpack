@@ -276,4 +276,19 @@ class WheelPatchBundlerTest {
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("definitely-not-a-target"))
     }
+
+    @Test
+    fun bundle_patchArchiveNameCarriesTheTargetInterpreterTags() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py", "v1\n".toByteArray())
+        writeBaselineSingleBundle(pkg)
+        pkg.resolve("dist").deleteRecursively()
+        writeDestdir(pkg, "core/__init__.py", "v2\n".toByteArray())
+
+        val gil = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", pythonVersion = "3.15")).getOrThrow()
+        assertTrue(gil.artifactFile!!.name.contains("-cp315-cp315-"), gil.artifactFile!!.name)
+
+        val ft = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", overwrite = true)).getOrThrow()
+        assertTrue(ft.artifactFile!!.name.contains("-cp315-cp315t-"), ft.artifactFile!!.name)
+    }
 }

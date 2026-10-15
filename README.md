@@ -39,7 +39,7 @@ per-target install directories on top.
 - 📦 **Dependencies per target.** `ppp <package> add numpy --target aarch64-linux-android` writes the
   marker uv evaluates for that target, and `sync` installs each target's wheels into
   `build/crossenv/<triple>/`.
-- 🐍 **Pinned interpreters.** `ppp python install 3.14 <target>` fetches a CPython build for the
+- 🐍 **Pinned interpreters.** `ppp python install 3.15t <target>` fetches a CPython build for the
   target and checks its SHA-256 before unpacking anything.
 - 🛠️ **C/C++ extensions.** `ppp build` generates a `meson.build` and compiles them.
 - 🧳 **Bundles.** The `resource` payload that
