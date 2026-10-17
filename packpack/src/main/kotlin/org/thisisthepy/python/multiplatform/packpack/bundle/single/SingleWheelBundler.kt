@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.single
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
@@ -242,7 +243,7 @@ class SingleWheelBundler : BundlerInterface {
             require(overwrite) {
                 "Bundle output already exists: ${outputDir.absolutePath}. Use --overwrite to replace it."
             }
-            outputDir.listFiles()?.forEach { it.deleteRecursively() }
+            outputDir.listFiles()?.forEach { it.deleteWithoutFollowingLinks() }
         }
         check(outputDir.mkdirs() || outputDir.isDirectory) {
             "Failed to create bundle output: ${outputDir.absolutePath}"

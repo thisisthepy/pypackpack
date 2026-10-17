@@ -145,6 +145,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader); also defines DownloadSpec
         - Archive.kt  # zip/tar.gz/tar.zst archive extraction (with contained symlinks and executable bits)
         - Checksum.kt  # SHA-256 of a file, and verification against a pinned digest
+        - FileTree.kt  # deleting a tree without following symbolic links out of it (#96)
         - Workspace.kt  # project/workspace root discovery, workspace member listing
         - toml
           - TomlEditor.kt  # style-preserving TOML editor (tables/arrays/values)

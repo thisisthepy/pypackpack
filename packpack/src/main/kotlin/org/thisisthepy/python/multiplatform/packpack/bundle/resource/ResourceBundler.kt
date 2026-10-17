@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.resource
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
@@ -284,7 +285,7 @@ class ResourceBundler : BundlerInterface {
             require(overwrite) {
                 "Bundle output already exists: ${outputDir.absolutePath}. Use --overwrite to replace it."
             }
-            check(outputDir.deleteRecursively()) { "Failed to clear bundle output: ${outputDir.absolutePath}" }
+            check(outputDir.deleteWithoutFollowingLinks()) { "Failed to clear bundle output: ${outputDir.absolutePath}" }
         }
         check(outputDir.mkdirs() || outputDir.isDirectory) {
             "Failed to create bundle output: ${outputDir.absolutePath}"

@@ -47,6 +47,31 @@ class DefaultBackendTest {
         }
     }
 
+    /** `--overwrite` clears the build directory without following a link out of it (#96). */
+    @Test
+    fun compile_overwriteDoesNotFollowALinkOutOfTheBuildDirectory() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[tool.uv.workspace]\nmembers = [\"src/main/core\"]\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val outside = File(this, "outside").apply { mkdirs() }
+            File(outside, "keep.txt").writeText("keep")
+            val buildDir = File(packageDir, "build/packpack/single/debug/instant/default").apply { mkdirs() }
+            java.nio.file.Files.createSymbolicLink(File(buildDir, "link").toPath(), outside.absoluteFile.toPath())
+
+            val previousDir = System.getProperty("user.dir")
+            try {
+                System.setProperty("user.dir", this.absolutePath)
+                runBlocking { DefaultBackend(RecordingMeson()).compile("core", mapOf("overwrite" to "true")) }.getOrThrow()
+            } finally {
+                System.setProperty("user.dir", previousDir)
+            }
+
+            assertEquals("keep", File(outside, "keep.txt").readText())
+        }
+    }
+
     @Test
     fun compile_passesTypeToBuildDirAndMesonOptions() {
         withWorkspace {
