@@ -18,11 +18,10 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **구현 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
-- `python install`: 3.15.0 (python-build-standalone 20261013, GIL 과 free-threaded `3.15.0t` / python.org Android, iOS XCframework),
-  3.14.7 (python-build-standalone 20260807 / python.org Android / BeeWare 3.14-b11 iOS)
-  와 3.13.0 (python-multiplatform `release` 브랜치 `binary/`, 데스크톱만). 모든 아카이브를
-  `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치나 고정값이 없는 쌍은
-  실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
+- `python install`: CPython 3.15t 만 (#72). 데스크톱은 `3.15.0t` (python-build-standalone 20261013
+  free-threaded, `3.15`·`3.15t` 가 이것을 가리킨다). Android·iOS 는 python.org 3.15.0 GIL 빌드가 임시 예외로
+  남는다 (python-multiplatform #163 의 3.15t 모바일 빌드가 나오면 교체). 3.14.7·3.13.0 은 제거했다. 모든 아카이브를
+  `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치하면 실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
   테스트 (`DefaultBackendTest`, `PythonDistributionsTest`); 실제 다운로드 테스트는 없음
 - `installPython(version, target, installDir)` (라이브러리 API, #37): 같은 고정·검증 후 주어진 디렉터리를
   통째로 교체한다(옆 스테이징에서 이름 바꾸기). `projectRoot()`(`user.dir`)·`.venv`·레지스트리는 건드리지
@@ -37,7 +36,10 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
   성공한 no-op, `null` 은 기존 동작). 가짜 러너 테스트 4개 + 네트워크 테스트 1개 (`UVBackendRealInstallTest`)
 - 번들 `resource` (`instant`, `bytecode`), `single`, `fat`, `patch` (`instant` 만)
 - CLI 도움말, 통과 플래그(`--dev`, `--extra-index-url …`) 파싱
-- `meson.build` 자동 생성, `meson`/`ninja` 자동 설치
+- `meson.build` 자동 생성, `meson`/`ninja` 자동 설치. 확장은 기본으로 `limited_api: '3.15'` (3.15t 에서 PEP 803
+  `abi3t`), `meson setup` 은 가장 가까운 `.venv` 인터프리터로 빌드한다 (#72)
+- GIL 경고 (`resource` 번들, #72): 모든 대상에서 GIL 태그 확장을 경고, 호스트에서는 3.15t `.venv` 로 확장마다
+  격리 프로세스에서 import 해 `sys._is_gil_enabled()` 확인 (30초 제한, `gilImportProbe = false` 로 끔)
 
 **부분**
 - `init`, `python use`, `package add/remove`, `target list`
@@ -100,7 +102,7 @@ CLI 26개, 실패 0 (CLI 가 아직 `:cli` 모듈이던 때). Python 테스트�
 ## 열린 질문
 
 1. ~~3.13.0 모바일 배포판의 SHA-256 고정~~ **필요 없음 (2026-10-04):** 지원 범위가 CPython 3.15 이상,
-   free-threaded 전용이다 (python-multiplatform #158, 기준 3.15t, PEP 803 `abi3t`). 3.13.0·3.14.7 항목은 정리 대상이다 (#70). `cp313` 태그는 대상 인터프리터에서 유도하는 방식으로 바뀌었다 (기본 `cp315t`).
+   free-threaded 전용이다 (python-multiplatform #158, 기준 3.15t, PEP 803 `abi3t`). 3.13.0·3.14.7 항목은 제거했다 (#72). `cp313` 태그는 대상 인터프리터에서 유도하는 방식으로 바뀌었다 (기본 `cp315t`).
 2. ~~WASM 을 첫 릴리스 범위에 넣을 것인가~~ **결정 (2026-10-04):** 넣는다.
 3. ~~`build` 가 번들까지 할 것인가~~ **결정 (메인테이너 사양서 `spec.md`, 686b1ad):** `build` 가 번들을
    인자로 받는다 (`build <package> source [<bundle type>]`, `build <package> resource`). `bundle` 명령은 없다.

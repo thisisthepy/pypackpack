@@ -40,18 +40,25 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 
 - Python: CPython 3.15 and later, free-threaded only (python-multiplatform #158: the free-threaded
-  build is the default and the only one; the base is 3.15t). `python install` offers 3.15.0 (GIL and
-  free-threaded `3.15.0t`) beside 3.14.7 and 3.13.0 (GIL builds, kept until #70 retires them), and the
-  wheel bundlers derive their tags from the target interpreter (see *Wheel tags*).
-- Extension modules are free-threaded by default (planned):
+  build is the default and the only one; the base is 3.15t). `python install` offers `3.15.0t` on every
+  desktop target (see *Version and target selection*), and the wheel bundlers derive their tags from the
+  target interpreter (see *Wheel tags*).
+  - **Temporary exception:** Android and iOS install python.org's 3.15.0 GIL build, because no
+    free-threaded mobile build exists yet. It goes when python-multiplatform #163 publishes 3.15t
+    Android and iOS builds: their rows in `PythonDistributions.kt` then take that build's URL and
+    digest as `3.15.0t`, and this exception is deleted.
+- Extension modules are free-threaded by default:
   - Builds target PEP 803's `abi3t`, so one extension serves every free-threaded 3.15+ runtime.
-    This covers the compile slot (#19, #60), Meson's `py.extension_module()` and the wheel tags.
-  - The Cargo backend (#65) builds with PyO3's `gil_used = false` and `abi3t` by default.
+    Meson's `py.extension_module()`: implemented (see *Package build*). The compile slot (#19, #60):
+    planned.
+  - The Cargo backend (#65) builds with PyO3's `gil_used = false` and `abi3t` by default (planned).
   - A dependency whose extension does not declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` makes CPython
-    re-enable the GIL when it is imported. The build warns at that point, naming the module and
-    saying that it re-enables the GIL, because the app would otherwise silently run with the GIL.
-- WASM (`wasm32-pyodide2024`) is in the first release's scope. Nothing installs or compiles for it yet.
-- `build` bundles: it takes the bundle as an argument (see *Package build*). There is no `bundle`
+    re-enable the GIL when it is imported. The build warns, naming the module and saying that it
+    re-enables the GIL, because the app would otherwise silently run with the GIL. Implemented for the
+    `resource` bundle (see *GIL warning*).
+- WASM (`wasm32-pyodide2024`) is in the first release's scope. Nothing installs or compiles for it yet;
+  the target's name and tag move to our own 3.15t pthreads ABI with python-multiplatform #175 (#82).
+- `build` bundles: it takes the bundle as an argument (see *Package build*; #81). There is no `bundle`
   command.
 - Deploy destination follows the artefact: libraries go to PyPI, apps to FastTrack.
 
@@ -191,6 +198,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
       - bundle
         - BundlerInterface.kt  # factory pattern; BundleType, BundleRequest, BundleResult
         - DefaultBundler.kt  # placeholder
+        - GilCheck.kt  # build warning for extensions that run the app with the GIL
+        - PythonTags.kt  # wheel python/ABI tags from the target interpreter
         - binary
           - BinaryBundler.kt  # placeholder (refuses)
         - fat
@@ -403,36 +412,25 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 (`installPython_refusesAnUnsupportedVersionWithTheSupportedList`,
 `installPython_returnsFailureForUnsupportedTargetPlatform`).
 
-- The installable versions are the ones `toolchain` can ask for (`PY3_14_7`, `PY3_13_0` in `toolchain`'s
-  `dsl/DSLCore.kt`) plus 3.15.0. `3.15`, `3.14` and `3.13` are accepted as shorthands for `3.15.0`,
-  `3.14.7` and `3.13.0`; `3.15t` is the shorthand for `3.15.0t`, the free-threaded build (abi3t, PEP 803),
-  which is a separate version name because one target triple has a GIL archive and a free-threaded one.
-  `3.15.0t` is offered for the desktop targets only; the python.org Android and iOS builds are GIL builds.
+- The runtime is CPython 3.15t (Scope decisions). `3.15` and `3.15t` are shorthands for `3.15.0t`, the
+  free-threaded build. The GIL builds 3.14.7, 3.13.0 and 3.15.0 (desktop) are no longer offered (#72).
 - Every (version, canonical target) pair maps to one archive URL and one pinned SHA-256 in
   `dependency/backend/PythonDistributions.kt`, which cites where each digest came from:
 
 | Version | Targets | Source | Digest provenance |
 |---|---|---|---|
-| 3.15.0 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | python-build-standalone `20261013`, `cpython-3.15.0+20261013-<triple>-install_only.tar.gz` | `shasum -a 256` of the download, equal to the release's `SHA256SUMS` |
-| 3.15.0t | the same six desktop targets | same release, `...-<triple>-freethreaded-install_only.tar.gz` | same |
-| 3.15.0 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.15.0-<arch>-linux-android.tar.gz` | `shasum -a 256` of the download (python.org publishes no checksum file) |
-| 3.15.0 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | python.org `python-3.15.0-iOS-XCframework.tar.gz` (one XCframework for all three) | `shasum -a 256` of the download |
-| 3.14.7 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-build-standalone `20260807`, `install_only.tar.gz` | python-multiplatform's `python-checksums.properties`, equal to the release's `SHA256SUMS` |
-| 3.14.7 | `aarch64-unknown-linux-gnu`, `aarch64-pc-windows-msvc` | same | the release's `SHA256SUMS` only |
-| 3.14.7 | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.14.7-<arch>-linux-android.tar.gz` | python-multiplatform's lockfile (python.org publishes no checksum file) |
-| 3.14.7 | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | BeeWare Python-Apple-support `3.14-b11` (one XCframework for all three) | python-multiplatform's lockfile, equal to the GitHub release asset digest |
-| 3.13.0 | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` | python-multiplatform `release` branch `binary/` (copies of python-build-standalone `20241008` `full.tar.zst`) | python-build-standalone `20241008` `SHA256SUMS` |
+| 3.15.0t | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | python-build-standalone `20261013`, `cpython-3.15.0+20261013-<triple>-freethreaded-install_only.tar.gz` | `shasum -a 256` of the download, equal to the release's `SHA256SUMS` |
+| 3.15.0 (GIL; Scope decisions exception until python-multiplatform #163) | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.15.0-<arch>-linux-android.tar.gz` | `shasum -a 256` of the download (python.org publishes no checksum file) |
+| 3.15.0 (same exception) | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | python.org `python-3.15.0-iOS-XCframework.tar.gz` (one XCframework for all three) | `shasum -a 256` of the download |
 
 - A pair not in the table fails with `Python <version> is not available for <target>. Supported: <version/target, ...>`.
-- A pair that is known but has no pin fails closed (`... has no pinned SHA-256, so it is refused rather
-  than installed unverified`) without downloading anything. Today that is 3.13.0 for Android and iOS
-  (`binary/*.tar.xz`, `binary/*.zip`): nothing publishes their digest and computing one needs the full
-  download (a TODO in `PythonDistributions.kt`).
+  `3.15t` for a mobile target is such a pair until #163; ask for `3.15.0` there.
+- Every row carries a pin: `PythonDistribution.sha256` is not nullable, so an unpinned archive cannot be
+  added.
 
 Limitation
 
-- Sigstore verification (available in python-multiplatform's build) is not offered here. Free-threaded
-  builds are offered for 3.15.0 on desktop targets only (`3.15.0t`).
+- Sigstore verification (available in python-multiplatform's build) is not offered here.
 
 ##### Wheel tags
 
@@ -445,8 +443,9 @@ Status: implemented. `packpack/.../bundle/PythonTagsTest.kt` (the mapping), and 
   free-threaded one (`3.15t` gives `cp315-cp315t`) in the wheel file name, the `WHEEL` file's `Tag:`
   line and the patch archive name. No version means the ecosystem interpreter, free-threaded 3.15
   (`cp315t`). The old fixed `cp313` tag is gone.
-- The tags are the interpreter's own, not `abi3`/`abi3t`: extensions are still compiled against the full
-  C API, so a stable-ABI tag would be a false promise until the compile slot targets `abi3t` (#19, #60).
+- The tags are the interpreter's own, not `abi3`/`abi3t`. Meson builds `abi3t` extensions by default, but a
+  package may opt out (`-Dpython.allow_limited_api=false`) and the compile slot does not target `abi3t` yet
+  (#19, #60), so a stable-ABI tag could be a false promise. `cp315t` loads both kinds.
 
 ##### Digest verification and placement
 
@@ -676,7 +675,7 @@ not the host's.
 - `BackendInterface.installDependenciesToTarget(..., requirements: List<String>? = null)`: when `requirements` is given, those PEP 508 specifiers (markers and extras included) are passed to uv as positional arguments (`uv pip install <spec>... --target <dir> --python-platform <target>`, no shell) instead of `-r pyproject.toml`, so `workingDir` needs no `pyproject.toml`. `null` keeps `-r pyproject.toml`; an empty list is a successful no-op; a blank or `-`-leading entry fails. The missing-wheel mapping (`NoWheelForTargetException`) applies either way. Test: `UVBackendTest` (`installDependenciesToTarget_*Requirements*`) and, tagged `network`, `UVBackendRealInstallTest.installDependenciesToTarget_installsRequirementListWithoutPyproject`.
 - uv selects wheels by `--python-platform` and by the Python version, which defaults to the
   interpreter uv finds on the host, not the target runtime's. Pass `--python-version` (the runtime's,
-  e.g. `3.13`) through the extra arguments when the host's differs. A dependency with no wheel for the
+  e.g. `3.15`) through the extra arguments when the host's differs. A dependency with no wheel for the
   target is built from its sdist with the host compiler and then rejected as incompatible; pass
   `--only-binary :all:` to fail at resolution instead ("has no usable wheels").
 - `sync` sends each extra argument only to the uv commands that accept it: `--python-version` to
@@ -723,6 +722,16 @@ pypackpack build <package name> [--type <build type: default debug>] [--level <b
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--type` is passed to Meson as `--buildtype=<type>`. `--type`, `--level` and `--target` select the directories: the Meson build directory is `<package>/build/packpack/single/<type>/<level>/<target>`, and `meson install` writes to `<package>/dist/<target>/<type>/<level>` (`<target>` is `default` when `--target` is omitted).
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
+- Each `py.extension_module()` sets `limited_api: '3.15'` (so `meson.build` asks for Meson 1.3.0 or later). On a
+  free-threaded 3.15 interpreter that defines `Py_LIMITED_API` with `Py_GIL_DISABLED`, which CPython's
+  `pyabi.h` turns into PEP 803's `abi3t`: the module is `<name>.abi3t-<platform>.so`. abi3t sources must
+  export their module with PEP 793's `PyModExport_<name>` slots (`PyModuleDef_HEAD_INIT` is hidden), so a
+  package with classic sources opts out with Meson's own `-Dpython.allow_limited_api=false`. Test:
+  `MesonTest.makeMesonBuild_targetsTheStableAbiFrom315ByDefault`.
+- `meson setup` builds against the nearest `.venv` interpreter above the package (the same lookup the
+  `bytecode` level uses), passed through a native file `build/packpack/meson-python.ini`
+  (`[binaries] python = ...`). Without a `.venv`, Meson uses the interpreter it runs on itself, uv's tool
+  Python, which rejects `limited_api: '3.15'` below 3.15. Test: `MesonTest.setup_buildsAgainstTheProjectVenvInterpreter`.
 - There is no `source`/`resource` bundle-type subcommand yet; `pypackpack build <package name> resource` does not exist.
 - Planned shape, from the maintainer's spec sheet (`spec.md`, 686b1ad): `build` orchestrates
   dependency check, compile and bundle, and takes the bundle as an argument. There is no separate
@@ -815,6 +824,33 @@ Bundling is a library API: `BundlerInterface.create(BundleType.<TYPE>).bundle(Bu
   - Validates a declared `minSdk` and records it in the manifest. It does not select a CPython build by API level, because no target-aware download exists here.
   - Records `BundleRequest.versionName` / `versionCode` (the app's payload version, from toolchain's `defaultConfig`) as `"versionName"` / `"versionCode"` beside the package's own `"version"`, only when set.
   - It is the one bundle type another repository consumes: `toolchain` calls it, and the payload it writes reaches the desktop jar's root and the APK's `assets/python/`.
+
+##### GIL warning
+
+Status: implemented for `resource`. `packpack/.../bundle/GilCheckTest.kt` (tags, module names, the probe's
+process per module, timeouts and failures) and `ResourceBundlerTest.kt`
+(`bundle_warnsAboutGilTaggedExtensionsOnAnyTarget`, `bundle_probesHostExtensionsWithTheVenvInterpreterUnlessTurnedOff`).
+
+The Scope decisions' warning for dependencies that run the app with the GIL (`bundle/GilCheck.kt`). It
+never fails the bundle; the findings are `BundleResult.warnings`, for the caller to show.
+
+- Every target: an extension whose file name is tagged for a GIL CPython (`cpython-3XY-<platform>`,
+  `cp3XY-<platform>`, `abi3`) is named, with the reason that CPython 3.15t will not load it. A
+  free-threaded interpreter's import suffixes do not include those tags.
+- The host target only: `Py_mod_gil` lives in the module's data, not its name, so each free-threaded
+  extension (`cpython-3XYt-`, `cp3XYt-`, `abi3t`) is imported in its own isolated (`-I`) process of the
+  project's `.venv` interpreter, with a 30 s timeout, and `sys._is_gil_enabled()` says whether the import
+  turned the GIL on. A module that did is named as re-enabling the GIL; a timeout or a failed import is a
+  warning that names the module and says it could not be checked. If the `.venv` interpreter is missing or
+  is not free-threaded, one warning says how many extensions were not checked.
+- The import runs the package's code. `BundleRequest.gilImportProbe = false` turns the probe off; the tag
+  check still runs.
+
+Limitation
+
+- Cross targets get the tag check only: their extensions cannot be imported on the host.
+- Untagged `name.so` files are neither probed nor warned about.
+- `single`, `fat` and `patch` do not run either check yet.
 
 #### Package deployment
 
