@@ -3,7 +3,6 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendType
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
-import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.DevEnv
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
@@ -12,11 +11,11 @@ import java.time.Year
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 
 private const val PYPROJECT_FILE = "pyproject.toml"
+private const val VENV_DIR = ".venv"
 
 /** Default middleware implementation */
 class DefaultMiddleware : MiddlewareInterface {
     private lateinit var backend: BackendInterface
-    private lateinit var devEnv: DevEnv
     private lateinit var crossEnv: CrossEnv
 
     /** Initialize middleware */
@@ -25,14 +24,6 @@ class DefaultMiddleware : MiddlewareInterface {
             backend = BackendInterface.create(BackendType.UV)
             backend.initialize()
         }
-    }
-
-    private fun devEnvService(): DevEnv {
-        if (!::devEnv.isInitialized) {
-            devEnv = DevEnv()
-            devEnv.initialize(backend)
-        }
-        return devEnv
     }
 
     private fun crossEnvService(): CrossEnv {
@@ -100,7 +91,7 @@ class DefaultMiddleware : MiddlewareInterface {
         }
 
         return if (packageName.isNullOrBlank()) {
-            devEnvService().addDependencies(dependencies, extraArgs)
+            addRootDependencies(dependencies, extraArgs)
         } else {
             crossEnvService()
                 .addDependencies(packageName, dependencies, targets, extraArgs)
@@ -134,7 +125,7 @@ class DefaultMiddleware : MiddlewareInterface {
         }
 
         return if (packageName.isNullOrBlank()) {
-            devEnvService().removeDependencies(dependencies, extraArgs)
+            removeRootDependencies(dependencies, extraArgs)
         } else {
             crossEnvService()
                 .removeDependencies(packageName, dependencies, targets, extraArgs)
@@ -157,7 +148,7 @@ class DefaultMiddleware : MiddlewareInterface {
         extraArgs: Map<String, String>?,
     ): Boolean {
         if (packageName.isNullOrBlank()) {
-            return devEnvService().syncDependencies(extraArgs)
+            return syncRootDependencies(extraArgs)
         }
 
         return crossEnvService()
@@ -253,15 +244,152 @@ class DefaultMiddleware : MiddlewareInterface {
 
     override fun getToolVersion(): Result<String> = runBlocking { backend.getVersion() }
 
-    override fun changePythonVersion(pythonVersion: String): Boolean = devEnvService().changePythonVersion(pythonVersion)
+    override fun changePythonVersion(pythonVersion: String): Boolean {
+        val projectRoot =
+            findProjectRoot()
+                ?: run {
+                    println("Project root not found. Please initialize a project first.")
+                    return false
+                }
 
-    override fun listPythonVersions(): Boolean = devEnvService().listPythonVersions()
+        val venvDir = File(projectRoot, VENV_DIR)
 
-    override fun findPythonVersion(pythonVersion: String): Boolean = devEnvService().findPythonVersion(pythonVersion)
+        if (venvDir.exists()) {
+            println("Removing existing virtual environment...")
+            if (!venvDir.deleteRecursively()) {
+                println("Failed to remove existing virtual environment")
+                return false
+            }
+        }
 
-    override fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Result<String> = devEnvService().installPythonVersion(pythonVersion, targetPlatform)
+        return runBlocking {
+            backend
+                .createVirtualEnvironment(venvDir.absolutePath, pythonVersion, workingDir = projectRoot)
+                .onSuccess {
+                    backend
+                        .syncDependencies(venvDir.absolutePath, null, projectRoot)
+                        .onSuccess {
+                            println("Changed Python version to $pythonVersion")
+                            println("Dependencies synchronized successfully")
+                        }.onFailure { error ->
+                            println("Failed to synchronize dependencies: ${error.message}")
+                        }
+                }.onFailure { error ->
+                    println("Failed to change Python version to $pythonVersion: ${error.message}")
+                }.isSuccess
+        }
+    }
 
-    override fun uninstallPythonVersion(pythonVersion: String): Boolean = devEnvService().uninstallPythonVersion(pythonVersion)
+    override fun listPythonVersions(): Boolean =
+        runBlocking {
+            backend
+                .listPython()
+                .onSuccess { output ->
+                    println("Available Python versions:")
+                    println(output)
+                }.onFailure { error ->
+                    println("Failed to list Python versions: ${error.message}")
+                }.isSuccess
+        }
+
+    override fun findPythonVersion(pythonVersion: String): Boolean =
+        runBlocking {
+            backend
+                .findPython(pythonVersion)
+                .onSuccess { output ->
+                    println("Found Python version:")
+                    println(output)
+                }.onFailure { error ->
+                    println("Failed to find Python version $pythonVersion: ${error.message}")
+                }.isSuccess
+        }
+
+    override fun installPythonVersion(pythonVersion: String, targetPlatform: String?): Result<String> =
+        runBlocking {
+            val targetPlatform = targetPlatform ?: Platforms.detectHostTarget()
+
+            backend
+                .installPython(pythonVersion, targetPlatform)
+                .onSuccess {
+                    println("Installed Python version $pythonVersion")
+                }
+        }
+
+    override fun uninstallPythonVersion(pythonVersion: String): Boolean =
+        runBlocking {
+            backend
+                .uninstallPython(pythonVersion)
+                .onSuccess {
+                    println("Uninstalled Python version $pythonVersion")
+                }.onFailure { error ->
+                    println("Failed to uninstall Python version $pythonVersion: ${error.message}")
+                }.isSuccess
+        }
+
+    private fun addRootDependencies(
+        dependencies: List<String>,
+        extraArgs: Map<String, String>?,
+    ): Boolean {
+        val projectRoot =
+            findProjectRoot()
+                ?: run {
+                    println("Project root not found. Please initialize a project first.")
+                    return false
+                }
+
+        return runBlocking {
+            backend
+                .addDependencies(null, dependencies, extraArgs, projectRoot)
+                .onSuccess {
+                    println("Added dependencies: ${dependencies.joinToString(", ")}")
+                }.onFailure { error ->
+                    println("Failed to add dependencies: ${error.message}")
+                }.isSuccess
+        }
+    }
+
+    private fun removeRootDependencies(
+        dependencies: List<String>,
+        extraArgs: Map<String, String>?,
+    ): Boolean {
+        val projectRoot =
+            findProjectRoot()
+                ?: run {
+                    println("Project root not found. Please initialize a project first.")
+                    return false
+                }
+
+        return runBlocking {
+            backend
+                .removeDependencies(null, dependencies, extraArgs, projectRoot)
+                .onSuccess {
+                    println("Removed dependencies: ${dependencies.joinToString(", ")}")
+                }.onFailure { error ->
+                    println("Failed to remove dependencies: ${error.message}")
+                }.isSuccess
+        }
+    }
+
+    private fun syncRootDependencies(extraArgs: Map<String, String>?): Boolean {
+        val projectRoot =
+            findProjectRoot()
+                ?: run {
+                    println("Project root not found. Please initialize a project first.")
+                    return false
+                }
+
+        val venvDir = File(projectRoot, VENV_DIR)
+
+        return runBlocking {
+            backend
+                .syncDependencies(venvDir.absolutePath, extraArgs, projectRoot)
+                .onSuccess {
+                    println("Dependencies synchronized successfully")
+                }.onFailure { error ->
+                    println("Failed to synchronize dependencies: ${error.message}")
+                }.isSuccess
+        }
+    }
 
     private fun normalizeTreeTargets(targets: List<String>?): List<String> {
         val defaults = listOf(Platforms.detectHostTarget())
