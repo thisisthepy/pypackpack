@@ -4,6 +4,7 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
+import org.thisisthepy.python.multiplatform.packpack.bundle.GilCheck
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findVenvInterpreter
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
@@ -157,8 +158,33 @@ class ResourceBundler : BundlerInterface {
                 outputDir = outputDir,
                 manifestFile = manifestFile,
                 fileCount = entries.size,
+                warnings = gilWarnings(request, descriptor.canonicalTarget, packageDir, File(outputDir, PYTHON_ROOT), payload.keys),
             )
         }
+
+    /**
+     * [GilCheck]'s warnings: the tag check on every target; on the host, unless
+     * [BundleRequest.gilImportProbe] is off, the import probe with the project's free-threaded `.venv`
+     * interpreter. Without such an interpreter the probe cannot run, and that is a warning too.
+     */
+    private fun gilWarnings(
+        request: BundleRequest,
+        canonicalTarget: String,
+        packageDir: File,
+        pythonRoot: File,
+        paths: Collection<String>,
+    ): List<String> {
+        val tagged = GilCheck.tagWarnings(paths)
+        val modules = GilCheck.extensionModules(paths)
+        if (!request.gilImportProbe || modules.isEmpty() || canonicalTarget != Platforms.detectHostTarget()) {
+            return tagged
+        }
+        val interpreter = findVenvInterpreter(packageDir)?.takeIf { GilCheck.isFreeThreaded(it) }
+            ?: return tagged +
+                "${modules.size} extension(s) were not checked for the GIL: no free-threaded interpreter " +
+                "under a '.venv' above ${packageDir.absolutePath} (`pypackpack python install 3.15t`)."
+        return tagged + GilCheck.probeWarnings(pythonRoot, modules, interpreter)
+    }
 
     private fun resolveOutputDir(
         request: BundleRequest,
