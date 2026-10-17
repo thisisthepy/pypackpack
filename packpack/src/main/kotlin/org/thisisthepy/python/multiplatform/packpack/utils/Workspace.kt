@@ -64,3 +64,31 @@ internal fun readWorkspaceMembers(workspaceRoot: File): List<String> {
 
     return TomlEditor(workspacePyproject.readText()).getArray("tool.uv.workspace", "members")
 }
+
+/**
+ * The directory of the workspace member [packageName] (its path or its last path segment), which must stay
+ * inside [workspaceRoot] and hold a `pyproject.toml`.
+ */
+internal fun resolveWorkspacePackageDir(
+    workspaceRoot: File,
+    packageName: String,
+): File {
+    val members = readWorkspaceMembers(workspaceRoot)
+    val member =
+        members.firstOrNull { it == packageName || File(it).name == packageName }
+            ?: throw IllegalArgumentException("Package '$packageName' is not a workspace member")
+
+    val rootPath = workspaceRoot.canonicalFile.toPath()
+    val packageDir = File(workspaceRoot, member).canonicalFile
+    require(packageDir.toPath().startsWith(rootPath)) {
+        "Package path must stay within workspace: $member"
+    }
+    require(packageDir.isDirectory) {
+        "Workspace package directory not found: ${packageDir.absolutePath}"
+    }
+    require(File(packageDir, "pyproject.toml").isFile) {
+        "pyproject.toml not found for workspace package '$packageName'"
+    }
+
+    return packageDir
+}

@@ -2,7 +2,7 @@ package org.thisisthepy.python.multiplatform.packpack.compile.backend
 
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
 import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
-import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
+import org.thisisthepy.python.multiplatform.packpack.utils.resolveWorkspacePackageDir
 import java.io.File
 
 /**
@@ -43,28 +43,4 @@ class DefaultBackend(
 
             "Package '$packageName' compiled successfully."
         }
-
-    private fun resolveWorkspacePackageDir(
-        workspaceRoot: File,
-        packageName: String,
-    ): File {
-        val members = readWorkspaceMembers(workspaceRoot)
-        val member =
-            members.firstOrNull { it == packageName || File(it).name == packageName }
-                ?: throw IllegalArgumentException("Package '$packageName' is not a workspace member")
-
-        val rootPath = workspaceRoot.canonicalFile.toPath()
-        val packageDir = File(workspaceRoot, member).canonicalFile
-        require(packageDir.toPath().startsWith(rootPath)) {
-            "Package path must stay within workspace: $member"
-        }
-        require(packageDir.isDirectory) {
-            "Workspace package directory not found: ${packageDir.absolutePath}"
-        }
-        require(File(packageDir, "pyproject.toml").isFile) {
-            "pyproject.toml not found for workspace package '$packageName'"
-        }
-
-        return packageDir
-    }
 }

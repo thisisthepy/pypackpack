@@ -721,17 +721,35 @@ ppp distinguishes four stages: `build`, `compile`, `bundle`, `deploy`.
 - `build`: The upper-level orchestration stage that coordinates dependency verification, compile, and bundle.
 - `deploy`: Uploads the bundle artifact to external targets such as PyPI, FastTrack, ResourceHub, etc.
 
-Of these four stages, the `pypackpack build` CLI command only drives `compile` (via Meson); it does not perform dependency verification or invoke `bundle`. `bundle` is a library API (`BundlerInterface.create(BundleType)`) with no CLI command. `pypackpack deploy` exists, but every deploy type refuses.
+Of these four stages, the `pypackpack build` CLI command drives `compile` (via Meson) and, given a bundle kind, `bundle` (see *Package build*); it does not perform dependency verification. `bundle` is also a library API (`BundlerInterface.create(BundleType)`); there is no separate `bundle` command. `pypackpack deploy` exists, but every deploy type refuses.
 
 #### Package build
 
 Status: partial. `packpack/.../compile/backend/external/MesonTest.kt` (meson.build generation,
-meson/ninja auto-install) and `packpack/.../compile/backend/DefaultBackendTest.kt` (build and install
-directories per type, level and target).
+meson/ninja auto-install), `packpack/.../compile/backend/DefaultBackendTest.kt` (build and install
+directories per type, level and target) and `packpack/.../compile/frontend/BuildCommandTest.kt` (the bundle
+forms, #81).
 
 ```bash
-pypackpack build <package name> [--type <build type: default debug>] [--level <build level: default instant>] [--target <target name>] [--overwrite]
+pypackpack build <package name> source [<bundle type: default binary>] [--type <build type: default debug>] [--level <build level: default instant>] [--target <target name>] [--overwrite]
+pypackpack build <package name> resource [--target <target name>] [--type <build type>] [--level <build level>] [--overwrite]
+pypackpack build <package name> [--type <build type>] [--level <build level>] [--target <target name>] [--overwrite]
 ```
+
+The first two are the maintainer's spec sheet's (`spec.md`, 686b1ad): `build` takes the bundle as an
+argument, and there is no `bundle` command (#81). The third, with no bundle kind, only compiles.
+
+- `source [<bundle type>]` compiles the package (below) for the canonical target triple, then bundles it
+  with `BundlerInterface.create(<bundle type>)`: `binary` (the default; it refuses, see *Bundle Type*),
+  `fat`, `single` or `patch`. A failed compile stops before the bundle.
+- `resource` bundles the package *source* with the `resource` bundler; nothing is compiled, because that
+  bundle reads source (*Bundle Type*).
+- With a bundle kind, `--target` is normalized to the canonical triple (an alias such as `macos` is
+  accepted) and defaults to this machine's; an unknown target is refused before anything runs. The
+  result line names the artifact (or, for `resource`, the output directory), and each of the bundle's
+  `warnings` (the GIL warning) is printed as `warning: ...` on standard error.
+- An unknown bundle kind, a bundle type after `resource`, or `resource` as a source bundle type is
+  refused (exit 1) before anything runs.
 
 - Auto-generates a `meson.build` for the package by scanning `src/main` (falling back to `src`, then the package root) for Python packages: `.c`/`.cc`/`.cpp`/`.cxx` files become Meson `py.extension_module()` targets and `.py`/`.pyi`/`py.typed` files become `py.install_sources()`.
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
@@ -747,22 +765,14 @@ pypackpack build <package name> [--type <build type: default debug>] [--level <b
   `bytecode` level uses), passed through a native file `build/packpack/meson-python.ini`
   (`[binaries] python = ...`). Without a `.venv`, Meson uses the interpreter it runs on itself, uv's tool
   Python, which rejects `limited_api: '3.15'` below 3.15. Test: `MesonTest.setup_buildsAgainstTheProjectVenvInterpreter`.
-- There is no `source`/`resource` bundle-type subcommand yet; `pypackpack build <package name> resource` does not exist.
-- Planned shape, from the maintainer's spec sheet (`spec.md`, 686b1ad): `build` orchestrates
-  dependency check, compile and bundle, and takes the bundle as an argument. There is no separate
-  `bundle` command.
-
-```bash
-pypackpack build <package name> source [<bundle type: default binary>] [--type <build type>] [--level <build level>] [--target <target>]
-pypackpack build <package name> resource [--target <target>]
-```
 
 Limitation
 
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
-- `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a build meant for a bundle has to be run with the canonical triple (their error message says so); `default` and aliases such as `windows` are never found.
+- Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
 - Only the Meson backend is implemented; the Clang/MSVC/NDK/XCode/Emscripten/Cargo backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so only C/C++ extension compilation works today (no Rust, no pure-Python compilation/optimization/minification).
-- `build` does not invoke the `bundle` stage; it produces compiled/installed files under `dist/`, not a `.whl`.
+- `build` does not verify dependencies first (the sheet's orchestration includes it).
+- A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 - The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
 
 Not yet implemented (target). Status: planned
@@ -858,8 +868,9 @@ not select a level (see *Package build*).
 
 #### Bundle Type
 
-Bundling is a library API: `BundlerInterface.create(BundleType.<TYPE>).bundle(BundleRequest(...))`
-(`bundle/BundlerInterface.kt`). There is no `pypackpack bundle` command.
+Bundling is a library API, `BundlerInterface.create(BundleType.<TYPE>).bundle(BundleRequest(...))`
+(`bundle/BundlerInterface.kt`), which `pypackpack build <package> source|resource` calls (*Package build*).
+There is no `pypackpack bundle` command.
 
 - `binary`: Produces a target-specific binary layout suitable for execution or embedding in an app.
   - Status: planned. `BinaryBundler` returns a failed `Result` with `NotImplementedError`

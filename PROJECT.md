@@ -35,6 +35,8 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
   `-r pyproject.toml` 대신 요구사항을 `uv pip install` 위치 인자로 그대로 전달(`pyproject.toml` 불필요, 빈 목록은
   성공한 no-op, `null` 은 기존 동작). 가짜 러너 테스트 4개 + 네트워크 테스트 1개 (`UVBackendRealInstallTest`)
 - 번들 `resource` (`instant`, `bytecode`), `single`, `fat`, `patch` (`instant` 만)
+- `build <package> source [fat|single|patch]` (컴파일 후 번들), `build <package> resource` (#81). 대상은 정규 트리플로
+  바꾸고 기본값은 이 컴퓨터. 번들 경고는 `warning: …` 으로 출력. CLI 테스트 8개 (`BuildCommandTest`)
 - CLI 도움말, 통과 플래그(`--dev`, `--extra-index-url …`) 파싱
 - `meson.build` 자동 생성, `meson`/`ninja` 자동 설치. 확장은 기본으로 `limited_api: '3.15'` (3.15t 에서 PEP 803
   `abi3t`), `meson setup` 은 가장 가까운 `.venv` 인터프리터로 빌드한다 (#72)
@@ -46,7 +48,7 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `version`: `pypackpack version` 만 동작. `--version` / `-v` / `v` 는 실패한다
 - 루트 `add/remove/sync/tree`, `<package> add/tree`: CLI 전달만 테스트, `uv` 호출은 테스트 없음
 - `build`: Meson 으로 C/C++ 만. `--level` / `--target` 은 디렉터리 이름만 바꾸고 교차 컴파일하지 않음
-- 번들은 라이브러리 API 뿐, CLI 명령 없음. `build` 가 번들을 호출하지 않음
+- `build` 가 의존성 확인을 하지 않음 (사양서의 오케스트레이션). `build <package> source` 의 기본 `binary` 번들은 미구현이라 거부
 - GraalVM 네이티브 이미지: 설정은 있으나 이를 빌드하는 테스트나 CI 가 없음
 
 **계획 (빈 파일이거나 없음)**
