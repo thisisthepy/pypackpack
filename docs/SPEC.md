@@ -31,7 +31,7 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 - Must be easy to install and use (let's not make users configure paths for Python, JVM, etc.)
   - Status: partial. `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
     installed through `uv tool install` when absent (see *CLI Version* and *Package build*).
-    `uv tool install pypackpack` is wired but nothing is uploaded yet (see *Distribution through PyPI*).
+    `uv tool install pypackpack` installs the native CLI from PyPI (0.2.0; see *Distribution through PyPI*).
 - Must be fast (build speed matters)
   - Status: planned. Nothing measures build speed today.
 
@@ -318,9 +318,11 @@ Limitation
 
 #### Distribution through PyPI
 
-Status: partial. `.github/workflows/publish-pypi.yml` builds and smoke-tests the wheels on every pull
-request that touches the publishing files. Nothing has been uploaded (PyPI still holds the old
-repository's 0.1.0, a Windows-only wheel).
+Status: implemented. 0.2.0 is on PyPI (uploaded 2026-10-03 by `.github/workflows/publish-pypi.yml` from
+the `v0.2.0` release): the four wheels below, each smoke-tested before upload. `uvx --from pypackpack==0.2.0
+pypackpack version` prints `PyPackPack version 0.2.0` (checked 2026-10-17, macOS arm64). PyPI's 0.1.0 is
+the old repository's Windows-only wheel. The workflow also builds and smoke-tests the wheels, without
+uploading, on every pull request that touches the publishing files.
 
 ```bash
 uv tool install pypackpack   # or: uvx pypackpack
