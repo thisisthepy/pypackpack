@@ -39,7 +39,7 @@ per-target install directories on top.
 - 📦 **Dependencies per target.** `ppp <package> add numpy --target aarch64-linux-android` writes the
   marker uv evaluates for that target, and `sync` installs each target's wheels into
   `build/crossenv/<triple>/`.
-- 🐍 **Pinned interpreters.** `ppp python install 3.14 <target>` fetches a CPython build for the
+- 🐍 **Pinned interpreters.** `ppp python install 3.15t <target>` fetches a CPython build for the
   target and checks its SHA-256 before unpacking anything.
 - 🛠️ **C/C++ extensions.** `ppp build` generates a `meson.build` and compiles them.
 - 🧳 **Bundles.** The `resource` payload that
@@ -80,7 +80,7 @@ alias ppp="$PWD/packpack/build/install/pypackpack/bin/pypackpack"
 ## ⚡ Quick start
 
 ```shell
-ppp init myapp --python 3.13
+ppp init myapp --python 3.15t
 cd myapp
 ppp package add packages/core
 ppp target add aarch64-linux-android arm64-apple-ios
@@ -88,7 +88,7 @@ ppp target add aarch64-linux-android arm64-apple-ios
 ppp core add requests                                     # every target of the package
 ppp core add six --target arm64-apple-ios                 # one target only
 ppp core sync --target aarch64-linux-android arm64-apple-ios \
-    --python-version 3.14 --only-binary :all:          # → packages/core/build/crossenv/<triple>/
+    --python-version 3.15 --only-binary :all:          # → packages/core/build/crossenv/<triple>/
 
 ppp build core --target aarch64-apple-darwin              # Meson; host only for now
 ```
@@ -133,7 +133,8 @@ item-by-item contract.
 | Bundles: `resource`, `single`, `fat`, `patch` | ✅ implemented |
 | Build levels: `instant` / `bytecode` | ✅ / 🟡 (`resource` only) |
 | Build levels: `native` / `mixed` | ⏳ planned; semantics decided, compile slot in draft |
-| `deploy`, code push, `binary` bundle | ⏳ planned |
+| `deploy code single\|fat` to PyPI (`uv publish`) | ✅ implemented |
+| `deploy` to FastTrack and ResourceHub, code push, `binary` bundle | ⏳ planned |
 
 ## 📖 Documentation
 

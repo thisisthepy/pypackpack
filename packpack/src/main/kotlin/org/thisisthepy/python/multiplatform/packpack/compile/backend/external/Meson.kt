@@ -3,6 +3,7 @@ package org.thisisthepy.python.multiplatform.packpack.compile.backend.external
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVBackend
+import org.thisisthepy.python.multiplatform.packpack.utils.findVenvInterpreter
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
@@ -64,7 +65,8 @@ open class Meson(
             }
             val projectDir = workingDir ?: File(System.getProperty("user.dir"))
             makeMesonBuild(projectDir.absolutePath, overwrite).getOrThrow()
-            executeCommand(listOf("setup", buildDir) + options.orEmpty(), projectDir).getOrThrow()
+            val interpreter = pythonNativeFile(projectDir)?.let { listOf("--native-file", it.path) }.orEmpty()
+            executeCommand(listOf("setup", buildDir) + interpreter + options.orEmpty(), projectDir).getOrThrow()
         }
 
     open suspend fun compile(
@@ -87,6 +89,20 @@ open class Meson(
             val actualDestdir = destdir ?: defaultDestdir
             executeCommand(listOf("install", "-C", buildDir, "--destdir=$actualDestdir") + options.orEmpty(), workingDir).getOrThrow()
         }
+
+    /**
+     * A Meson native file naming the project's `.venv` interpreter as `python`, which is what
+     * `py.find_installation()` then builds against (its headers, `EXT_SUFFIX`, free-threading).
+     * Without it Meson uses the interpreter it runs on itself (uv's tool Python). `null` when the
+     * project has no `.venv`; Meson's own interpreter is used then.
+     */
+    private fun pythonNativeFile(projectDir: File): File? {
+        val interpreter = findVenvInterpreter(projectDir) ?: return null
+        val nativeFile = File(projectDir, "build/packpack/meson-python.ini")
+        nativeFile.parentFile.mkdirs()
+        nativeFile.writeText("[binaries]\npython = ${interpreter.canonicalPath.toMesonString()}\n")
+        return nativeFile
+    }
 
     internal fun makeMesonBuild(
         projectDir: String = System.getProperty("user.dir"),
@@ -136,7 +152,8 @@ open class Meson(
                     appendLine("  ${language.toMesonString()},")
             }
             appendLine("  version: ${version.toMesonString()},")
-            appendLine("  meson_version: '>=1.0.0',")
+            // 1.3.0 is the first Meson with py.extension_module(limited_api:).
+            appendLine("  meson_version: '>=1.3.0',")
             appendLine(")")
             appendLine()
             appendLine("python = import('python')")
@@ -147,6 +164,9 @@ open class Meson(
                 appendLine("py.extension_module(")
                 appendLine("  ${extension.name.toMesonString()},")
                 appendLine("  files(${extension.path.toMesonString()}),")
+                // abi3t by default (SPEC, Scope decisions): Py_LIMITED_API on a free-threaded 3.15
+                // interpreter selects PEP 803's abi3t. Opt out with -Dpython.allow_limited_api=false.
+                appendLine("  limited_api: '3.15',")
                 appendLine("  install: true,")
                 appendLine("  subdir: ${extension.subdir.toMesonString()},")
                 appendLine(")")
@@ -188,6 +208,8 @@ open class Meson(
             .flatMap { packageDir ->
                 packageDir
                     .walkTopDown()
+                    // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
+                    .onEnter { it == packageDir || !File(it, "Cargo.toml").isFile }
                     .filter { it.isFile && it.isPythonInstallSource() }
                     .map { source ->
                         packageDir.installSubdir(source.parentFile) to project.relativePath(source)
@@ -207,6 +229,8 @@ open class Meson(
             .flatMap { packageDir ->
                 packageDir
                     .walkTopDown()
+                    // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
+                    .onEnter { it == packageDir || !File(it, "Cargo.toml").isFile }
                     .filter { it.isFile }
                     .mapNotNull { source ->
                         val language = source.extensionLanguage() ?: return@mapNotNull null

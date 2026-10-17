@@ -30,7 +30,7 @@ class PythonCommand : CliktCommand(name = "python") {
 class PythonUseCommand : CliktCommand(name = "use") {
     override fun help(context: Context) = "Switch the project to a different Python version."
 
-    val version by argument(help = "Python version (e.g., 3.13 or 3.13.1)")
+    val version by argument(help = "Python version (e.g., 3.15t or 3.15.0t)")
 
     override fun run() {
         if (!validatePythonVersion(version)) {

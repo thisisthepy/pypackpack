@@ -37,7 +37,7 @@ pypackpack 은 그 위에 타깃, 타깃별 마커, 타깃별 설치 디렉터�
   (`aarch64-linux-android`, `arm64-apple-ios`, …) 이나 몇 가지 별칭으로.
 - 📦 **타깃별 의존성.** `ppp <package> add numpy --target aarch64-linux-android` 는 uv 가 그
   타깃에서 평가하는 마커를 쓰고, `sync` 는 타깃마다 휠을 `build/crossenv/<triple>/` 에 설치합니다.
-- 🐍 **고정된 인터프리터.** `ppp python install 3.14 <target>` 은 타깃용 CPython 빌드를 받아, 풀기
+- 🐍 **고정된 인터프리터.** `ppp python install 3.15t <target>` 은 타깃용 CPython 빌드를 받아, 풀기
   전에 SHA-256 을 확인합니다.
 - 🛠️ **C/C++ 확장.** `ppp build` 가 `meson.build` 를 생성해 컴파일합니다.
 - 🧳 **번들.** [python-multiplatform](https://github.com/thisisthepy/python-multiplatform) 이
@@ -76,7 +76,7 @@ alias ppp="$PWD/packpack/build/install/pypackpack/bin/pypackpack"
 ## ⚡ 빠른 시작
 
 ```shell
-ppp init myapp --python 3.13
+ppp init myapp --python 3.15t
 cd myapp
 ppp package add packages/core
 ppp target add aarch64-linux-android arm64-apple-ios
@@ -84,7 +84,7 @@ ppp target add aarch64-linux-android arm64-apple-ios
 ppp core add requests                                     # 패키지의 모든 타깃
 ppp core add six --target arm64-apple-ios                 # 한 타깃에만
 ppp core sync --target aarch64-linux-android arm64-apple-ios \
-    --python-version 3.14 --only-binary :all:          # → packages/core/build/crossenv/<triple>/
+    --python-version 3.15 --only-binary :all:          # → packages/core/build/crossenv/<triple>/
 
 ppp build core --target aarch64-apple-darwin              # Meson. 지금은 호스트만
 ```
@@ -129,7 +129,8 @@ BundlerInterface.create(BundleType.RESOURCE).bundle(
 | 번들: `resource`, `single`, `fat`, `patch` | ✅ 구현 |
 | 빌드 레벨: `instant` / `bytecode` | ✅ / 🟡 (`resource` 만) |
 | 빌드 레벨: `native` / `mixed` | ⏳ 계획. 의미는 결정됨, 컴파일 슬롯은 초안 |
-| `deploy`, 코드 푸시, `binary` 번들 | ⏳ 계획 |
+| PyPI 로의 `deploy code single\|fat` (`uv publish`) | ✅ 구현 |
+| FastTrack·ResourceHub 로의 `deploy`, 코드 푸시, `binary` 번들 | ⏳ 계획 |
 
 ## 📖 문서
 

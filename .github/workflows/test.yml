@@ -4,16 +4,17 @@ name: Test
 # its own job (AGENTS.md section 8: one invocation can hide an ordering
 # dependency). Results are counted from the JUnit XML, not from the log.
 on:
-  pull_request:
+  # Checked on develop after merging, not on every pull request (user decision,
+  # 2026-10-17). A red develop is fixed forward by its own pull request.
   push:
     branches: [develop]
-
+  workflow_dispatch:
 permissions:
   contents: read
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   test:
