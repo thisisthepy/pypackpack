@@ -252,6 +252,20 @@ class ResourceBundlerTest {
         assertTrue(result.manifestFile.readText().contains("\"path\": \"python/core/api.pyi\""))
     }
 
+    /** A crate directory inside a package is Rust source for the Cargo backend, not payload (#92). */
+    @Test
+    fun bundle_leavesRustCrateDirectoriesOutOfThePayload() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        write(pkg, "src/main/core/_fast/Cargo.toml", "[package]\nname = \"fast\"\n")
+        write(pkg, "src/main/core/_fast/src/lib.rs", "// rust\n")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+
+        assertTrue(File(result.outputDir, "python/core/__init__.py").isFile)
+        assertFalse(File(result.outputDir, "python/core/_fast").exists())
+    }
+
     /** SPEC Scope decisions (#72): a GIL-tagged dependency extension is a build warning, not a failure. */
     @Test
     fun bundle_warnsAboutGilTaggedExtensionsOnAnyTarget() {

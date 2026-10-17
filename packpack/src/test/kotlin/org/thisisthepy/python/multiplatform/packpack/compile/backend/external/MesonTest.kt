@@ -253,6 +253,25 @@ class MesonTest {
         }
     }
 
+    /** A crate directory (`Cargo.toml`) inside a package is the Cargo backend's: Meson scans none of it (#92). */
+    @Test
+    fun makeMesonBuild_skipsRustCrateDirectories() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "_fast").mkdirs()
+            File(packageDir, "_fast/Cargo.toml").writeText("[package]\nname = \"fast\"\n")
+            File(packageDir, "_fast/build_helper.c").writeText("/* a cc build script source */\n")
+            File(packageDir, "_fast/helper.py").writeText("X = 1\n")
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+
+            assertFalse(content.contains("_fast"), content)
+        }
+    }
+
     private class RecordingMeson(
         private val mesonInstalled: Boolean,
     ) : Meson() {

@@ -38,6 +38,10 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `build <package> source [fat|single|patch]` (컴파일 후 번들), `build <package> resource` (#81). 대상은 정규 트리플로
   바꾸고 기본값은 이 컴퓨터. 번들 경고는 `warning: …` 으로 출력. CLI 테스트 8개 (`BuildCommandTest`)
 - CLI 도움말, 통과 플래그(`--dev`, `--extra-index-url …`) 파싱
+- Cargo 백엔드 1단계 (#92): 호스트만. crate 탐지 (Python 패키지 안 `Cargo.toml` 규약 + `[tool.ppp.rust]`), maturin 1.15.0
+  (`uv tool run`, abi3t), 확장 파일을 Meson 이 설치한 `site-packages` 의 모듈 경로에 둔다 (C 확장과 같은 길, `single`·`fat` 이 실어 감).
+  `build` 가 Meson 뒤에 실행.
+  실제 crate 빌드 테스트는 `PPP_CARGO_REAL_BUILD=1` 일 때만 (torchnative 배치는 탐지까지 테스트)
 - `meson.build` 자동 생성, `meson`/`ninja` 자동 설치. 확장은 기본으로 `limited_api: '3.15'` (3.15t 에서 PEP 803
   `abi3t`), `meson setup` 은 가장 가까운 `.venv` 인터프리터로 빌드한다 (#72)
 - GIL 경고 (`resource` 번들, #72): 모든 대상에서 GIL 태그 확장을 경고, 호스트에서는 3.15t `.venv` 로 확장마다
@@ -53,10 +57,8 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **계획 (빈 파일이거나 없음)**
 - `native` / `mixed` 빌드 레벨, `binary` 번들
-- Clang/MSVC/NDK/XCode/Emscripten/Cargo 백엔드, Nuitka/Cython/Lpython, 최소화(minification)
-- Cargo 백엔드 (#65, 2026-10-17 결정): maturin + PyO3, abi3t, 대상 순서 호스트 → Android arm64 → iOS. crate 는
-  Python 패키지 안 `Cargo.toml` 디렉터리 규약, 밖에 있으면 `[tool.ppp.rust]` 로 지정. 첫 사용자 torchnative#53.
-  SPEC *Rust extension modules (Cargo backend)*
+- Clang/MSVC/NDK/XCode/Emscripten 백엔드, Nuitka/Cython/Lpython, 최소화(minification)
+- Cargo 백엔드 2단계 (모바일: Android arm64 → iOS). SPEC *Rust extension modules (Cargo backend)*
 - `deploy`: `code single|fat` 만 PyPI 로 (`uv publish`, `--publish-url`·`--dry-run`, 토큰 저장 없음, #90). `binary`·`patch` (FastTrack), `resource`, `weight` 는 서버가 없어 "not implemented" 로 실패
 - 패치 버전 추적, 코드 업데이트 fast track API
 

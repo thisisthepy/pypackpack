@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend
 
 import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Cargo
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
 import java.io.File
 import java.nio.file.Files
@@ -9,6 +10,43 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class DefaultBackendTest {
+    /** After Meson, `build` builds the package's Rust crates (#92); `default` means the host. */
+    @Test
+    fun compile_buildsTheRustCratesAfterMeson() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[tool.uv.workspace]\nmembers = [\"src/main/core\"]\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val calls = mutableListOf<List<Any?>>()
+            val cargo = object : Cargo() {
+                override fun build(packageDir: File, target: String?, buildType: String, destdir: File): Result<List<File>> {
+                    calls += listOf(packageDir, target, buildType, destdir)
+                    return Result.success(emptyList())
+                }
+            }
+            val backend = DefaultBackend(RecordingMeson(), cargo)
+
+            val previousDir = System.getProperty("user.dir")
+            try {
+                System.setProperty("user.dir", this.absolutePath)
+                runBlocking { backend.compile("core", mapOf("type" to "release", "target" to "macos")) }.getOrThrow()
+                runBlocking { backend.compile("core", mapOf("type" to "debug")) }.getOrThrow()
+            } finally {
+                System.setProperty("user.dir", previousDir)
+            }
+
+            val pkg = packageDir.canonicalFile
+            assertEquals(
+                listOf(
+                    listOf<Any?>(pkg, "macos", "release", File("${pkg.absolutePath}/dist/macos/release/instant")),
+                    listOf<Any?>(pkg, null, "debug", File("${pkg.absolutePath}/dist/default/debug/instant")),
+                ),
+                calls,
+            )
+        }
+    }
+
     @Test
     fun compile_passesTypeToBuildDirAndMesonOptions() {
         withWorkspace {
