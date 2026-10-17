@@ -319,6 +319,32 @@ Limitation
   `VersionCommand.aliases()` declares them, but Clikt applies `aliases()` to a command's own
   subcommands, and `VersionCommand` has none.
 
+#### Distribution through Maven Central
+
+Status: partial (#99). Prepared and rehearsed; nothing is uploaded. Uploading is the user's decision: it
+needs a Central Portal account and a verified namespace (below). The check is
+`.github/scripts/maven/check_central_bundle.py`, which failed on the earlier publication (no sources or
+javadoc jar, no checksums or signatures, no url, license, developer or SCM in the POM).
+
+- The library is `org.thisisthepy.python.multiplatform:packpack:<version>` (`packpack/build.gradle.kts`),
+  with sources and javadoc jars (the javadoc jar is empty: the sources are Kotlin) and a POM carrying url,
+  Apache-2.0, developer `thisisthepy` and SCM. Every dependency in it is on Maven Central; the CLI's are not
+  in it (the `cli` source set is not part of the component).
+- Signing uses an in-memory PGP key from `-PsigningInMemoryKey` / `-PsigningInMemoryKeyPassword` (or
+  `ORG_GRADLE_PROJECT_signingInMemoryKey` / `..._signingInMemoryKeyPassword` in CI). Without a key nothing is
+  signed and `publishToMavenLocal` works as before.
+- `./gradlew :packpack:publishAllPublicationsToStagingRepository` writes the repository layout to
+  `packpack/build/staging-deploy`; `:packpack:centralBundle` zips it, without `maven-metadata`, into
+  `packpack/build/central/central-bundle-<version>.zip`, the format the Central Portal's upload takes.
+- Rehearsed 2026-10-17 with a throwaway key: the check passes on the signed staging directory (jar, sources,
+  javadoc, POM and Gradle module, each with `.asc`, `.md5`, `.sha1`), `gpg --verify` accepts the signature, and
+  the bundle holds 50 files.
+
+To publish (the user's steps): a Central Portal account; the namespace `org.thisisthepy` verified by a DNS
+TXT record on thisisthepy.org (it covers `org.thisisthepy.python.multiplatform`, and python-multiplatform's
+`org.thisisthepy` after its #95); a PGP key whose public half is on a public keyserver; a Portal user token.
+Then upload the bundle (Portal UI, or its publisher API). A CI workflow for it is not written yet.
+
 #### Distribution through PyPI
 
 Status: implemented. 0.2.0 is on PyPI (uploaded 2026-10-03 by `.github/workflows/publish-pypi.yml` from
