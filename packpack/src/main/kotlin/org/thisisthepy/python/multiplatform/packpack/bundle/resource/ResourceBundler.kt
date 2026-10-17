@@ -258,7 +258,8 @@ class ResourceBundler : BundlerInterface {
     ): Map<String, File> =
         subtree
             .walkTopDown()
-            .onEnter { directory -> directory == subtree || !directory.isExcludedDirectory() }
+            // A crate directory (Cargo.toml) is Rust source for the Cargo backend, not payload (#92).
+            .onEnter { directory -> directory == subtree || (!directory.isExcludedDirectory() && !File(directory, "Cargo.toml").isFile) }
             .filter { it.isFile && !it.isExcludedFile() }
             .associateBy { file ->
                 root

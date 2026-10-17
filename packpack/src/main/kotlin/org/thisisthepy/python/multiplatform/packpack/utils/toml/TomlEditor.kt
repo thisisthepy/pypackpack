@@ -101,6 +101,20 @@ class TomlEditor(
     }
 
     /**
+     * The `key = "string"` lines of a table, in order, keys unquoted (`"torch._C" = "rust/torch_c"` gives
+     * `torch._C`). Other value types are skipped. Empty when the table does not exist.
+     */
+    fun getStringEntries(tablePath: String): Map<String, String> {
+        val tableInfo = findTable(tablePath) ?: return emptyMap()
+        val entry = Regex("""^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))\s*=\s*(?:"([^"]*)"|'([^']*)')\s*(?:#.*)?$""")
+        return ((tableInfo.startLine + 1)..tableInfo.endLine)
+            .mapNotNull { entry.find(lines[it])?.groupValues }
+            .associate { g ->
+                (g[1].ifEmpty { g[2].ifEmpty { g[3] } }) to (if (g[4].isNotEmpty() || g[5].isEmpty()) g[4] else g[5])
+            }
+    }
+
+    /**
      * Set a value in a table.
      *
      * @param tablePath Dotted table path (e.g., "database.config", "server.settings")

@@ -208,6 +208,8 @@ open class Meson(
             .flatMap { packageDir ->
                 packageDir
                     .walkTopDown()
+                    // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
+                    .onEnter { it == packageDir || !File(it, "Cargo.toml").isFile }
                     .filter { it.isFile && it.isPythonInstallSource() }
                     .map { source ->
                         packageDir.installSubdir(source.parentFile) to project.relativePath(source)
@@ -227,6 +229,8 @@ open class Meson(
             .flatMap { packageDir ->
                 packageDir
                     .walkTopDown()
+                    // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
+                    .onEnter { it == packageDir || !File(it, "Cargo.toml").isFile }
                     .filter { it.isFile }
                     .mapNotNull { source ->
                         val language = source.extensionLanguage() ?: return@mapNotNull null

@@ -51,7 +51,8 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
   - Builds target PEP 803's `abi3t`, so one extension serves every free-threaded 3.15+ runtime.
     Meson's `py.extension_module()`: implemented (see *Package build*). The compile slot (#19, #60):
     planned.
-  - The Cargo backend (#65) builds with PyO3's `gil_used = false` and `abi3t` by default (planned).
+  - The Cargo backend builds with PyO3's `abi3t` by default (implemented for the host, #92); `gil_used = false`
+    is the crate's own `#[pymodule]` option, and the GIL warning catches a module without it.
   - A dependency whose extension does not declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` makes CPython
     re-enable the GIL when it is imported. The build warns, naming the module and saying that it
     re-enables the GIL, because the app would otherwise silently run with the GIL. Implemented for the
@@ -66,7 +67,8 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 
 - (1). Support building Python packages written in C, C++, Rust (except when patches are required)
   - Status: partial. C/C++ through Meson (`packpack/.../compile/backend/external/MesonTest.kt`).
-    Rust (`Cargo.kt`) is an empty placeholder; its plan is *Rust extension modules (Cargo backend)*.
+    Rust through the Cargo backend for the host target (`packpack/.../compile/backend/external/CargoTest.kt`);
+    mobile targets are planned (see *Rust extension modules (Cargo backend)*).
 - (2). Support crossenv for multi-platform code
   - Status: partial. Per-target dependency markers and per-target install directories
     (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
@@ -190,7 +192,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - NDK.kt  # placeholder (adapter of Clang.kt)
             - XCode.kt  # placeholder (adapter of Clang.kt)
             - Emscripten.kt  # placeholder
-            - Cargo.kt  # placeholder
+            - Cargo.kt  # Rust crates -> extension modules: discovery, maturin (abi3t), placement in crossenv
             - Meson.kt  # meson.build generation, meson setup/compile/install, meson/ninja auto-install
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # strategy pattern
@@ -770,7 +772,7 @@ Limitation
 
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
 - Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
-- Only the Meson backend is implemented; the Clang/MSVC/NDK/XCode/Emscripten/Cargo backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so only C/C++ extension compilation works today (no Rust, no pure-Python compilation/optimization/minification).
+- Only the Meson and Cargo (host) backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so only C/C++ extension compilation works today (no Rust, no pure-Python compilation/optimization/minification).
 - `build` does not verify dependencies first (the sheet's orchestration includes it).
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 - The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
@@ -783,8 +785,48 @@ Not yet implemented (target). Status: planned
 
 #### Rust extension modules (Cargo backend)
 
-Status: planned (#65; decisions of 2026-10-17, through the project lead). `compile/backend/external/Cargo.kt`
-is an empty placeholder. The first user is torchnative (thisisthepy/torchnative#53).
+Status: partial. Stage 1, the host desktop target, is implemented (#92): `compile/backend/external/Cargo.kt`;
+`packpack/.../compile/backend/external/CargoTest.kt` (discovery both ways and its refusals, torchnative's
+layout, the maturin command, the placement, every refusal), `CargoRealBuildTest.kt` (a real PyO3 crate
+built and imported on 3.15t without the GIL; runs with `PPP_CARGO_REAL_BUILD=1`), and
+`compile/backend/DefaultBackendTest.kt` (`build` runs it after Meson, with Meson's destdir). Mobile targets are
+stage 2, planned.
+Decisions of 2026-10-17 (#65, through the project lead). The first user is torchnative (thisisthepy/torchnative#53).
+
+##### Stage 1: the host (implemented)
+
+- `pypackpack build <package>` (and `build <package> source ...`) builds the package's crates after Meson.
+  With no crate nothing runs. A target other than the host is refused as stage 2.
+- Each crate: `uv tool run --from maturin==1.15.0 maturin build --manifest-path <crate>/Cargo.toml
+  --interpreter <.venv python> --out build/packpack/cargo/<triple>/<module> --target-dir
+  build/packpack/cargo/target --features pyo3/abi3t-py315 [--release]` (`--release` for build type `release`).
+  `uv tool run` installs and links nothing; Cargo's build directory stays out of the source tree. The wheel
+  is tagged `cp315-abi3.abi3t-<platform>` (PEP 803).
+- The wheel's one extension file is placed at the module's path in the `site-packages` Meson installed the
+  package into, under `dist/<target>/<build type>/<build level>` (`core/_fast.abi3t.so`). The crate's module
+  is the package's own, like a Meson C extension, so `single` and `fat` carry it the same way (checked end to
+  end: `build core source single` gives a wheel with `core/__init__.py` and `core/_fast.abi3t.so`). Only that
+  file: for a dotted module name maturin's wheel holds `<last>/__init__.py` and `<last>/<last>.abi3t.so`, which
+  would import as the wrong module (checked with maturin 1.15.0).
+- This differs from the plan below, which had the wheel installed into `build/crossenv/<triple>` like a
+  third-party prebuilt wheel: `fat` vendors from there only what a `dist-info` RECORD lists, so a loose
+  extension there reached no bundle. Like a C extension, it does not reach the `resource` bundle, which
+  reads source (*Bundle Type*).
+- The extension's name must be the module's last segment (PyO3's `PyInit_<name>`): otherwise the build is
+  refused, naming the `[lib] name` to set.
+- Refusals before maturin runs: no `cargo` on `PATH` (names rustup), no `uv`, no `.venv` interpreter (names
+  `pypackpack python install 3.15t`), no single `site-packages` under the destdir. A failed maturin build
+  fails with its output.
+- A crate directory inside a Python package is skipped by Meson's scan and left out of the `resource`
+  payload (`MesonTest.makeMesonBuild_skipsRustCrateDirectories`,
+  `ResourceBundlerTest.bundle_leavesRustCrateDirectoriesOutOfThePayload`).
+
+Limitation
+
+- No opt-out from abi3t yet: a crate that needs the full C API cannot be built.
+- Cargo writes `Cargo.lock` beside the crate's `Cargo.toml`, as it always does.
+
+##### The plan (stage 2 and the decisions)
 
 A Rust crate becomes a CPython extension module for each target and ships in the app through the
 `resource` bundle. Kotlin reaches it through python-multiplatform like any other Python module; calling

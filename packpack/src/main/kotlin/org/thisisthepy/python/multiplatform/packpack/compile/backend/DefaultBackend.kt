@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend
 
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Cargo
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
 import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.resolveWorkspacePackageDir
@@ -10,6 +11,7 @@ import java.io.File
  */
 class DefaultBackend(
     val meson: Meson = Meson(),
+    val cargo: Cargo = Cargo(),
 ) : BackendInterface {
 
     override fun initialize() {
@@ -40,6 +42,8 @@ class DefaultBackend(
             meson.setup(buildDir = buildDir, options = listOf("--buildtype=$type"), workingDir = packageDir, overwrite = overwrite).getOrThrow()
             meson.compile(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
             meson.install(buildDir = buildDir, options = null, workingDir = packageDir, destdir = destdir).getOrThrow()
+            // The package's Rust crates (#92): their extensions go beside Meson's, in the destdir's site-packages.
+            cargo.build(packageDir, target.takeUnless { it == "default" }, type, File(destdir)).getOrThrow()
 
             "Package '$packageName' compiled successfully."
         }
