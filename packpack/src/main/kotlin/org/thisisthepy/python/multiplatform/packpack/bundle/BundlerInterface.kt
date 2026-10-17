@@ -147,7 +147,7 @@ abstract class UnimplementedBundler(
     override fun bundle(request: BundleRequest): Result<BundleResult> =
         Result.failure(
             NotImplementedError(
-                "Bundle type '${type.id}' is not implemented yet. Only 'resource' and 'single' are available today.",
+                "Bundle type '${type.id}' is not implemented yet. Only 'resource', 'single', 'fat' and 'patch' are available today.",
             ),
         )
 }
