@@ -20,6 +20,26 @@ internal fun findProjectRoot(startDir: File = File(System.getProperty("user.dir"
 }
 
 /**
+ * The interpreter of the nearest `<dir>/.venv` at or above [startDir] (`docs/SPEC.md`'s
+ * `<project>/.venv` convention, however deep the package sits in a multi-package project), or
+ * `null` when there is none. Never a `python3` from `PATH`: what it builds or compiles is tied to
+ * the interpreter that produced it.
+ */
+internal fun findVenvInterpreter(startDir: File): File? {
+    var current: File? = startDir.canonicalFile
+    while (current != null) {
+        val venv = File(current, ".venv")
+        val candidate =
+            listOf("bin/python3", "bin/python", "Scripts/python.exe")
+                .map { File(venv, it) }
+                .firstOrNull { it.isFile }
+        if (candidate != null) return candidate
+        current = current.parentFile
+    }
+    return null
+}
+
+/**
  * Finds the workspace root by looking for a pyproject.toml with a [readWorkspaceMembers] section.
  * Starts searching from the given directory and moves up the directory tree until found.
  * @throws IllegalStateException if no workspace root is found.
