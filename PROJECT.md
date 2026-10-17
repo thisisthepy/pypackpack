@@ -42,6 +42,8 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
   (`uv tool run`, abi3t), 확장 파일을 Meson 이 설치한 `site-packages` 의 모듈 경로에 둔다 (C 확장과 같은 길, `single`·`fat` 이 실어 감).
   `build` 가 Meson 뒤에 실행.
   실제 crate 빌드 테스트는 `PPP_CARGO_REAL_BUILD=1` 일 때만 (torchnative 배치는 탐지까지 테스트)
+- Cargo 백엔드 2단계 (#94): Android (maturin + NDK clang, `libpython3.15t.so` 링크), iOS (cargo 직접, 자체 PyO3 설정,
+  `Python.framework` 링크). 바이너리 검사로 확인, 기기 실행은 하지 않음
 - `meson.build` 자동 생성, `meson`/`ninja` 자동 설치. 확장은 기본으로 `limited_api: '3.15'` (3.15t 에서 PEP 803
   `abi3t`), `meson setup` 은 가장 가까운 `.venv` 인터프리터로 빌드한다 (#72)
 - GIL 경고 (`resource` 번들, #72): 모든 대상에서 GIL 태그 확장을 경고, 호스트에서는 3.15t `.venv` 로 확장마다
@@ -58,7 +60,6 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 **계획 (빈 파일이거나 없음)**
 - `native` / `mixed` 빌드 레벨, `binary` 번들
 - Clang/MSVC/NDK/XCode/Emscripten 백엔드, Nuitka/Cython/Lpython, 최소화(minification)
-- Cargo 백엔드 2단계 (모바일: Android arm64 → iOS). SPEC *Rust extension modules (Cargo backend)*
 - `deploy`: `code single|fat` 만 PyPI 로 (`uv publish`, `--publish-url`·`--dry-run`, 토큰 저장 없음, #90). `binary`·`patch` (FastTrack), `resource`, `weight` 는 서버가 없어 "not implemented" 로 실패
 - 패치 버전 추적, 코드 업데이트 fast track API
 

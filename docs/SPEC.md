@@ -68,7 +68,7 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 - (1). Support building Python packages written in C, C++, Rust (except when patches are required)
   - Status: partial. C/C++ through Meson (`packpack/.../compile/backend/external/MesonTest.kt`).
     Rust through the Cargo backend for the host target (`packpack/.../compile/backend/external/CargoTest.kt`);
-    mobile targets are planned (see *Rust extension modules (Cargo backend)*).
+    Android and iOS too (see *Rust extension modules (Cargo backend)*).
 - (2). Support crossenv for multi-platform code
   - Status: partial. Per-target dependency markers and per-target install directories
     (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
@@ -772,7 +772,7 @@ Limitation
 
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
 - Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
-- Only the Meson and Cargo (host) backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so only C/C++ extension compilation works today (no Rust, no pure-Python compilation/optimization/minification).
+- Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
 - `build` does not verify dependencies first (the sheet's orchestration includes it).
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 - The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
@@ -785,13 +785,14 @@ Not yet implemented (target). Status: planned
 
 #### Rust extension modules (Cargo backend)
 
-Status: partial. Stage 1, the host desktop target, is implemented (#92): `compile/backend/external/Cargo.kt`;
+Status: implemented for the host (stage 1, #92), Android and iOS (stage 2, #94): `compile/backend/external/Cargo.kt`;
 `packpack/.../compile/backend/external/CargoTest.kt` (discovery both ways and its refusals, torchnative's
-layout, the maturin command, the placement, every refusal), `CargoRealBuildTest.kt` (a real PyO3 crate
-built and imported on 3.15t without the GIL; runs with `PPP_CARGO_REAL_BUILD=1`), and
-`compile/backend/DefaultBackendTest.kt` (`build` runs it after Meson, with Meson's destdir). Mobile targets are
-stage 2, planned.
-Decisions of 2026-10-17 (#65, through the project lead). The first user is torchnative (thisisthepy/torchnative#53).
+layout, the maturin and cargo commands and environments per target, the placement, every refusal) and
+`CargoRealBuildTest.kt` (real builds, run with `PPP_CARGO_REAL_BUILD=1`: the host crate imported on 3.15t
+without the GIL; with `PPP_ANDROID_PYTHON` and an NDK, an Android cross build; with `PPP_IOS_PYTHON` and
+Xcode, the iOS device and simulator builds), and `compile/backend/DefaultBackendTest.kt` (`build` runs it
+after Meson, with Meson's destdir). Decisions of 2026-10-17 (#65, through the project lead). The first user
+is torchnative (thisisthepy/torchnative#53).
 
 ##### Stage 1: the host (implemented)
 
@@ -821,12 +822,45 @@ Decisions of 2026-10-17 (#65, through the project lead). The first user is torch
   payload (`MesonTest.makeMesonBuild_skipsRustCrateDirectories`,
   `ResourceBundlerTest.bundle_leavesRustCrateDirectoriesOutOfThePayload`).
 
+##### Stage 2: Android and iOS (implemented)
+
+The target Python is the one `pypackpack python install <version> <target>` puts in the project
+(`android_arm64`, `android_x86_64`, `ios_arm64`, `ios_simulator_arm64`, `ios_simulator_x86_64`), found in the
+nearest such directory above the package. Until python-multiplatform #163's 3.15t mobile builds have a
+fixed URL, those directories hold its CI artifacts (python-multiplatform runs 39013371415 and 39014667720).
+Each target needs its Rust target installed (`rustup target add <triple>`); a missing one is refused,
+naming that command, before anything builds.
+
+- **Android** (`aarch64-linux-android`, `x86_64-linux-android`): maturin with `--target <triple>` and no
+  interpreter. The target Python comes through `PYO3_CROSS_LIB_DIR=<prefix>/lib` and
+  `PYO3_CROSS_PYTHON_VERSION=3.15`; the NDK's `<triple>24-clang` (API 24, PEP 738's floor) is the linker
+  and C compiler and `llvm-ar` the archiver. The NDK is `ANDROID_NDK_HOME`, else the newest
+  `ndk/<version>` under `ANDROID_HOME` (or `ANDROID_SDK_ROOT`); none is refused, naming both. The extension
+  links the target's `LDLIBRARY` (`libpython3.15t.so`) through `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`, as
+  CPython's own Android extensions do: PyO3's abi3 link name, `python3`, is a library without symbols that
+  the linker drops, and an app that opens libpython privately would leave the extension's symbols
+  unresolved. Checked with NDK r29: the wheel is `...-cp315-abi3.abi3t-android_24_arm64_v8a.whl`, and its
+  AArch64 extension needs `libpython3.15t.so` and exports `PyModExport__fast`. Not run on a device.
+- **iOS** (`arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator`): `cargo rustc --lib
+  --target <aarch64-apple-ios | aarch64-apple-ios-sim | x86_64-apple-ios>`, not maturin, which builds iOS only
+  inside a cross virtual environment that python.org's XCframework does not provide (this is the fallback the
+  plan below names). pypackpack writes the PyO3 config (`build/packpack/cargo/<triple>/pyo3-config.txt`:
+  CPython 3.15, `target_abi=CPython-abi3t-3.15`, shared, `Py_GIL_DISABLED` when the target is free-threaded,
+  link lines suppressed) and links the XCframework slice's `Python.framework` (`-F<slice> -framework Python`)
+  with `-install_name @rpath/<last>.abi3t.so`, for iOS 13.0 (`IPHONEOS_DEPLOYMENT_TARGET`). `lib<last>.dylib`
+  is placed as `<last>.abi3t.so`; another lib name is refused, naming the `[lib] name` to set. No Xcode
+  (`xcrun --sdk iphoneos`) is refused. Checked: the device build is an iOS binary (minimum 13.0) and the
+  arm64 simulator build an iOS-simulator binary (minimum 14.0, the lowest Rust's `aarch64-apple-ios-sim`
+  allows), each linking `@rpath/Python.framework/Python` like CPython's own iOS extensions. Not run on a device
+  or simulator; turning the extension into a framework for the app is the Xcode phase's work, as for any
+  binary module.
+
 Limitation
 
 - No opt-out from abi3t yet: a crate that needs the full C API cannot be built.
 - Cargo writes `Cargo.lock` beside the crate's `Cargo.toml`, as it always does.
 
-##### The plan (stage 2 and the decisions)
+##### The plan and the decisions
 
 A Rust crate becomes a CPython extension module for each target and ships in the app through the
 `resource` bundle. Kotlin reaches it through python-multiplatform like any other Python module; calling
