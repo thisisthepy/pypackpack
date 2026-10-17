@@ -286,6 +286,28 @@ class SingleWheelBundlerTest {
         assertTrue(firstBytes.contentEquals(secondBytes), "wheel bytes must be reproducible across runs")
     }
 
+    /** `--overwrite` clears the output without following a link out of it (#96). */
+    @Test
+    fun bundle_overwriteDoesNotFollowALinkOutOfTheOutput() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
+        val first = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        val keep = linkOutside(first.outputDir, File(pkg.parentFile, "outside-${pkg.name}"))
+
+        bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", overwrite = true)).getOrThrow()
+
+        assertEquals("keep", keep.readText())
+    }
+
+    /** `<dir>/link` -> an outside directory holding `keep.txt` (#96). */
+    private fun linkOutside(dir: File, outside: File): File {
+        outside.mkdirs()
+        File(outside, "keep.txt").writeText("keep")
+        dir.mkdirs()
+        java.nio.file.Files.createSymbolicLink(File(dir, "link").toPath(), outside.toPath())
+        return File(outside, "keep.txt")
+    }
+
     @Test
     fun bundle_refusesToOverwriteExistingOutputUnlessAsked() {
         val pkg = packageDir()

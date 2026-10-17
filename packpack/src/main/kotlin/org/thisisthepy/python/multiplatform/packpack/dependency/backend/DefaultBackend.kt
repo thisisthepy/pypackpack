@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.utils.DownloadSpec
 import org.thisisthepy.python.multiplatform.packpack.utils.Downloader
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
@@ -147,7 +148,7 @@ abstract class DefaultBackend : BackendInterface {
 
         val staging = File(parent, ".${destination.name}.pypackpack-staging")
         return try {
-            staging.deleteRecursively()
+            staging.deleteWithoutFollowingLinks()
             val downloadDir = File(staging, "download")
             val extractDir = File(staging, "extract")
 
@@ -184,7 +185,7 @@ abstract class DefaultBackend : BackendInterface {
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            staging.deleteRecursively()
+            staging.deleteWithoutFollowingLinks()
         }
     }
 
@@ -290,7 +291,7 @@ abstract class DefaultBackend : BackendInterface {
             require(installDir.exists()) { "Python $pythonVersion is not installed" }
             require(installDir.isDirectory) { "Python $pythonVersion install path is not a directory: ${installDir.absolutePath}" }
 
-            if (!installDir.deleteRecursively()) {
+            if (!installDir.deleteWithoutFollowingLinks()) {
                 throw IllegalStateException("Failed to remove ${installDir.absolutePath}")
             }
             unregisterInstalledVersion(pythonVersion)

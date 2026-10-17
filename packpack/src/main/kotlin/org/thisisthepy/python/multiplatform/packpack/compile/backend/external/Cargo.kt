@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend.external
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findVenvInterpreter
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
@@ -219,7 +220,7 @@ open class Cargo(
             crates.map { crate ->
                 if (ios != null) return@map buildIos(crate, ios, env, File(pkg, "build/packpack/cargo/target"), buildType == "release", sitePackages)
                 val out = File(pkg, "build/packpack/cargo/$canonical/${crate.module}")
-                out.deleteRecursively()
+                out.deleteWithoutFollowingLinks()
                 val command = maturinCommand(
                     crate, interpreter, out, File(pkg, "build/packpack/cargo/target"), buildType == "release",
                     rustTarget = canonical.takeIf { android != null },

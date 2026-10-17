@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendType
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
@@ -256,7 +257,7 @@ class DefaultMiddleware : MiddlewareInterface {
 
         if (venvDir.exists()) {
             println("Removing existing virtual environment...")
-            if (!venvDir.deleteRecursively()) {
+            if (!venvDir.deleteWithoutFollowingLinks()) {
                 println("Failed to remove existing virtual environment")
                 return false
             }

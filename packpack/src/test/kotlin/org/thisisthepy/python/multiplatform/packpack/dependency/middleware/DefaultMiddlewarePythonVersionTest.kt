@@ -44,6 +44,19 @@ class DefaultMiddlewarePythonVersionTest {
         )
     }
 
+    /** Replacing `.venv` never follows a link out of it (#96). */
+    @Test
+    fun replacingTheVenvDoesNotFollowALinkOutOfIt() {
+        val outside = File(projectRoot, "outside").apply { mkdirs() }
+        File(outside, "keep.txt").writeText("keep")
+        File(projectRoot, ".venv").mkdirs()
+        java.nio.file.Files.createSymbolicLink(File(projectRoot, ".venv/link").toPath(), outside.toPath())
+
+        assertTrue(DefaultMiddleware().withBackend(RecordingBackend()).changePythonVersion("3.15t"))
+
+        assertEquals("keep", File(outside, "keep.txt").readText())
+    }
+
     @Test
     fun aFailedVenvIsAFailureAndNothingIsSynced() {
         val backend = RecordingBackend(venvFails = true)

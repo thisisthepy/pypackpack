@@ -322,6 +322,28 @@ class DefaultBackendTest {
         return archive
     }
 
+    /** Uninstalling never follows a link out of the install (#96). */
+    @Test
+    fun uninstallPython_doesNotFollowALinkOutOfTheInstall() {
+        val pythonDir = File(tempDir, "3.12")
+        File(pythonDir, "bin").mkdirs()
+        val keep = linkOutside(File(pythonDir, "lib"), File(tempDir, "outside"))
+
+        assertTrue(TestDefaultBackend(tempDir).uninstallPython("3.12").isSuccess)
+
+        assertFalse(pythonDir.exists())
+        assertEquals("keep", keep.readText())
+    }
+
+    /** `<dir>/link` -> an outside directory holding `keep.txt` (#96). */
+    private fun linkOutside(dir: File, outside: File): File {
+        outside.mkdirs()
+        File(outside, "keep.txt").writeText("keep")
+        dir.mkdirs()
+        java.nio.file.Files.createSymbolicLink(File(dir, "link").toPath(), outside.toPath())
+        return File(outside, "keep.txt")
+    }
+
     @Test
     fun uninstallPython_removesInstalledVersion() {
         val pythonDir = File(tempDir, "3.12")

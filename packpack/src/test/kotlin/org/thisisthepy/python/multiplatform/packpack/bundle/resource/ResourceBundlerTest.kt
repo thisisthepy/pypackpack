@@ -419,6 +419,28 @@ class ResourceBundlerTest {
         )
     }
 
+    /** `--overwrite` clears the output without following a link out of it (#96). */
+    @Test
+    fun bundle_overwriteDoesNotFollowALinkOutOfTheOutput() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        val first = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        val keep = linkOutside(File(first.outputDir, "python"), File(tempDir, "outside"))
+
+        bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", overwrite = true)).getOrThrow()
+
+        assertEquals("keep", keep.readText())
+    }
+
+    /** `<dir>/link` -> an outside directory holding `keep.txt` (#96). */
+    private fun linkOutside(dir: File, outside: File): File {
+        outside.mkdirs()
+        File(outside, "keep.txt").writeText("keep")
+        dir.mkdirs()
+        java.nio.file.Files.createSymbolicLink(File(dir, "link").toPath(), outside.toPath())
+        return File(outside, "keep.txt")
+    }
+
     @Test
     fun bundle_overwriteRemovesStaleFilesFromPreviousRun() {
         val pkg = packageDir()

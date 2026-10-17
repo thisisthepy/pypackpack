@@ -438,6 +438,24 @@ class CargoTest {
         assertTrue("ios_arm64" in noPython && "python install 3.15t arm64-apple-ios" in noPython, noPython)
     }
 
+    /** The previous maturin output is cleared without following a link out of it (#96). */
+    @Test
+    fun `clearing the maturin output does not follow a link out of it`() {
+        pyproject()
+        write("src/main/core/__init__.py")
+        crate("src/main/core/_fast")
+        venv()
+        sitePackages.mkdirs()
+        val outside = File(pkg, "outside").apply { mkdirs() }
+        File(outside, "keep.txt").writeText("keep")
+        val out = File(pkg, "build/packpack/cargo/$host/core._fast").apply { mkdirs() }
+        java.nio.file.Files.createSymbolicLink(File(out, "link").toPath(), outside.toPath())
+
+        Cargo(run = fakeMaturin("_fast/_fast.abi3t.so"), environment = available()).build(pkg, null, "debug", destdir).getOrThrow()
+
+        assertEquals("keep", File(outside, "keep.txt").readText())
+    }
+
     @Test
     fun `a failed maturin build fails with its output`() {
         pyproject()

@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Cargo
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
 import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
@@ -34,7 +35,7 @@ class DefaultBackend(
             val packageDir = resolveWorkspacePackageDir(workspaceRoot, packageName)
 
             if (overwrite) {
-                File(packageDir, buildDir).deleteRecursively()
+                File(packageDir, buildDir).deleteWithoutFollowingLinks()
             }
 
             val destdir = "${packageDir.absolutePath}/dist/$target/$type/$level"
