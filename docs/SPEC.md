@@ -343,7 +343,14 @@ javadoc jar, no checksums or signatures, no url, license, developer or SCM in th
 To publish (the user's steps): a Central Portal account; the namespace `org.thisisthepy` verified by a DNS
 TXT record on thisisthepy.org (it covers `org.thisisthepy.python.multiplatform`, and python-multiplatform's
 `org.thisisthepy` after its #95); a PGP key whose public half is on a public keyserver; a Portal user token.
-Then upload the bundle (Portal UI, or its publisher API). A CI workflow for it is not written yet.
+Then publish a GitHub Release tagged `packpack-v<version>` (#102): `.github/workflows/publish-maven.yml` runs in
+the `maven-central` environment (to be restricted to `packpack-v*` tags), checks that the tag names
+`gradle.properties`' `packpackVersion` and that the version is not on Central, stops naming any missing secret
+(`SIGNING_KEY`, `SIGNING_KEY_PASSWORD`, `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD`), stages and signs the
+bundle, runs the check, and uploads it to the Portal as `USER_MANAGED`: the Portal validates it and waits for a
+person to press Publish. A manual run does all of it except the upload, unsigned without a key. The group and
+version are written once, in `gradle.properties` (`mavenGroup`, `packpackVersion`). `publish-pypi.yml` runs
+only for `v*` releases, so a `packpack-v*` release does not touch PyPI.
 
 #### Distribution through PyPI
 
