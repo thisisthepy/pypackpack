@@ -36,6 +36,8 @@ concurrency:
 
 jobs:
   version:
+    # Releases tagged packpack-v* are the Maven library's (publish-maven.yml), not the CLI's.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -12,8 +12,9 @@ plugins {
     id("org.graalvm.buildtools.native")
 }
 
-group = "org.thisisthepy.python.multiplatform"
-version = "0.1.0"
+// Both come from gradle.properties, the one place they are written (#102).
+group = providers.gradleProperty("mavenGroup").get()
+version = providers.gradleProperty("packpackVersion").get()
 
 repositories {
     mavenCentral()
