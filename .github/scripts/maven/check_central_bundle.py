@@ -59,11 +59,14 @@ def check_pom(pom_file: Path, problems: list):
 
 
 def main(argv):
-    args = [a for a in argv[1:] if not a.startswith("--")]
-    signed = "--unsigned" not in argv
-    plugin_id = argv[argv.index("--plugin-id") + 1] if "--plugin-id" in argv else None
-    if plugin_id:
-        args.remove(plugin_id)
+    rest = list(argv[1:])
+    signed = "--unsigned" not in rest
+    plugin_id = None
+    if "--plugin-id" in rest:
+        i = rest.index("--plugin-id")
+        plugin_id = rest[i + 1]
+        del rest[i : i + 2]
+    args = [a for a in rest if not a.startswith("--")]
     if len(args) != 4:
         print(__doc__)
         return 2
