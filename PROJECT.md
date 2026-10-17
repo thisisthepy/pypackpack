@@ -57,7 +57,7 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - Cargo 백엔드 (#65, 2026-10-17 결정): maturin + PyO3, abi3t, 대상 순서 호스트 → Android arm64 → iOS. crate 는
   Python 패키지 안 `Cargo.toml` 디렉터리 규약, 밖에 있으면 `[tool.ppp.rust]` 로 지정. 첫 사용자 torchnative#53.
   SPEC *Rust extension modules (Cargo backend)*
-- `deploy`: 명령은 등록되어 있지만 모든 타입이 "not implemented" 로 실패
+- `deploy`: `code single|fat` 만 PyPI 로 (`uv publish`, `--publish-url`·`--dry-run`, 토큰 저장 없음, #90). `binary`·`patch` (FastTrack), `resource`, `weight` 는 서버가 없어 "not implemented" 로 실패
 - 패치 버전 추적, 코드 업데이트 fast track API
 
 ## 구조

@@ -133,7 +133,8 @@ item-by-item contract.
 | Bundles: `resource`, `single`, `fat`, `patch` | ✅ implemented |
 | Build levels: `instant` / `bytecode` | ✅ / 🟡 (`resource` only) |
 | Build levels: `native` / `mixed` | ⏳ planned; semantics decided, compile slot in draft |
-| `deploy`, code push, `binary` bundle | ⏳ planned |
+| `deploy code single\|fat` to PyPI (`uv publish`) | ✅ implemented |
+| `deploy` to FastTrack and ResourceHub, code push, `binary` bundle | ⏳ planned |
 
 ## 📖 Documentation
 
