@@ -129,7 +129,8 @@ BundlerInterface.create(BundleType.RESOURCE).bundle(
 | 번들: `resource`, `single`, `fat`, `patch` | ✅ 구현 |
 | 빌드 레벨: `instant` / `bytecode` | ✅ / 🟡 (`resource` 만) |
 | 빌드 레벨: `native` / `mixed` | ⏳ 계획. 의미는 결정됨, 컴파일 슬롯은 초안 |
-| `deploy`, 코드 푸시, `binary` 번들 | ⏳ 계획 |
+| PyPI 로의 `deploy code single\|fat` (`uv publish`) | ✅ 구현 |
+| FastTrack·ResourceHub 로의 `deploy`, 코드 푸시, `binary` 번들 | ⏳ 계획 |
 
 ## 📖 문서
 

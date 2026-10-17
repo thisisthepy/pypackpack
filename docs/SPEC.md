@@ -77,7 +77,7 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     are empty placeholders. (The `bytecode` level of the `resource` bundle uses `compileall`, which
     is not this.)
 - (4). Support code update fast track API
-  - Status: planned. `deploy/code/FastTrackAPI.kt` is an empty placeholder; see *Package
+  - Status: planned. `deploy/code/FastTrackAPI.kt` refuses (no FastTrack server exists); see *Package
     deployment*.
 
 ### PyPackPack Companion (tools designed to be used together)
@@ -216,9 +216,9 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - ResourceAPI.kt  # placeholder (refuses)
           - ResourceHubAPI.kt  # placeholder
         - code
-          - CodeAPI.kt  # placeholder (refuses)
-          - PyPIPublishAPI.kt  # placeholder (uv publish)
-          - FastTrackAPI.kt  # placeholder
+          - CodeAPI.kt  # routes code deploys: single/fat to PyPI, binary/patch to FastTrack
+          - PyPIPublishAPI.kt  # uploads the single/fat wheel with uv publish
+          - FastTrackAPI.kt  # refuses: no FastTrack server exists
         - weight
           - WeightAPI.kt  # placeholder (refuses)
           - BrainWaveAPI.kt  # placeholder
@@ -932,16 +932,39 @@ Limitation
 
 #### Package deployment
 
-Status: planned. `pypackpack deploy` is registered, and every deploy type refuses with a
-"not implemented" message and exit code 1 (`cli/.../DeployCommandTest.kt`,
-`packpack/.../deploy/DeployInterfaceTest.kt`). Nothing is uploaded.
-
 ```bash
-pypackpack deploy <package name> [<deploy type: code (alias source) | resource | weight; default code>] [<bundle type: default binary>] [--type <build type: default debug>] [--level <build level: default instant>] [--target <target name>]
+pypackpack deploy <package name> [<deploy type: code (alias source) | resource | weight; default code>] [<bundle type: default binary>] [--type <build type: default debug>] [--level <build level: default instant>] [--target <target name>] [--publish-url <url>] [--dry-run]
 ```
 
-- `DeployInterface.create(DeployType)` returns `CodeAPI`, `ResourceAPI` or `WeightAPI`, each an `UnimplementedDeployer` that returns a failed `Result`. `PyPIPublishAPI`, `FastTrackAPI`, `ResourceHubAPI` and `BrainWaveAPI` are empty placeholders.
-- The destination follows the artefact: a library goes to PyPI (`PyPIPublishAPI`), an app to FastTrack (`FastTrackAPI`).
+The package is found as `build` finds it (a workspace member, from the working directory). The
+destination follows the artefact (`docs/INTENT.md` §4.4): a library's wheel goes to PyPI, an app's
+`binary` or `patch` bundle to FastTrack. `DeployInterface.create(DeployType)` returns `CodeAPI`,
+`ResourceAPI` or `WeightAPI`; `CodeAPI` routes by bundle type.
+
+##### Code to PyPI: `deploy <package> code single|fat`
+
+Status: implemented (#90). `packpack/.../deploy/code/PyPIPublishAPITest.kt`, `cli/.../DeployCommandTest.kt`.
+
+- `PyPIPublishAPI` uploads the one wheel in `<package>/build/packpack/<single|fat>/<build type>/<build
+  level>`, which `pypackpack build <package> source single|fat` made, with pypackpack's own uv:
+  `uv publish [--publish-url <url>] [--dry-run] <wheel>`.
+- No token is stored or passed on the command line: uv authenticates itself (`UV_PUBLISH_TOKEN`,
+  trusted publishing). `--publish-url` (TestPyPI, for example) and `--dry-run` pass through.
+- No wheel: refused, naming the `pypackpack build ... source <bundle> --type ... --level ...` command that
+  makes it. More than one wheel: refused, listing them, with that command and `--overwrite`. A failed upload
+  fails with uv's output.
+- The tests use a fake runner only; nothing uploads. Verified by hand with `--dry-run` against TestPyPI's
+  URL (2026-10-17), which uploaded nothing.
+
+##### Not implemented
+
+Status: planned. Each refuses with a "not implemented" message and exit code 1
+(`packpack/.../deploy/DeployInterfaceTest.kt`, `PyPIPublishAPITest`, `cli/.../DeployCommandTest.kt`).
+
+- `code binary|patch` → FastTrack (`FastTrackAPI`), for apps: no FastTrack server exists. Who builds and
+  runs it is the maintainer's decision.
+- `resource` → ResourceHub (`ResourceAPI`, `ResourceHubAPI`) and `weight` → BrainWave (`WeightAPI`,
+  `BrainWaveAPI`): no server exists.
 - Implement patch feature
   - Let's go with a git-like concept for patch uploads (the concern is speed, parallel processing)
   - Need change upload, a server management page, client code
