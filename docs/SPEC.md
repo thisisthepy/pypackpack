@@ -154,9 +154,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - Gradle.kt  # Gradle interface
         - middleware
           - MiddlewareInterface.kt  # factory pattern
-          - DefaultMiddleware.kt  # strategy pattern; also MarkerPolicy
+          - DefaultMiddleware.kt  # strategy pattern; the project .venv (python use, root add/remove/sync); also MarkerPolicy
           - environment
-            - DevEnv.kt  # manages dev/build environment venv; to be folded into DefaultMiddleware (#69)
             - CrossEnv.kt  # manages per-target dependencies and build/crossenv/<target>
         - backend
           - external
@@ -568,20 +567,21 @@ pypackpack <package> target remove <target name>...
 
 #### Middleware layer
 
-Decided 2026-10-17 (#69, through the project lead); the code change is planned.
+Decided 2026-10-17 (#69, through the project lead); done in #86.
 
 - The middleware layer stays: it is the CLI's path. `toolchain` calls the backend only (`AGENTS.md`
   rule 13), so this decision does not reach it.
 - `CrossEnv` stays the one environment class. It holds the layer's logic: per-target markers
   (`MarkerPolicy`), `build/crossenv/<target>` directories, package scaffolding and workspace propagation.
-- `DevEnv` is folded into `DefaultMiddleware` without a behaviour change, and `DevEnv.kt` is deleted. Each of
-  its functions locates the project and makes one backend call; the one with logic of its own,
-  `changePythonVersion` (delete `.venv`, recreate it, sync), gets a test before it moves.
+- `DevEnv` was folded into `DefaultMiddleware` without a behaviour change, and `DevEnv.kt` is gone. Each of
+  its functions located the project and made one backend call; the one with logic of its own,
+  `changePythonVersion` (delete `.venv`, recreate it, sync), was pinned by
+  `DefaultMiddlewarePythonVersionTest` before it moved.
 - Both still locate the project through `user.dir`, which the CLI may do and a daemon-hosted caller may not.
 
 #### Policy notes
 
-> - `pypackpack add/remove` is DevEnv-only (DefaultMiddleware's once #69's change lands) and operates without a `packageName`
+> - `pypackpack add/remove` works on the project `.venv` (DefaultMiddleware) and operates without a `packageName`
 > - `pypackpack <package> add/remove/sync/tree` is CrossEnv-only and requires a `packageName`
 > - CrossEnv target dependencies are normalized based on `Platforms.kt`, then managed via `uv add` or `pyproject.toml` editing using a per-target marker
 > - Input that directly includes a marker in the dependency string (e.g. `numpy; ...`) is prohibited; only `--target` is allowed

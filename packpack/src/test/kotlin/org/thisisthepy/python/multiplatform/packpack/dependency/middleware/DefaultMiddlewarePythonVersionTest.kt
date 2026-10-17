@@ -10,8 +10,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * `python use <version>` (`changePythonVersion`): the one DevEnv function with logic of its own. Pinned
- * before DevEnv folds into DefaultMiddleware (#86), so the move is seen not to change it.
+ * `python use <version>` (`changePythonVersion`): the one function of the former DevEnv with logic of
+ * its own. Pinned before DevEnv folded into DefaultMiddleware (#86), so the move is seen not to change it.
  */
 class DefaultMiddlewarePythonVersionTest {
     private val projectRoot: File = Files.createTempDirectory("ppp-python-use-").toFile().canonicalFile
