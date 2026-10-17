@@ -66,7 +66,7 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 
 - (1). Support building Python packages written in C, C++, Rust (except when patches are required)
   - Status: partial. C/C++ through Meson (`packpack/.../compile/backend/external/MesonTest.kt`).
-    Rust (`Cargo.kt`) is an empty placeholder.
+    Rust (`Cargo.kt`) is an empty placeholder; its plan is *Rust extension modules (Cargo backend)*.
 - (2). Support crossenv for multi-platform code
   - Status: partial. Per-target dependency markers and per-target install directories
     (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
@@ -755,6 +755,58 @@ Not yet implemented (target). Status: planned
 - Describing, in the package's `pyproject.toml`, the scope of dependency packages that need to be built (today everything under the package is built at the same level).
 - Selecting whether to bundle everything into a single file or build separately, as metadata.
 - Server-side patch version tracking (base version ledger, server management page).
+
+#### Rust extension modules (Cargo backend)
+
+Status: planned (#65; decisions of 2026-10-17, through the project lead). `compile/backend/external/Cargo.kt`
+is an empty placeholder. The first user is torchnative (thisisthepy/torchnative#53).
+
+A Rust crate becomes a CPython extension module for each target and ships in the app through the
+`resource` bundle. Kotlin reaches it through python-multiplatform like any other Python module; calling
+the crate from Kotlin directly (cinterop, JNI) is out of scope.
+
+- **Build: maturin and PyO3.** maturin already knows PyO3's build configuration, the cross-compile
+  environment (`PYO3_CROSS_*`) and the platform wheel tags. It is installed with `uv tool install maturin`,
+  as meson and ninja are. Each crate gives one wheel per target, which then takes the path a library's
+  prebuilt native wheel takes: installed into `build/crossenv/<triple>`, carried by the `resource` bundle
+  (`libDirs`). No new bundler code.
+  - maturin's mobile support is shipped, not declined. iOS: "Adding support for iOS" (PyO3/maturin#1742)
+    closed as completed by "Initial iOS support" (PyO3/maturin#2102, merged 2024-06-06), then wheel
+    naming, cross virtual environments and simulator tags (PyO3/maturin#2827, #2828, #2851, merged
+    2025-11). Android: "Implement Android platform tag support" (PyO3/maturin#2900, merged 2025-12-30),
+    then tag detection and abi3 cross-compilation fixes (PyO3/maturin#3023, #3130, merged 2026). Sources:
+    <https://github.com/PyO3/maturin/pull/2102>, <https://github.com/PyO3/maturin/pull/2900>.
+  - Fallback, if a mobile target turns out not to build through maturin: pypackpack calls `cargo build`
+    for that target directly and writes the wheel itself, with its own tag rule (*Wheel tags*,
+    `bundle/PythonTags.kt`) and the PEP 730 / PEP 738 platform tags `SingleWheelBundler` already writes.
+- **ABI: abi3t.** PyO3's `abi3t` feature and `gil_used = false` by default (Scope decisions): one extension
+  serves every free-threaded 3.15+ runtime. PyO3 0.30 supports `abi3t`
+  (<https://github.com/PyO3/pyo3/blob/main/guide/src/features.md>), and maturin 1.15 checks abi3t's
+  `PyModExport` entry point (PyO3/maturin#3246).
+- **Targets, in order:** the host desktop target, then `aarch64-linux-android`, then iOS (`aarch64-apple-ios`,
+  `aarch64-apple-ios-sim`, `x86_64-apple-ios`), the order the compile slot (#60) uses. Then the remaining
+  Rust triples: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`,
+  `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `x86_64-linux-android`.
+- **Toolchains: pypackpack acquires or locates them**, never `tcl` or `toolchain`. Rust targets with
+  `rustup target add`; no `rustup` is a refusal that names it. The Android NDK from `ANDROID_NDK_HOME`, then
+  `$ANDROID_HOME/ndk/<version>`, as the compile slot does. Apple: the Xcode command-line tools.
+- **Separate from the compile slot (#60):** a crate is the input (not generated C) and a wheel into crossenv
+  is the path (not `ExtensionCompilerInterface`). Shared: the target triples, `PythonAbi`, the ABI-tag rule
+  and the Android extraction constraint (#60 §7).
+- **Declaring a crate.** By convention, a directory holding a `Cargo.toml` inside a Python package is that
+  package's extension module, named after the directory: `src/main/core/_fast/Cargo.toml` builds
+  `core._fast`. This is the rule Meson's `.c` scan uses, and it needs no `toolchain` DSL. For a crate outside
+  the Python packages, a `[tool.ppp.rust]` table in the package's `pyproject.toml` maps a module name to a
+  crate directory, relative to the package:
+
+  ```toml
+  [tool.ppp.rust]
+  "torch._C" = "rust/torch_c"
+  ```
+
+  The convention comes first; the table is for the exceptions. Crates that are neither inside a Python
+  package nor named in the table are not built (torchnative's `rust/vulkan_probe` and `rust/wasm_probe`
+  stay out). Naming the same module both ways is an error.
 
 #### Build Level
 

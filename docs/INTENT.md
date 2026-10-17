@@ -98,3 +98,9 @@ need patches to build), `pip-central` (a closed-source service distributing them
 5. ~~**The Python wrapper.** Is distributing `pypackpack` through PyPI intended?~~ **Answered
    (2026-10-03):** yes. The wheel carries the native binary per platform; see `docs/SPEC.md`,
    *Distribution through PyPI*.
+6. ~~**Rust packages.**~~ **Answered (2026-10-17, through the project lead; #65):** there is no
+   separate `pythonx-native` repository. Rust crates become CPython extension modules through
+   pypackpack's Cargo backend, built with maturin and PyO3 (abi3t, `gil_used = false`). pypackpack
+   acquires the Rust targets and locates the NDK and Xcode; `tcl` and `toolchain` only call it. Kotlin
+   reaches the module through python-multiplatform like any other Python module, never directly.
+   `docs/SPEC.md`, *Rust extension modules (Cargo backend)*, records the plan.

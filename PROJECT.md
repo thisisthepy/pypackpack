@@ -52,6 +52,9 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 **계획 (빈 파일이거나 없음)**
 - `native` / `mixed` 빌드 레벨, `binary` 번들
 - Clang/MSVC/NDK/XCode/Emscripten/Cargo 백엔드, Nuitka/Cython/Lpython, 최소화(minification)
+- Cargo 백엔드 (#65, 2026-10-17 결정): maturin + PyO3, abi3t, 대상 순서 호스트 → Android arm64 → iOS. crate 는
+  Python 패키지 안 `Cargo.toml` 디렉터리 규약, 밖에 있으면 `[tool.ppp.rust]` 로 지정. 첫 사용자 torchnative#53.
+  SPEC *Rust extension modules (Cargo backend)*
 - `deploy`: 명령은 등록되어 있지만 모든 타입이 "not implemented" 로 실패
 - 패치 버전 추적, 코드 업데이트 fast track API
 
