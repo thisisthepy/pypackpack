@@ -80,6 +80,12 @@ data class BundleRequest(
      * interpreter, free-threaded 3.15 (`cp315t`). See [PythonTags].
      */
     val pythonVersion: String? = null,
+    /**
+     * Whether a host-target bundle imports each free-threaded extension in its own process of the
+     * project's 3.15t `.venv` interpreter to see if it turns the GIL on ([GilCheck.probeWarnings]).
+     * That runs the package's code; `false` skips it. The file-name tag check always runs.
+     */
+    val gilImportProbe: Boolean = true,
 )
 
 /**
@@ -103,6 +109,8 @@ data class BundleResult(
     val manifestFile: File,
     val fileCount: Int,
     val artifactFile: File? = null,
+    /** Problems that do not fail the bundle, for the caller to show: today [GilCheck]'s findings. */
+    val warnings: List<String> = emptyList(),
 )
 
 /**

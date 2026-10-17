@@ -60,7 +60,7 @@ val bundle = result.getOrElse { throw it }   // bundle.outputDir, bundle.manifes
 <pre><code class="language-kotlin">BackendInterface.create(BackendType.UV).installDependenciesToTarget(
     targetDir = &quot;build/crossenv/arm64-apple-ios&quot;,
     pythonPlatform = &quot;arm64-apple-ios&quot;,
-    extraArgs = mapOf(&quot;python-version&quot; to &quot;3.14&quot;),
+    extraArgs = mapOf(&quot;python-version&quot; to &quot;3.15&quot;),
     workingDir = projectDir,
     requirements = listOf(&quot;pillow&gt;=11&quot;, &quot;six&quot;),   // null: -r pyproject.toml
 )</code></pre>

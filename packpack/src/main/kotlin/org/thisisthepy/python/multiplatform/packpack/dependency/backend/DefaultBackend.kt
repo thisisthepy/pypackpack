@@ -102,7 +102,7 @@ abstract class DefaultBackend : BackendInterface {
      * Installs the pinned CPython for ([pythonVersion], [targetPlatform]) (`docs/SPEC.md`,
      * "Installing a ppp Python distribution"):
      *
-     * 1. resolve the pair in [PythonDistributions] -- an unknown or unpinned pair is refused with the
+     * 1. resolve the pair in [PythonDistributions] -- an unknown pair is refused with the
      *    supported list;
      * 2. download into a staging directory beside the install directory;
      * 3. verify the archive's SHA-256 against the pin -- a mismatch fails naming the artifact, the
@@ -126,9 +126,7 @@ abstract class DefaultBackend : BackendInterface {
                 ?: return Result.failure(IllegalArgumentException("Unsupported target platform: $targetPlatform"))
 
         val distribution = resolveDistribution(pythonVersion, canonicalTarget).getOrElse { return Result.failure(it) }
-        val expectedSha256 =
-            distribution.sha256
-                ?: return Result.failure(IllegalStateException("No pinned SHA-256 for ${distribution.fileName}"))
+        val expectedSha256 = distribution.sha256
 
         val destination =
             if (installDir != null) {

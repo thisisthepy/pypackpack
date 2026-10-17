@@ -4,7 +4,9 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
+import org.thisisthepy.python.multiplatform.packpack.bundle.GilCheck
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
+import org.thisisthepy.python.multiplatform.packpack.utils.findVenvInterpreter
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
@@ -156,8 +158,33 @@ class ResourceBundler : BundlerInterface {
                 outputDir = outputDir,
                 manifestFile = manifestFile,
                 fileCount = entries.size,
+                warnings = gilWarnings(request, descriptor.canonicalTarget, packageDir, File(outputDir, PYTHON_ROOT), payload.keys),
             )
         }
+
+    /**
+     * [GilCheck]'s warnings: the tag check on every target; on the host, unless
+     * [BundleRequest.gilImportProbe] is off, the import probe with the project's free-threaded `.venv`
+     * interpreter. Without such an interpreter the probe cannot run, and that is a warning too.
+     */
+    private fun gilWarnings(
+        request: BundleRequest,
+        canonicalTarget: String,
+        packageDir: File,
+        pythonRoot: File,
+        paths: Collection<String>,
+    ): List<String> {
+        val tagged = GilCheck.tagWarnings(paths)
+        val modules = GilCheck.extensionModules(paths)
+        if (!request.gilImportProbe || modules.isEmpty() || canonicalTarget != Platforms.detectHostTarget()) {
+            return tagged
+        }
+        val interpreter = findVenvInterpreter(packageDir)?.takeIf { GilCheck.isFreeThreaded(it) }
+            ?: return tagged +
+                "${modules.size} extension(s) were not checked for the GIL: no free-threaded interpreter " +
+                "under a '.venv' above ${packageDir.absolutePath} (`pypackpack python install 3.15t`)."
+        return tagged + GilCheck.probeWarnings(pythonRoot, modules, interpreter)
+    }
 
     private fun resolveOutputDir(
         request: BundleRequest,
@@ -309,31 +336,16 @@ class ResourceBundler : BundlerInterface {
     }
 
     /**
-     * Walks upward from [startDir] (the package directory) looking for `<dir>/.venv/<interpreter>`,
-     * matching `docs/SPEC.md`'s `<project>/.venv` convention regardless of how many directories sit
-     * between a single package and the (possibly multi-package) project root it belongs to. Fails
-     * loudly rather than falling back to whatever `python3` happens to be on `PATH`: a `.pyc`'s magic
-     * number is tied to the interpreter that produced it, and this codebase pins Python to 3.13
-     * everywhere else (`docs/SPEC.md` -> "Only Python 3.13 is supported due to python-multiplatform
-     * limitations"), so silently using an unrelated system interpreter would produce a `.pyc` the
-     * target runtime cannot load.
+     * The `<project>/.venv` interpreter above [startDir] ([findVenvInterpreter]). Fails loudly
+     * rather than falling back to whatever `python3` happens to be on `PATH`: a `.pyc`'s magic
+     * number is tied to the interpreter that produced it, so an unrelated system interpreter would
+     * produce a `.pyc` the target runtime (CPython 3.15t, `docs/SPEC.md` Scope decisions) cannot load.
      */
-    private fun locateBytecodeCompiler(startDir: File): File {
-        var current: File? = startDir.canonicalFile
-        while (current != null) {
-            val venv = File(current, ".venv")
-            val candidate =
-                listOf("bin/python3", "bin/python", "Scripts/python.exe")
-                    .map { File(venv, it) }
-                    .firstOrNull { it.isFile }
-            if (candidate != null) return candidate
-            current = current.parentFile
-        }
-        throw IllegalStateException(
+    private fun locateBytecodeCompiler(startDir: File): File =
+        findVenvInterpreter(startDir) ?: throw IllegalStateException(
             "No Python interpreter found under a '.venv' above ${startDir.absolutePath}. " +
-                "Run `pypackpack python install 3.13` first to build the 'bytecode' level.",
+                "Run `pypackpack python install 3.15t` first to build the 'bytecode' level.",
         )
-    }
 
     /** Rebuilds the manifest entry list straight from what is actually on disk under [pythonRoot]. */
     private fun scanEntries(pythonRoot: File): List<ManifestEntry> =

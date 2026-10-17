@@ -3,8 +3,7 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 /**
  * One prebuilt CPython archive `installPython` can fetch for one (version, target) pair.
  *
- * @property sha256 the pinned digest the download must match before anything is extracted, or
- *   `null` when no digest could be obtained; a `null` pin is refused, never installed unverified.
+ * @property sha256 the pinned digest the download must match before anything is extracted.
  * @property provenance where [sha256] was copied from, so it can be re-checked.
  * @property stripComponents / [prefixFilter] how the archive's tree maps onto the install directory
  *   (passed to `utils/Archive.kt`'s `extractArchive`).
@@ -13,7 +12,7 @@ data class PythonDistribution(
     val version: String,
     val target: String,
     val url: String,
-    val sha256: String?,
+    val sha256: String,
     val provenance: String,
     val stripComponents: Int,
     val prefixFilter: String?,
@@ -26,272 +25,108 @@ data class PythonDistribution(
  * The interpreters `installPython` knows, keyed by exact version and canonical target triple
  * (`docs/SPEC.md`, "Installing a ppp Python distribution").
  *
- * The versions are the ones `toolchain` can ask for (its `PythonSdkVersion.PY3_14_7` and
- * `PY3_13_0`, in the `toolchain` repository's `dsl/DSLCore.kt`).
+ * The runtime is CPython 3.15t, free-threaded only (`docs/SPEC.md` Scope decisions, python-multiplatform
+ * #158). Desktop: python-build-standalone `20261013`'s free-threaded archives, version `3.15.0t`
+ * (abi3t, PEP 803). Every digest was computed with `shasum -a 256` on the downloaded archive and equals
+ * the release's `SHA256SUMS`.
  *
- * 3.14.7 follows python-multiplatform (the runtime's source of truth; its `gradle.properties`
- * `pythonVersion=3.14.7`, `pythonBuildStandaloneRelease=20260807`, `pythonAppleSupportBuild=b11`,
- * and `docs/platforms/python-version-acquisition.md`): python-build-standalone for desktop,
- * python.org for Android, BeeWare Python-Apple-support for iOS. Every 3.14.7 digest was copied from
- * python-multiplatform's lockfile `python-checksums.properties` and cross-checked against the
- * upstream's own published digest, as each entry's [PythonDistribution.provenance] says.
- *
- * 3.15.0 (python-multiplatform's new default): python-build-standalone `20261013` for desktop, in a
- * GIL and a free-threaded (`3.15.0t`, abi3t, PEP 803) flavour, python.org's Android tarballs (GIL) and
- * python.org's iOS XCframework (GIL). The mobile builds have no free-threaded archive. Every digest was
- * computed with `shasum -a 256` on the downloaded archive; the desktop ones equal the release's `SHA256SUMS`.
- *
- * 3.13.0 keeps its existing source, the `binary/` directory of python-multiplatform's `release`
- * branch. Its four desktop archives are byte-for-byte-sized copies of python-build-standalone
- * release 20241008 (`binary/download.md` says so, and each git blob's size equals the release
- * asset's), so their pin is that release's `SHA256SUMS`. If the copy ever differs from upstream the
- * pin fails closed. Its Android (`.tar.xz`) and iOS (`.zip`) archives have no published digest
- * anywhere and cannot be hashed without downloading 64-76 MB each, so they carry `sha256 = null`
- * and are refused (TODO below).
+ * Android and iOS are the one GIL exception: python.org's 3.15.0 archives, version `3.15.0`, until
+ * python-multiplatform #163 publishes free-threaded mobile builds. Then [android315] and [ios315] take
+ * that build's URL and digest with `freeThreaded = true`, and the exception (and this paragraph) goes.
  */
 object PythonDistributions {
     private const val PBS = "https://github.com/astral-sh/python-build-standalone/releases/download"
-    private const val PBS_RELEASE_3_14_7 = "20260807"
     private const val PBS_RELEASE_3_15_0 = "20261013"
     private const val PYTHON_ORG = "https://www.python.org/ftp/python"
-    private const val BEEWARE = "https://github.com/beeware/Python-Apple-support/releases/download"
-    private const val PM_BINARY = "https://github.com/thisisthepy/python-multiplatform/raw/release/binary"
 
-    private const val LOCKFILE = "python-multiplatform python-checksums.properties"
-    private const val SUMS_3_14_7 = "python-build-standalone $PBS_RELEASE_3_14_7 SHA256SUMS"
     private const val SUMS_3_15_0 = "python-build-standalone $PBS_RELEASE_3_15_0 SHA256SUMS"
-    private const val SUMS_3_13_0 = "python-build-standalone 20241008 SHA256SUMS"
+    private const val PYTHON_ORG_DIGEST =
+        "shasum -a 256 of the python.org download (python.org publishes no SHA256SUMS; it signs with Sigstore)"
 
-    /** `X.Y` shorthands accepted on the command line; each means the one patch release pinned here. */
+    /** `X.Y` shorthands accepted on the command line; both name the free-threaded build. */
     val VERSION_ALIASES: Map<String, String> = mapOf(
-            "3.15" to "3.15.0",
+            "3.15" to "3.15.0t",
             "3.15t" to "3.15.0t",
-            "3.14" to "3.14.7",
-            "3.13" to "3.13.0",
         )
 
-    private fun pbs314(
+    /** 3.15.0t desktop: python-build-standalone's free-threaded `install_only` archive. */
+    private fun pbs315(
         target: String,
         sha256: String,
-        provenance: String,
     ) = PythonDistribution(
-        version = "3.14.7",
+        version = "3.15.0t",
         target = target,
-        url = "$PBS/$PBS_RELEASE_3_14_7/cpython-3.14.7+$PBS_RELEASE_3_14_7-$target-install_only.tar.gz",
+        url = "$PBS/$PBS_RELEASE_3_15_0/cpython-3.15.0+$PBS_RELEASE_3_15_0-$target-freethreaded-install_only.tar.gz",
         sha256 = sha256,
-        provenance = provenance,
+        provenance = "$SUMS_3_15_0, recomputed with shasum -a 256 on the downloaded archive",
         // install_only archives hold a single top-level `python/` (bin/, lib/, include/).
         stripComponents = 1,
         prefixFilter = "python/",
     )
 
-    private fun android314(
+    /**
+     * 3.15.0 for Android. [freeThreaded] is `false` while python.org's GIL tarball is the source (the
+     * SPEC exception); python-multiplatform #163's build passes its own [url] with `true`.
+     */
+    private fun android315(
         target: String,
         sha256: String,
-        lockKey: String,
+        freeThreaded: Boolean = false,
+        url: String = "$PYTHON_ORG/3.15.0/python-3.15.0-$target.tar.gz",
+        provenance: String = PYTHON_ORG_DIGEST,
     ) = PythonDistribution(
-        version = "3.14.7",
+        version = if (freeThreaded) "3.15.0t" else "3.15.0",
         target = target,
-        url = "$PYTHON_ORG/3.14.7/python-3.14.7-$target.tar.gz",
+        url = url,
         sha256 = sha256,
-        provenance = "$LOCKFILE `$lockKey` (python.org publishes no SHA256SUMS; it signs with Sigstore)",
+        provenance = provenance,
         // python.org's Android tarball is rooted at `./` (README.md, android.py, prefix/, ...).
         stripComponents = 1,
         prefixFilter = "./",
     )
 
-    private fun ios314(target: String) =
-        PythonDistribution(
-            version = "3.14.7",
-            target = target,
-            // One XCframework holds every iOS slice (ios-arm64, ios-arm64_x86_64-simulator).
-            // b11 carries CPython 3.14.7 (b10 was 3.14.6; pypackpack#35, python-multiplatform#47).
-            // python-multiplatform's download tasks now fail when patchlevel.h disagrees with
-            // pythonVersion, so this pairing is checked upstream.
-            url = "$BEEWARE/3.14-b11/Python-3.14-iOS-support.b11.tar.gz",
-            sha256 = "b591f3301bd22a4f423c49c746cac9e55558b909fd14d6eb8327ccc62234ab7b",
-            provenance =
-                "$LOCKFILE `ios-3.14-b11`; equals the GitHub release asset digest " +
-                    "(BeeWare publishes no checksum file or signature)",
-            stripComponents = 0,
-            prefixFilter = null,
-        )
-
-    /**
-     * 3.15.0 desktop. The free-threaded build is its own version, `3.15.0t` (alias `3.15t`): the same
-     * target triple has a GIL archive and a free-threaded one, and the version names which.
-     */
-    private fun pbs315(
+    /** 3.15.0 for iOS: one XCframework holds every slice. [freeThreaded] as for [android315]. */
+    private fun ios315(
         target: String,
-        freeThreaded: Boolean,
-        sha256: String,
+        sha256: String = "68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19",
+        freeThreaded: Boolean = false,
+        url: String = "$PYTHON_ORG/3.15.0/python-3.15.0-iOS-XCframework.tar.gz",
+        provenance: String = PYTHON_ORG_DIGEST,
     ) = PythonDistribution(
         version = if (freeThreaded) "3.15.0t" else "3.15.0",
         target = target,
-        url =
-            "$PBS/$PBS_RELEASE_3_15_0/cpython-3.15.0+$PBS_RELEASE_3_15_0-$target" +
-                "${if (freeThreaded) "-freethreaded" else ""}-install_only.tar.gz",
+        url = url,
         sha256 = sha256,
-        provenance = "$SUMS_3_15_0, recomputed with shasum -a 256 on the downloaded archive",
-        stripComponents = 1,
-        prefixFilter = "python/",
-    )
-
-    private fun android315(
-        target: String,
-        sha256: String,
-    ) = PythonDistribution(
-        version = "3.15.0",
-        target = target,
-        url = "$PYTHON_ORG/3.15.0/python-3.15.0-$target.tar.gz",
-        sha256 = sha256,
-        provenance = "shasum -a 256 of the python.org download (python.org publishes no SHA256SUMS; it signs with Sigstore)",
-        // Same layout as the 3.14.7 tarball: rooted at `./` (README.md, android.py, prefix/, ...).
-        stripComponents = 1,
-        prefixFilter = "./",
-    )
-
-    private fun ios315(target: String) =
-        PythonDistribution(
-            version = "3.15.0",
-            target = target,
-            // python.org's own XCframework; one archive holds every iOS slice.
-            url = "$PYTHON_ORG/3.15.0/python-3.15.0-iOS-XCframework.tar.gz",
-            sha256 = "68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19",
-            provenance = "shasum -a 256 of the python.org download (python.org publishes no SHA256SUMS; it signs with Sigstore)",
-            stripComponents = 0,
-            prefixFilter = null,
-        )
-
-    private fun pbs313(
-        target: String,
-        flavour: String,
-        sha256: String,
-    ) = PythonDistribution(
-        version = "3.13.0",
-        target = target,
-        url = "$PM_BINARY/cpython-3.13.0+20241008-$flavour.tar.zst",
-        sha256 = sha256,
-        provenance = "$SUMS_3_13_0 (binary/ holds copies of that release; blob size equals the asset size)",
-        // `full` archives also hold python/build/, python/licenses/ and PYTHON.json; keep install/.
-        stripComponents = 2,
-        prefixFilter = "python/install/",
-    )
-
-    // TODO(#21): pin these once their SHA-256 is known. No digest is published for them, and
-    // computing one needs the 64-76 MB download. Until then `resolve` refuses them (fails closed).
-    private fun unpinned313(
-        target: String,
-        fileName: String,
-    ) = PythonDistribution(
-        version = "3.13.0",
-        target = target,
-        url = "$PM_BINARY/$fileName",
-        sha256 = null,
-        provenance = "none: python-multiplatform binary/$fileName has no published SHA-256",
+        provenance = provenance,
         stripComponents = 0,
         prefixFilter = null,
     )
 
-    /** Every known (version, target) pair, pinned or not. */
+    /** Every known (version, target) pair. */
     val ALL: List<PythonDistribution> =
         listOf(
-            pbs314(
-                "aarch64-apple-darwin",
-                "433c2c61f5edfb2beda061d3b1f226bbe3493fa926cec68068843dd49110e539",
-                "$LOCKFILE `macos-aarch64-3.14.7-20260807`; equals $SUMS_3_14_7",
-            ),
-            pbs314(
-                "x86_64-apple-darwin",
-                "2551ac222fbf0ec16ad8bd575bf94614d4da0877e74adb0e155cef019bf3007d",
-                "$LOCKFILE `macos-x86_64-3.14.7-20260807`; equals $SUMS_3_14_7",
-            ),
-            pbs314(
-                "x86_64-unknown-linux-gnu",
-                "3d1705fee7747c491d774e26fa91fad67e25d1eb3ede4124dc88501279f2e7d4",
-                "$LOCKFILE `linux-x86_64-3.14.7-20260807`; equals $SUMS_3_14_7",
-            ),
-            pbs314(
-                "x86_64-pc-windows-msvc",
-                "b06367695ce177e4abb2e02a8ff00fa60903c29fb381e40affaee2f51ef6115a",
-                "$LOCKFILE `windows-x86_64-3.14.7-20260807`; equals $SUMS_3_14_7",
-            ),
-            pbs314(
-                "aarch64-unknown-linux-gnu",
-                "3657f14592d0a9c3f459ded52bf6f38976698cb07365e4025684bb11dd6be1cb",
-                "$SUMS_3_14_7 (not in python-multiplatform's lockfile, which pins 4 desktop targets)",
-            ),
-            pbs314(
-                "aarch64-pc-windows-msvc",
-                "66c2afade786c86a303b2e8af501596df0dcd0e47da40ce6cf8cdae26241bb1c",
-                "$SUMS_3_14_7 (not in python-multiplatform's lockfile, which pins 4 desktop targets)",
-            ),
-            android314(
-                "aarch64-linux-android",
-                "6d50cc3aa66e414a439594089bcdfb5f1264358155c70c1f00471c24cfb477fb",
-                "android-aarch64-3.14.7",
-            ),
-            android314(
-                "x86_64-linux-android",
-                "2c16ce2359565cd8c24f86cfb75630768ba6607e732946b294b969797f583b60",
-                "android-x86_64-3.14.7",
-            ),
-            ios314("arm64-apple-ios"),
-            ios314("arm64-apple-ios-simulator"),
-            ios314("x86_64-apple-ios-simulator"),
-            pbs315("aarch64-apple-darwin", false, "f5d1d82e2f5660d4decae5d2b7470631850bcd7bd39595d9c3cca3c5ee54eae7"),
-            pbs315("aarch64-apple-darwin", true, "9b982a1644405461bb0c96efecff18538e259c3ac253056f25a423fdce8fc069"),
-            pbs315("x86_64-apple-darwin", false, "c4adbda246262a55920ec0804f5a6a9a3a1e5948f3423da71926320b2489e50e"),
-            pbs315("x86_64-apple-darwin", true, "40c0033260b35a88365dad616d22bfbf182e894de866271b0b290e3c87e7468b"),
-            pbs315("x86_64-unknown-linux-gnu", false, "e02a368dd5dc76ffe0599e5109ad6c1ee84e597910758b0e006bab25372a8921"),
-            pbs315("x86_64-unknown-linux-gnu", true, "f8bf1b9cfe976fc415f656b3ae42a179e32ba3c7f34fa254ac0217948c43b34a"),
-            pbs315("x86_64-pc-windows-msvc", false, "0d9950ba8c6399203e60ed6a2452fc4e8def35c83fb6da00ec815784b7887483"),
-            pbs315("x86_64-pc-windows-msvc", true, "3fd540d407f34dfcec3c51db57b84e35264cda209be0c4d43e113e4e67d0bbb5"),
-            pbs315("aarch64-unknown-linux-gnu", false, "26a54e8fbde81bcc39ba35ad855a6a573295c023793c20fff1670a560649bcd7"),
-            pbs315("aarch64-unknown-linux-gnu", true, "05717335ecaa89b0dac64833c9c7c61a70e6db291e0a2c7ca707c80bfa20b0f5"),
-            pbs315("aarch64-pc-windows-msvc", false, "588a4d0817d74fd632c235868a8218f63baee4ce40126ebe16b5e1826a1b86ba"),
-            pbs315("aarch64-pc-windows-msvc", true, "53cbedb81dce9885273da9117f2652a7b1cf31afe1b63cbb11f01971658c8d85"),
+            pbs315("aarch64-apple-darwin", "9b982a1644405461bb0c96efecff18538e259c3ac253056f25a423fdce8fc069"),
+            pbs315("x86_64-apple-darwin", "40c0033260b35a88365dad616d22bfbf182e894de866271b0b290e3c87e7468b"),
+            pbs315("x86_64-unknown-linux-gnu", "f8bf1b9cfe976fc415f656b3ae42a179e32ba3c7f34fa254ac0217948c43b34a"),
+            pbs315("x86_64-pc-windows-msvc", "3fd540d407f34dfcec3c51db57b84e35264cda209be0c4d43e113e4e67d0bbb5"),
+            pbs315("aarch64-unknown-linux-gnu", "05717335ecaa89b0dac64833c9c7c61a70e6db291e0a2c7ca707c80bfa20b0f5"),
+            pbs315("aarch64-pc-windows-msvc", "53cbedb81dce9885273da9117f2652a7b1cf31afe1b63cbb11f01971658c8d85"),
             android315("aarch64-linux-android", "571e4cf4e0aee3d1ab54a52ca3d4e6845b85ec0bb327f7debfb873172f445dab"),
             android315("x86_64-linux-android", "2413d51948d612cf42baefba25295bb83c2ed84df5726af6fe5bde2dec5d87e7"),
             ios315("arm64-apple-ios"),
             ios315("arm64-apple-ios-simulator"),
             ios315("x86_64-apple-ios-simulator"),
-            pbs313(
-                "aarch64-apple-darwin",
-                "aarch64-apple-darwin-pgo+lto-full",
-                "834b674dd1430267ed3b2be6107e637ac42edc5007ef35dce0ac163a03038caf",
-            ),
-            pbs313(
-                "x86_64-apple-darwin",
-                "x86_64-apple-darwin-pgo+lto-full",
-                "640ec7e42b4824e1d5645ab4fc35e132598dc3861cab7e0480b24b25a373b4da",
-            ),
-            pbs313(
-                "x86_64-pc-windows-msvc",
-                "x86_64-pc-windows-msvc-shared-pgo-full",
-                "4d23c10867935d49e4b231ab2525b334c4004188fbc74e795856ea0dcaff2ce9",
-            ),
-            pbs313(
-                "x86_64-unknown-linux-gnu",
-                "x86_64_v4-unknown-linux-gnu-lto-full",
-                "32fc3d20f14d58195e0d204e8d67610267c56c231f7ef4472da9f1301169ee17",
-            ),
-            unpinned313("aarch64-linux-android", "aarch64-linux-android.tar.xz"),
-            unpinned313("x86_64-linux-android", "x86_64-linux-android.tar.xz"),
-            unpinned313("arm64-apple-ios", "arm64-iphoneos.zip"),
-            unpinned313("arm64-apple-ios-simulator", "arm64-iphonesimulator.zip"),
-            unpinned313("x86_64-apple-ios-simulator", "x86_64-iphonesimulator.zip"),
         )
 
     /** The pairs `installPython` will install, as `version/target`, in [ALL]'s order. */
-    val SUPPORTED: List<String> = ALL.filter { it.sha256 != null }.map { "${it.version}/${it.target}" }
+    val SUPPORTED: List<String> = ALL.map { "${it.version}/${it.target}" }
 
-    /** [version] with an `X.Y` alias expanded ("3.14" -> "3.14.7", "3.15t" -> "3.15.0t"); anything else unchanged. */
+    /** [version] with an `X.Y` alias expanded ("3.15" and "3.15t" -> "3.15.0t"); anything else unchanged. */
     fun canonicalVersion(version: String): String = VERSION_ALIASES[version] ?: version
 
     /**
      * The pinned distribution for ([version], [canonicalTarget]), or a failed [Result] that names
-     * the pair and lists [SUPPORTED]. A known pair without a pin is refused too, saying why.
+     * the pair and lists [SUPPORTED].
      */
     fun resolve(
         version: String,
@@ -299,28 +134,11 @@ object PythonDistributions {
     ): Result<PythonDistribution> {
         val exact = canonicalVersion(version)
         val known = ALL.firstOrNull { it.version == exact && it.target == canonicalTarget }
-        val supportedList = SUPPORTED.joinToString(", ")
-        return when {
-            known == null -> {
-                Result.failure(
-                    IllegalArgumentException(
-                        "Python $version is not available for $canonicalTarget. Supported: $supportedList",
-                    ),
-                )
-            }
-
-            known.sha256 == null -> {
-                Result.failure(
-                    IllegalStateException(
-                        "Python $exact for $canonicalTarget (${known.fileName}) has no pinned SHA-256, " +
-                            "so it is refused rather than installed unverified. Supported: $supportedList",
-                    ),
-                )
-            }
-
-            else -> {
-                Result.success(known)
-            }
-        }
+        return known?.let { Result.success(it) }
+            ?: Result.failure(
+                IllegalArgumentException(
+                    "Python $version is not available for $canonicalTarget. Supported: ${SUPPORTED.joinToString(", ")}",
+                ),
+            )
     }
 }

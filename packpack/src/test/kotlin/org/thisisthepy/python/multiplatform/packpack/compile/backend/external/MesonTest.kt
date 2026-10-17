@@ -50,6 +50,28 @@ class MesonTest {
         }
     }
 
+    /**
+     * SPEC "Scope decisions": extensions target PEP 803's `abi3t` by default. Meson's `limited_api`
+     * (since 1.3.0) defines `Py_LIMITED_API`, and a free-threaded 3.15 interpreter's headers turn that
+     * into `abi3t` (`pyabi.h`). `-Dpython.allow_limited_api=false` is Meson's own opt-out.
+     */
+    @Test
+    fun makeMesonBuild_targetsTheStableAbiFrom315ByDefault() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "_hello.c").writeText("/* c extension */\n")
+            File(packageDir, "_world.cpp").writeText("// c++ extension\n")
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+
+            assertEquals(2, Regex("  limited_api: '3\\.15',").findAll(content).count(), content)
+            assertTrue(content.contains("  meson_version: '>=1.3.0',"), content)
+        }
+    }
+
     @Test
     fun makeMesonBuild_generatesInstallOnlyProjectWithoutCSource() {
         withWorkspace {
@@ -200,6 +222,34 @@ class MesonTest {
 
             assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
             assertFalse(meson.installMesonCalled, "installMeson() should not have been called")
+        }
+    }
+
+    /**
+     * Meson's `find_installation()` otherwise uses the interpreter Meson itself runs on (uv's tool
+     * Python), which builds against the wrong headers and rejects `limited_api: '3.15'` below 3.15.
+     * The project's `.venv` interpreter is passed through a native file's `[binaries] python`.
+     */
+    @Test
+    fun setup_buildsAgainstTheProjectVenvInterpreter() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            val interpreter = File(this, ".venv/bin/python3")
+            interpreter.parentFile.mkdirs()
+            interpreter.writeText("")
+
+            val meson = RecordingMeson(mesonInstalled = true)
+            val projectDir = this
+            val result = runBlocking { meson.setup(buildDir = "build", options = listOf("--buildtype=debug"), workingDir = projectDir) }
+
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
+            val command = meson.executedCommands.single()
+            val nativeFile = File(command[command.indexOf("--native-file") + 1])
+            assertEquals(listOf("setup", "build", "--native-file", nativeFile.path, "--buildtype=debug"), command)
+            assertTrue(nativeFile.readText().contains("python = '${interpreter.canonicalPath}'"), nativeFile.readText())
         }
     }
 
