@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
  * `dependency/backend` ever calls `uv pip install --target` or unpacks a downloaded wheel anywhere
  * (verified by grepping `packpack/src/main` for `site-packages`/`crossenv`/`.venv` -- the only hits
  * are: `SingleWheelBundler`'s own destdir lookup, `ResourceBundler`'s bytecode-compiler lookup under
- * `<project>/.venv`, and `DevEnv`'s `.venv` path for the *dev* environment, which never receives a
+ * `<project>/.venv`, and `DefaultMiddleware`'s `.venv` path for the *dev* environment, which never receives a
  * per-target install either). So `FatWheelBundler` scopes "dependencies" to what is actually
  * resolvable without inventing that missing subsystem: **workspace-local** Python dependencies --
  * other `pypackpack` packages in the same workspace, declared as plain entries in
@@ -341,5 +341,17 @@ class FatWheelBundlerTest {
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("definitely-not-a-target"))
+    }
+
+    @Test
+    fun bundle_freeThreadedTargetProducesATTaggedWheel() {
+        workspacePyproject(listOf("core"))
+        val core = packageDir("core", "core")
+        writeDestdir(core, "core/__init__.py")
+
+        val result = bundler().bundle(BundleRequest(packageDir = core, target = "macos", pythonVersion = "3.15t")).getOrThrow()
+
+        assertTrue(result.artifactFile!!.name.contains("-cp315-cp315t-"), result.artifactFile!!.name)
+        assertTrue(zipEntryText(result.artifactFile!!, "core-0.1.0.dist-info/WHEEL").contains("Tag: cp315-cp315t-"))
     }
 }

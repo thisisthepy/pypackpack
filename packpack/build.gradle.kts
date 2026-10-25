@@ -8,11 +8,13 @@ plugins {
     // The command line lives in this module's own `cli` source set (bottom of this file), so the
     // published library (`main`) never carries the CLI's dependencies (Clikt in particular).
     `maven-publish`
+    signing
     id("org.graalvm.buildtools.native")
 }
 
-group = "org.thisisthepy.python.multiplatform"
-version = "0.1.0"
+// Both come from gradle.properties, the one place they are written (#102).
+group = providers.gradleProperty("mavenGroup").get()
+version = providers.gradleProperty("packpackVersion").get()
 
 repositories {
     mavenCentral()
@@ -63,6 +65,17 @@ tasks.test {
 // `utils/Archive.kt`), not just the CLI, so they are still `implementation` (POM scope `runtime`)
 // and still visible to a consumer -- that part of the leak was never CLI-specific and is unchanged
 // by this split.
+//
+// Maven Central (Sonatype Central Portal; pypackpack#99) requires sources and javadoc jars, a POM with
+// url, license, developer and SCM, and an `.asc` signature beside every file. Nothing here uploads:
+// `publishAllPublicationsToStagingRepository` writes the bundle to `build/staging-deploy`, and
+// `.github/scripts/maven/check_central_bundle.py` checks it. The javadoc jar is empty (the sources
+// are Kotlin, and `javadoc` has no Java to document); Central accepts that.
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
@@ -74,8 +87,55 @@ publishing {
                     "Python packaging for Kotlin Multiplatform: distribution management, " +
                         "dependency resolution, cross-compilation environments and bundling."
                 )
+                url.set("https://github.com/thisisthepy/pypackpack")
+                licenses {
+                    license {
+                        name.set("Apache-2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                    }
+                }
+                developers {
+                    developer {
+                        id.set("thisisthepy")
+                        name.set("thisisthepy")
+                        url.set("https://github.com/thisisthepy")
+                    }
+                }
+                scm {
+                    url.set("https://github.com/thisisthepy/pypackpack")
+                    connection.set("scm:git:https://github.com/thisisthepy/pypackpack.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/thisisthepy/pypackpack.git")
+                }
             }
         }
+    }
+    repositories {
+        maven {
+            name = "staging"
+            url = uri(layout.buildDirectory.dir("staging-deploy"))
+        }
+    }
+}
+
+// The upload format of the Central Portal (https://central.sonatype.org/publish/publish-portal-upload/):
+// the staged repository layout, zipped, without Gradle's maven-metadata files. Built, never uploaded here.
+tasks.register<Zip>("centralBundle") {
+    group = "publishing"
+    description = "Zips build/staging-deploy into the bundle the Sonatype Central Portal accepts."
+    dependsOn("publishAllPublicationsToStagingRepository")
+    from(layout.buildDirectory.dir("staging-deploy")) { exclude("**/maven-metadata*") }
+    archiveFileName.set("central-bundle-${project.version}.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("central"))
+}
+
+// Signs only when a key is given (`-PsigningInMemoryKey=<armored secret key>`, `-PsigningInMemoryKeyPassword`,
+// or the ORG_GRADLE_PROJECT_ environment variables of the same names in CI), so a local
+// `publishToMavenLocal` still works without one.
+signing {
+    val key = providers.gradleProperty("signingInMemoryKey").orNull
+    if (key != null) {
+        useInMemoryPgpKeys(key, providers.gradleProperty("signingInMemoryKeyPassword").orNull)
+        sign(publishing.publications["maven"])
     }
 }
 

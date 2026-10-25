@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
@@ -97,7 +98,7 @@ class CrossEnv {
                 "Package directory not found: ${packageDir.absolutePath}"
             }
 
-            val deleted = packageDir.deleteRecursively()
+            val deleted = packageDir.deleteWithoutFollowingLinks()
             require(deleted) {
                 "Failed to delete package directory: ${packageDir.absolutePath}"
             }

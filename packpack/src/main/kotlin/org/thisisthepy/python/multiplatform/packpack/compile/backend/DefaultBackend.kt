@@ -1,8 +1,10 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Cargo
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
 import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
-import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
+import org.thisisthepy.python.multiplatform.packpack.utils.resolveWorkspacePackageDir
 import java.io.File
 
 /**
@@ -10,6 +12,7 @@ import java.io.File
  */
 class DefaultBackend(
     val meson: Meson = Meson(),
+    val cargo: Cargo = Cargo(),
 ) : BackendInterface {
 
     override fun initialize() {
@@ -32,7 +35,7 @@ class DefaultBackend(
             val packageDir = resolveWorkspacePackageDir(workspaceRoot, packageName)
 
             if (overwrite) {
-                File(packageDir, buildDir).deleteRecursively()
+                File(packageDir, buildDir).deleteWithoutFollowingLinks()
             }
 
             val destdir = "${packageDir.absolutePath}/dist/$target/$type/$level"
@@ -40,31 +43,9 @@ class DefaultBackend(
             meson.setup(buildDir = buildDir, options = listOf("--buildtype=$type"), workingDir = packageDir, overwrite = overwrite).getOrThrow()
             meson.compile(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
             meson.install(buildDir = buildDir, options = null, workingDir = packageDir, destdir = destdir).getOrThrow()
+            // The package's Rust crates (#92): their extensions go beside Meson's, in the destdir's site-packages.
+            cargo.build(packageDir, target.takeUnless { it == "default" }, type, File(destdir)).getOrThrow()
 
             "Package '$packageName' compiled successfully."
         }
-
-    private fun resolveWorkspacePackageDir(
-        workspaceRoot: File,
-        packageName: String,
-    ): File {
-        val members = readWorkspaceMembers(workspaceRoot)
-        val member =
-            members.firstOrNull { it == packageName || File(it).name == packageName }
-                ?: throw IllegalArgumentException("Package '$packageName' is not a workspace member")
-
-        val rootPath = workspaceRoot.canonicalFile.toPath()
-        val packageDir = File(workspaceRoot, member).canonicalFile
-        require(packageDir.toPath().startsWith(rootPath)) {
-            "Package path must stay within workspace: $member"
-        }
-        require(packageDir.isDirectory) {
-            "Workspace package directory not found: ${packageDir.absolutePath}"
-        }
-        require(File(packageDir, "pyproject.toml").isFile) {
-            "pyproject.toml not found for workspace package '$packageName'"
-        }
-
-        return packageDir
-    }
 }
