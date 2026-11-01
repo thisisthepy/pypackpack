@@ -197,6 +197,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - Meson.kt  # meson.build generation, meson setup/compile/install, meson/ninja auto-install
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # strategy pattern
+        - extension
+          - ExtensionCompiler.kt  # interface and data types only: the native/mixed compile slot (docs/design/compile-slot.md); nothing implements or calls it
       - bundle
         - BundlerInterface.kt  # factory pattern; BundleType, BundleRequest, BundleResult
         - DefaultBundler.kt  # placeholder
@@ -959,10 +961,10 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `<project>/.venv`; `debug` keeps the `.py` beside the `.pyc`, `release` keeps only the `.pyc`.
     `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
 - `native`: native code where it exists. The developer's modules become CPython extensions built
-  from the C TypedPython generated for them (the compile slot, #19, draft #60). A developer module
-  without C is allowed as an exception: it ships as bytecode, and the build warns, naming the module
-  and the reason. C that fails to compile fails the build. Libraries ship their prebuilt native
-  wheels.
+  from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`, #19, #60).
+  A developer module without C is allowed as an exception: it ships as bytecode, and the build
+  warns, naming the module and the reason. C that fails to compile fails the build. Libraries ship
+  their prebuilt native wheels.
   - Status: planned. Every bundler rejects it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet`).
 - `mixed`: bytecode for the developer's code, native code for libraries. The developer's modules ship
   as bytecode and TypedPython's C is not applied; libraries ship their prebuilt native wheels.
