@@ -84,6 +84,46 @@ class UVBackendRealInstallTest {
         }
     }
 
+    @Test
+    fun installRequirementsToVenv_withNoIndexAndMissingWheel_failsWithoutReachingPyPI() {
+        val workDir = Files.createTempDirectory("uvbackend-venv-noindex").toFile()
+        try {
+            val venvDir = File(workDir, "venv")
+            val emptyWheelDir = File(workDir, "wheels").apply { mkdirs() }
+            val backend = UVBackend()
+
+            val created =
+                runBlocking {
+                    backend.createVirtualEnvironment(
+                        path = venvDir.absolutePath,
+                        pythonVersion = ">=3.13",
+                        extraArgs = linkedMapOf("no-project" to "", "clear" to ""),
+                        workingDir = workDir,
+                    )
+                }
+            created.exceptionOrNull()?.let {
+                fail("uv venv creation failed (needs uv):\n${it.message}", it)
+            }
+
+            // six==1.17.0 exists on PyPI, so if --no-index were ignored this install would succeed.
+            val installed =
+                runBlocking {
+                    backend.installRequirementsToVenv(
+                        venvPath = venvDir.absolutePath,
+                        requirements = listOf("six==1.17.0"),
+                        noIndex = true,
+                        findLinks = emptyWheelDir.absolutePath,
+                        workingDir = workDir,
+                    )
+                }
+            assertTrue(installed.isFailure, "Expected install to fail when wheel is absent from findLinks with noIndex=true")
+            val message = installed.exceptionOrNull()?.message.orEmpty()
+            assertTrue("six" in message, "Failure output should name the missing requirement:\n$message")
+        } finally {
+            workDir.deleteRecursively()
+        }
+    }
+
     private fun assertInstallsTargetWheels(
         target: String,
         extensionSuffix: String,

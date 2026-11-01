@@ -171,6 +171,124 @@ class UVBackendTest {
         assertTrue(result.isFailure)
     }
 
+    @Test
+    fun installRequirementsToVenv_buildsPipInstallWithPythonNoIndexAndFindLinks() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "/tmp/build/typedpython/venv",
+                    requirements = listOf("typedpython==0.1.0", "pyrefly==1.3.2"),
+                    noIndex = true,
+                    findLinks = "/tmp/wheels",
+                    workingDir = File("/tmp/work"),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf(
+                "pip",
+                "install",
+                "--python",
+                "/tmp/build/typedpython/venv",
+                "--no-index",
+                "--find-links",
+                "/tmp/wheels",
+                "typedpython==0.1.0",
+                "pyrefly==1.3.2",
+            ),
+            backend.lastCommand,
+        )
+        assertEquals(File("/tmp/work").absolutePath, backend.lastWorkingDir?.absolutePath)
+    }
+
+    @Test
+    fun installRequirementsToVenv_omitsNoIndexAndFindLinksByDefaultAndPassesExtraArgs() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "/tmp/venv",
+                    requirements = listOf("six==1.17.0"),
+                    extraArgs = linkedMapOf("require-hashes" to ""),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf("pip", "install", "--python", "/tmp/venv", "--require-hashes", "six==1.17.0"),
+            backend.lastCommand,
+        )
+    }
+
+    @Test
+    fun installRequirementsToVenv_acceptsRequirementFileViaExtraArgsWhenRequirementsListIsEmpty() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "/tmp/venv",
+                    requirements = emptyList(),
+                    extraArgs = linkedMapOf("require-hashes" to "", "requirement" to "/tmp/gate-requirements.txt"),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf(
+                "pip",
+                "install",
+                "--python",
+                "/tmp/venv",
+                "--require-hashes",
+                "--requirement",
+                "/tmp/gate-requirements.txt",
+            ),
+            backend.lastCommand,
+        )
+    }
+
+    @Test
+    fun installRequirementsToVenv_rejectsBlankVenvEmptyRequirementsOrOptionLikeRequirements() {
+        val backend = RecordingUVBackend()
+        assertTrue(
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "  ",
+                    requirements = listOf("six==1.17.0"),
+                )
+            }.isFailure,
+        )
+        assertTrue(
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "/tmp/venv",
+                    requirements = emptyList(),
+                )
+            }.isFailure,
+        )
+        assertTrue(
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "/tmp/venv",
+                    requirements = listOf("--index-url=https://pypi.org/simple"),
+                )
+            }.isFailure,
+        )
+        assertTrue(
+            runBlocking {
+                backend.installRequirementsToVenv(
+                    venvPath = "/tmp/venv",
+                    requirements = listOf(""),
+                )
+            }.isFailure,
+        )
+    }
+
     private class RecordingUVBackend : UVBackend() {
         var lastCommand: List<String> = emptyList()
         var lastWorkingDir: File? = null
