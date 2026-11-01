@@ -18,11 +18,11 @@ Python source, and has no source-to-C step.
 - **Headers are an input.** The slot does not locate, download or acquire CPython headers. The
   request carries `includeDir` (the directory that directly contains `Python.h`) and
   `extensionSuffix`. The Gradle side fills them from `python-multiplatform`'s
-  `CPythonIncludeDirectories.includeDir(target, flavour)` provider (`python-multiplatform` #46,
+  `CPythonIncludeDirectories.includeDir(target)` provider (3.15t is the only flavour; `python-multiplatform` #46,
   `docs/platforms/python-version-acquisition.md` §7), so the extraction task dependency comes with it.
 - **Linking per target.** macOS and Linux build unlinked (`-undefined dynamic_lookup` on macOS).
-  Android links `libpython3.14.so`; Windows needs `python314.lib`. For those the request carries
-  `libDir` and `libraryName`, from the `libDir(target, flavour)` provider and library name that
+  Android links `libpython3.15t.so`; Windows needs `python315t.lib`. For those the request carries
+  `libDir` and `libraryName`, from the `libDir(target)` provider (3.15t is the only flavour) and library name that
   `python-multiplatform` #56 adds next to `includeDir` (with `isLinkRequired(target)`, false for
   macOS, Linux and iOS).
 - **No `.py` fallback artefact.** The extension embeds the module's source and keeps an
@@ -52,7 +52,7 @@ develop `e3d8219e`: `cgen.py`, `cbuild.py`, `incremental.py`, `pipeline.py`), an
 - **Free threading** (§6): TypedPython does not declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` until its
   list write-back is proven safe without critical sections; a free-threaded import re-enables the
   GIL, which is correct, only slower.
-- Q2 (ABI tag in the output path), Q4 (reproducibility), Q5 (`BundleRequest.pythonAbi`), Q6 (macOS
+- Q2 (output path without ABI tag subdirectory in 3.15t), Q4 (reproducibility), Q5 (`BundleRequest.pythonAbi`), Q6 (macOS
   cross-arch), Q7 (raw flags) and Q8 (compile into each) are answered in §3, §7, §9 and §10.
 
 **Decided by the user (2026-10-03, through the project lead): what `native` and `mixed` mean** (§4).
@@ -60,6 +60,16 @@ develop `e3d8219e`: `cgen.py`, `cbuild.py`, `incremental.py`, `pipeline.py`), an
 libraries' prebuilt extensions are native. `native` uses TypedPython's C wherever it was produced; a
 developer module without C is allowed as an exception and ships as bytecode with a build warning
 that names the module and the reason. Recorded in `docs/SPEC.md`, *Build Level*.
+
+**Decided for 3.15t and `@compiled` (2026-10-04, 2026-10-30):** The runtime is CPython 3.15t only,
+free-threaded with no GIL build (`python-multiplatform` #158). The two flavours (GIL vs
+free-threaded, `PythonAbi.freeThreaded`, and the per-flavour ABI directory in the bundle output path)
+collapse to one: `PythonAbi(version = "3.15")`, free-threaded headers (`Py_GIL_DISABLED`) required,
+and extensions default to PEP 803's `abi3t` (or the target's `3.15t` `extensionSuffix`).
+`Py_mod_gil = Py_MOD_GIL_NOT_USED` stays the generated C's job: TypedPython declares it only when
+safe; if a module omits it, CPython re-enables the GIL on import and `ResourceBundler`'s GIL warning
+(`GilCheck.kt`) names the module at build time. Also, `@compiled` is the only mark in TypedPython
+(the `# typedpython: compiled` module pragma was dropped).
 
 ## 1. Where the slot sits
 
@@ -104,19 +114,19 @@ bundleWithPackpack(...)           ResourceBundler.bundle()
 |---|---|---|
 | Generated C | `ExtensionModuleSource.sources` | The module's `.c`, compiled and linked into one extension. TypedPython always passes exactly one; the type allows more. |
 | Extension module name | `ExtensionModuleSource.moduleName` | Full dotted name (`app.physics.nbody`), the `.py` file's own module name. Fixes the placement; the C must define `PyInit_nbody`. |
-| CPython headers | `ExtensionCompileRequest.includeDir` | The directory directly containing `Python.h` (`include/python3.14`, `include/python3.14t`, Windows `include/`). Used as the first `-I`, as is. From `CPythonIncludeDirectories.includeDir(target, flavour)`. |
-| Extension suffix | `ExtensionCompileRequest.extensionSuffix` | The target's `EXT_SUFFIX` for the ABI (`.cpython-314-darwin.so`). Supplied by the Gradle side with `includeDir`; the slot does not derive it. |
-| `libpython` directory | `ExtensionCompileRequest.libDir` | Only where the target links `libpython` (Android, later Windows); `null` elsewhere. From `libDir(target, flavour)` (`python-multiplatform` #56). |
-| `libpython` name | `ExtensionCompileRequest.libraryName` | The library file in `libDir` as #56 reports it (`libpython3.14.so`, `python314.lib`); the slot turns it into the linker's form (`-lpython3.14`, or the `.lib` path). Set together with `libDir`. |
+| CPython headers | `ExtensionCompileRequest.includeDir` | The directory directly containing `Python.h` (`include/python3.15t`, Windows `include/`). Used as the first `-I`, as is. From `CPythonIncludeDirectories.includeDir(target)` (3.15t is the only flavour). |
+| Extension suffix | `ExtensionCompileRequest.extensionSuffix` | The target's `EXT_SUFFIX` for the ABI (`.abi3t-darwin.so`, or `.cpython-315t-darwin.so`). Supplied by the Gradle side with `includeDir`; the slot does not derive it. |
+| `libpython` directory | `ExtensionCompileRequest.libDir` | Only where the target links `libpython` (Android, later Windows); `null` elsewhere. From `libDir(target)` (3.15t is the only flavour; `python-multiplatform` #56). |
+| `libpython` name | `ExtensionCompileRequest.libraryName` | The library file in `libDir` as #56 reports it (`libpython3.15t.so`, `python315t.lib`); the slot turns it into the linker's form (`-lpython3.15t`, or the `.lib` path). Set together with `libDir`. |
 | Include dirs | `ExtensionCompileOptions.includeDirs`, `ExtensionModuleSource.includeDirs` | The consumer's own headers, after `includeDir`. TypedPython's header-only runtime (`runtime/tp_runtime.h`) arrives here. |
 | Defines | `ExtensionCompileOptions.defines`, `ExtensionModuleSource.defines` | Request-wide, then per module. |
 | Other flags | `ExtensionCompileOptions.cFlags`, `linkFlags` | Passed verbatim, after the build-type defaults, so they win. |
 | Target triple | `ExtensionCompileRequest.target` | Anything `Platforms.normalizeTarget` accepts. |
-| CPython ABI | `ExtensionCompileRequest.pythonAbi` | `PythonAbi(version = "3.14", freeThreaded = false)`. Cross-checked against `includeDir` (§9). |
+| CPython ABI | `ExtensionCompileRequest.pythonAbi` | `PythonAbi(version = "3.15")`. Cross-checked against `includeDir` (§9). |
 | Build type | `ExtensionCompileRequest.buildType` | `debug`: `-O0 -g`. `release`: `-O2 -DNDEBUG`, stripped. Both: `-ffp-contract=off -fno-fast-math` (§6). |
 | Android API level | `ExtensionCompileRequest.minSdk` | For the NDK's `--target=aarch64-linux-android<api>`. From `BundleRequest.minSdk`. |
 | Working dir | `ExtensionCompileRequest.workingDir` | `BundleRequest.packageDir`. Rule 13: never `user.dir`. Also `-ffile-prefix-map=<workingDir>=.` (§9). |
-| Build dir | `ExtensionCompileRequest.buildDir` | Objects and cache. The bundler passes `<package>/build/packpack/compile/<canonical target>/<abi tag>/<buildType>`, so GIL and free-threaded builds never share objects. |
+| Build dir | `ExtensionCompileRequest.buildDir` | Objects and cache. The bundler passes `<package>/build/packpack/compile/<canonical target>/<buildType>` (no GIL vs free-threaded split needed because 3.15t is the only runtime). |
 | Output dir | `ExtensionCompileRequest.outputDir` | A tree shaped like the bundle's `python/` root. Absent or empty. |
 
 ### How this maps onto `BundleRequest`
@@ -155,8 +165,8 @@ reason`): structured, so the bundler formats the warning and `file:line` stays m
 - At `instant`, `bytecode` and `mixed`, `nativeModules` and the CPython fields are ignored. At
   `instant` and `bytecode` the developer's `.py` runs as written, which keeps debug builds
   hot-reloadable; at `mixed` it ships as bytecode (§4).
-- `BundleRequest.pythonAbi` (Q5, decided): `toolchain` sets it from the same version and flavour it
-  asks `python-multiplatform`'s providers for, and the slot cross-checks it against `includeDir`.
+- `BundleRequest.pythonAbi` (Q5, decided): `toolchain` sets it as `PythonAbi(version = "3.15")`
+  (3.15t is the only runtime), and the slot cross-checks it against `includeDir`.
   TypedPython needs the same headers anyway.
 
 ## 3. Outputs and placement
@@ -172,18 +182,17 @@ lists fewer modules than were requested.
 One artefact per compiled module, at the module's dotted name. Every path is valid under both the
 slot's `outputDir` and the bundle's `python/` root:
 
-| File | `aarch64-apple-darwin`, 3.14 | `aarch64-linux-android`, 3.14 |
+| File | `aarch64-apple-darwin`, 3.15t | `aarch64-linux-android`, 3.15t |
 |---|---|---|
-| Extension | `python/app/physics/nbody.cpython-314-darwin.so` | `python/app/physics/nbody.cpython-314-aarch64-linux-android.so` |
+| Extension | `python/app/physics/nbody.abi3t-darwin.so` (or `nbody.cpython-315t-darwin.so`) | `python/app/physics/nbody.cpython-315t-aarch64-linux-android.so` |
 | The developer's `nbody.py` / `nbody.pyc` | not shipped | not shipped |
 
-Other suffixes: `.cpython-314t-darwin.so` (free-threaded), `.cpython-314-x86_64-linux-gnu.so`. The
-suffix is the request's `extensionSuffix`, never hard-coded.
+Other suffixes: `.abi3t-x86_64-linux-gnu.so`, `.cpython-315t-x86_64-linux-gnu.so`. The suffix is
+the request's `extensionSuffix`, never hard-coded.
 
-**The ABI tag is in the output path (Q2, decided).** At `native`, the conventional bundle directory
-becomes `<package>/build/packpack/resource/<buildType>/native/<abi tag>` (`cp314`, `cp314t`). The
-suffixes differ between flavours, but which `.py` files were removed and the manifest's `pythonAbi`
-are per flavour, so two flavours must never share one tree.
+**No per-flavour output subdirectory needed (Q2, decided).** Because only free-threaded 3.15t
+exists, the conventional bundle directory stays `<package>/build/packpack/resource/<buildType>/native`
+(no `<abi tag>` subdirectory needed to separate GIL from free-threaded).
 
 The extension carries the module's source and its interpreted fallback per function inside the
 `.so`, so nothing else ships for that module. The bundler leaves the developer's `.py` (and the
@@ -196,17 +205,17 @@ name has exactly one importable file.
 extensions appear there unchanged. Added, only at `native`:
 
 ```json
-"pythonAbi": "cp314",
-"extensionSuffix": ".cpython-314-darwin.so",
+"pythonAbi": "cp315t",
+"extensionSuffix": ".abi3t-darwin.so",
 "nativeModules": [
-  { "module": "app.physics.nbody", "path": "python/app/physics/nbody.cpython-314-darwin.so" }
+  { "module": "app.physics.nbody", "path": "python/app/physics/nbody.abi3t-darwin.so" }
 ],
 "tools": { "cc": "Apple clang 17.0.0" }
 ```
 
-The keys are additive, so `formatVersion` stays `1`. `pythonAbi` lets the runtime refuse a bundle of
-the other flavour instead of crashing in `dlopen`; `nativeModules` tells it which files need a real
-file system on Android.
+The keys are additive, so `formatVersion` stays `1`. `pythonAbi` lets the runtime verify the ABI
+instead of crashing in `dlopen`; `nativeModules` tells it which files need a real file system on
+Android.
 
 ## 4. What `native` and `mixed` mean
 
@@ -232,9 +241,9 @@ pointed out that the previous draft's "both levels are identical" contradicted t
 - **A developer module without C is the exception at `native`, not a refusal.** "Native code only"
   is the intent; a module TypedPython could not compile still ships, as bytecode, and the build says
   so, with the reason TypedPython reports in `BundleRequest.notNativeModules`:
-  - `NOT_MARKED`: compiling is opt-in, and the module has neither `# typedpython: compiled` nor an
-    `@compiled` function. The common case, not a defect: *"`app.util` ships as bytecode: not marked
-    for compilation (add `# typedpython: compiled` or `@compiled`)"*.
+  - `NOT_MARKED`: compiling is opt-in, and the module has no `@compiled` function or class. The
+    common case, not a defect: *"`app.util` ships as bytecode: not marked for compilation (add
+    `@compiled`)"*.
   - `NOTHING_COMPILED`: opted in, but every function and class stayed interpreted. One line per
     item: *"`app/physics/nbody.py:30: main: subscript sys.argv[1] of an object is not supported`"*.
   - A developer module in neither list gets *"no C was supplied for it"*.
@@ -249,12 +258,12 @@ pointed out that the previous draft's "both levels are identical" contradicted t
 
 ## 5. Error reporting
 
-All failures come back as a failed `Result` — never a throw out of `compile`, never `TODO()`
+All failures come back as a failed `Result`: never a throw out of `compile`, never `TODO()`
 (`AGENTS.md` rule 15), never a success with fewer modules than were asked for.
 
-- `NoCompileBackendException(target, pythonAbi, toolchain, reason)` — the refusal (§8). Returned
+- `NoCompileBackendException(target, pythonAbi, toolchain, reason)`: the refusal (§8). Returned
   by `checkSupport`, and by `compile` before anything runs.
-- `ModuleCompileException(failures)` — every module is attempted, then all failures are reported
+- `ModuleCompileException(failures)`: every module is attempted, then all failures are reported
   together. Each `ModuleCompileFailure` carries the module name, the translation unit (for
   `C_COMPILE`), the stage (`C_COMPILE` or `LINK`), the exact command, the exit code, and the
   compiler's full output. The message lists each module with its output.
@@ -283,9 +292,11 @@ What the generated C must do itself (the slot cannot):
 
 - Define `PyInit_<last component>`.
 - Declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` **only when the consumer's code is free-threading
-  safe**; otherwise CPython re-enables the GIL on import, which is correct, only slower. TypedPython
-  does not declare it today: compiled code copies list parameters into native arrays and writes them
-  back, which races without critical sections.
+  safe**; otherwise CPython re-enables the GIL on import, which is correct, only slower.
+  `ResourceBundler` already warns at build time (`bundle/GilCheck.kt`) when an extension does not
+  declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` and re-enables the GIL on import. TypedPython declares
+  it only when safe; compiled code copies list parameters into native arrays and writes them back,
+  which races without critical sections.
 - Carry its own interpreted fallback; the slot places nothing beside the extension.
 - Embed paths relative to the package (`app/physics/nbody.py`), not the host's absolute path, so
   binaries are identical across machines and leak no build path (§9; TypedPython's fix).
@@ -294,17 +305,17 @@ What the generated C must do itself (the slot cannot):
 
 ## 7. Toolchains and linking per target
 
-The headers must be those of the CPython the app embeds — same `major.minor`, same flavour — or the
-extension does not load. Taking them from the same provider the runtime is built from makes that
-true by construction.
+The headers must be those of the CPython the app embeds (same `major.minor`, free-threaded:
+`Py_GIL_DISABLED` required) or the extension does not load. Taking them from the same provider the
+runtime is built from makes that true by construction.
 
 | Target | Scope | Toolchain (adapter) | Link mode | CPython inputs |
 |---|---|---|---|---|
 | `aarch64-apple-darwin`; `x86_64-apple-darwin` | **2026-11 (M3), first** | `xcrun clang` from the Xcode command-line tools (`Clang.kt`); `-arch` selects the slice, so either host builds either slice (Q6, decided: nothing is linked, so cross-arch is safe) | `-bundle -undefined dynamic_lookup`, no `libpython` | `includeDir`, `extensionSuffix` |
 | `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` (host arch) | after macOS | System `clang`, falling back to `cc` (`Clang.kt`) | `-shared -fPIC`, no `libpython` (the CPython convention) | `includeDir`, `extensionSuffix` |
-| `aarch64-linux-android` | only if the NDK backend lands | NDK clang, `--target=aarch64-linux-android<minSdk>` (`NDK.kt`); NDK from `ANDROID_NDK_HOME`, then `$ANDROID_HOME/ndk/<version>` | `-shared -fPIC -L<libDir> -lpython3.14` (Bionic does not resolve undefined symbols from the host process) | `includeDir`, `extensionSuffix`, `libDir` (`prefix/lib`), `libraryName` (`libpython3.14.so`) |
-| `x86_64-pc-windows-msvc` | **later**; refused for 2026-11 | `clang-cl` (`Clang.kt`), with the MSVC libraries and Windows SDK | `/LD`, links `python314[t].lib`; `/DPy_GIL_DISABLED=1` for free-threaded | `includeDir`, `extensionSuffix`, `libDir` (`python/libs`), `libraryName` (`python314.lib`) |
-| iOS | out of scope | Xcode (`XCode.kt`) | — | refused (§8) |
+| `aarch64-linux-android` | only if the NDK backend lands | NDK clang, `--target=aarch64-linux-android<minSdk>` (`NDK.kt`); NDK from `ANDROID_NDK_HOME`, then `$ANDROID_HOME/ndk/<version>` | `-shared -fPIC -L<libDir> -lpython3.15t` (Bionic does not resolve undefined symbols from the host process) | `includeDir`, `extensionSuffix`, `libDir` (`prefix/lib`), `libraryName` (`libpython3.15t.so`) |
+| `x86_64-pc-windows-msvc` | **later**; refused for 2026-11 | `clang-cl` (`Clang.kt`), with the MSVC libraries and Windows SDK | `/LD`, links `python315t.lib`; `/DPy_GIL_DISABLED=1` for free-threaded | `includeDir`, `extensionSuffix`, `libDir` (`python/libs`), `libraryName` (`python315t.lib`) |
+| iOS | out of scope | Xcode (`XCode.kt`) | - | refused (§8) |
 
 The C compiler is not acquired: the Xcode command-line tools, a system clang and the NDK are
 installed by the developer, and their absence is a refusal that says what was looked for.
@@ -327,12 +338,12 @@ find nothing. §10 Q3.
 |---|---|
 | iOS (`arm64-apple-ios*`, `x86_64-apple-ios-simulator`) | the Xcode backend is a placeholder |
 | `wasm32-pyodide2024` | no Emscripten backend |
-| Windows | out of scope for 2026-11; planned later through `clang-cl` and `python314.lib` |
+| Windows | out of scope for 2026-11; planned later through `clang-cl` and `python315t.lib` |
 | Android before the NDK backend lands, or `x86_64-linux-android` | no NDK backend / only arm64 is in scope |
-| Android (or, later, Windows) with `libDir` or `libraryName` missing, or the named library absent from `libDir` | "target '…' links libpython: pass libDir and libraryName from python-multiplatform's libDir(target, flavour) provider" |
+| Android (or, later, Windows) with `libDir` or `libraryName` missing, or the named library absent from `libDir` | "target '…' links libpython: pass libDir and libraryName from python-multiplatform's libDir(target) provider" |
 | A Linux target whose architecture is not the host's | cross-compiling Linux is not supported; build on a matching host (macOS slices are built either way with `-arch`, §7) |
 | Toolchain missing | which tool was looked for, and where |
-| `includeDir` without `Python.h`, or headers of another version or flavour than `pythonAbi` | what was expected, what was found |
+| `includeDir` without `Python.h`, headers of another version than `pythonAbi`, or headers without `Py_GIL_DISABLED` (a GIL build) | what was expected, what was found |
 
 `ResourceBundler` calls `checkSupport` before writing any output, so a refused variant fails fast,
 and with `toolchain`'s per-variant task actions `--continue` still builds the other variants.
@@ -345,7 +356,7 @@ The full file is
 ```kotlin
 enum class NativeToolchain(val id: String) { CLANG("clang"), NDK("ndk"), XCODE("xcode") }
 
-data class PythonAbi(val version: String, val freeThreaded: Boolean = false)
+data class PythonAbi(val version: String)
 
 data class ExtensionModuleSource(
     val moduleName: String, val sources: List<File>,
@@ -408,7 +419,7 @@ if (request.buildLevel == "native") {                // mixed never reaches the 
     compiler.checkSupport(descriptor.canonicalTarget, abi, includeDir, request.cpythonLibDir, request.cpythonLibraryName)
         .getOrThrow()
 
-    val staging = File(packageDir, "build/packpack/compile/${descriptor.canonicalTarget}/${abiTag(abi)}/${request.buildType}")
+    val staging = File(packageDir, "build/packpack/compile/${descriptor.canonicalTarget}/${request.buildType}")
     val out = File(staging, "out").apply { deleteRecursively() }
     val compiled = compiler.compile(
         ExtensionCompileRequest(
@@ -440,8 +451,8 @@ existing placeholders:
    `android` → `NDK.kt`; `windows`, `ios`, `wasm` → refused in this scope); for Linux require
    `Platforms.detectHostTarget()` to match; ask the adapter to locate its compiler; check that
    `includeDir/Python.h` exists, that `patchlevel.h`'s `PY_VERSION` matches `pythonAbi.version`, and
-   that `pyconfig.h`'s `Py_GIL_DISABLED` matches `freeThreaded`; on Android require `libDir` and
-   `libraryName` and that `libDir/<libraryName>` exists.
+   that `pyconfig.h` defines `Py_GIL_DISABLED` (free-threaded headers required); on Android require
+   `libDir` and `libraryName` and that `libDir/<libraryName>` exists.
 2. **Compile**: per translation unit, `<cc> -c <defaults> -ffp-contract=off -fno-fast-math
    -ffile-prefix-map=<workingDir>=. -MMD -I<includeDir> -I<consumer dirs> -D<defines> <cFlags>
    unit.c -o <buildDir>/<module>/<unit>.o`. Skip a unit whose cache key is unchanged: the SHA-256 of
@@ -475,10 +486,12 @@ providers, §7); Windows and `clang-cl` (out of scope for 2026-11, macOS first).
 **Closed in the second review and by the user (2026-10-03):**
 
 - Q1, `native` vs `mixed`: the user's reading, §4.
-- Q2, GIL / free-threaded output: the ABI tag is in the conventional output path, §3.
+- Q2, GIL / free-threaded output: with 3.15t only, no per-flavour output subdirectory is needed;
+  the conventional bundle directory stays `<package>/build/packpack/resource/<buildType>/native` (§3).
 - Q4, reproducibility: relative paths, `-ffile-prefix-map`, strip, `ZERO_AR_DATE`; the toolchain
   version is part of the identity, §9.
-- Q5, ABI source: `BundleRequest.pythonAbi` from the providers' version and flavour, §2.
+- Q5, ABI source: `BundleRequest.pythonAbi` as `PythonAbi(version = "3.15")` (3.15t is the only
+  runtime), §2.
 - Q6, macOS cross-arch: allowed with `-arch`, §7.
 - Q7, raw flags: fine for clang/gcc; another toolchain maps the floating-point semantics instead of
   receiving flags verbatim, §6.

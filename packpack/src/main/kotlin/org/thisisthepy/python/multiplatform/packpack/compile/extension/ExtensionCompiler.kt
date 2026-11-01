@@ -38,16 +38,14 @@ enum class NativeToolchain(
 
 /**
  * The CPython ABI the extension is built against. It must be the ABI of the runtime that will load
- * the bundle: an extension built for 3.13 does not import into 3.14, and one built for the GIL
- * build does not import into the free-threaded build. Only `major.minor` and the flavour matter;
- * the patch release does not change the ABI.
+ * the bundle: an extension built for 3.14 does not import into 3.15. CPython 3.15+ is free-threaded
+ * only (`cp315t` / PEP 803 `abi3t`), so there is no GIL vs free-threaded boolean: only `major.minor`
+ * matters; the patch release does not change the ABI.
  *
- * @param version `major.minor`, e.g. `"3.14"`.
- * @param freeThreaded `true` for the free-threaded build (`cp314t`, `Py_GIL_DISABLED`).
+ * @param version `major.minor`, e.g. `"3.15"` (free-threaded only).
  */
 data class PythonAbi(
     val version: String,
-    val freeThreaded: Boolean = false,
 )
 
 /**
@@ -106,7 +104,7 @@ data class ExtensionCompileOptions(
  * @param modules what to build; non-empty, with unique [ExtensionModuleSource.moduleName]s.
  * @param target a target accepted by `Platforms.normalizeTarget` (alias or canonical triple).
  * @param pythonAbi the runtime's CPython ABI. The slot checks it against [includeDir]'s headers
- *   (`PY_VERSION`, `Py_GIL_DISABLED`).
+ *   (`patchlevel.h`'s `PY_VERSION`, and `pyconfig.h` defining `Py_GIL_DISABLED`).
  * @param buildType `debug` / `release`, as in `BundleRequest.buildType`.
  * @param workingDir the ppp package directory (the one holding `pyproject.toml`); the base for
  *   relative paths in diagnostics and for `-ffile-prefix-map=<workingDir>=.`, so no build path ends
@@ -114,22 +112,23 @@ data class ExtensionCompileOptions(
  * @param buildDir intermediates the slot owns: object files and its cache, kept between runs. A
  *   translation unit is recompiled unless its key is unchanged: the SHA-256 of the `.c` and of every
  *   header its depfile (`-MMD`) lists, the full flag list, the compiler's identity and version, the
- *   target, [minSdk] and [pythonAbi]. The caller keys the directory by target, ABI tag and build
+ *   target, [minSdk] and [pythonAbi]. The caller keys the directory by target and build
  *   type. (TypedPython keeps its own source-to-C cache; the request carries no cache field.)
  * @param outputDir where the results go, shaped like the bundle's `python/` root
  *   (`<outputDir>/app/physics/nbody<EXT_SUFFIX>`). Must be absent or empty.
  * @param includeDir the directory that directly contains `Python.h` for [target] and [pythonAbi]
- *   (`include/python3.14`, `include/python3.14t`), used as the first `-I` as is. The Gradle side
- *   takes it from `python-multiplatform`'s `CPythonIncludeDirectories.includeDir(target, flavour)`.
- * @param extensionSuffix the target's `EXT_SUFFIX` for [pythonAbi] (`.cpython-314-darwin.so`,
- *   `.cpython-314t-darwin.so`, `.cpython-314-aarch64-linux-android.so`), supplied with [includeDir];
+ *   (`include/python3.15t`), used as the first `-I` as is. The Gradle side takes it from
+ *   `python-multiplatform`'s `CPythonIncludeDirectories.includeDir(target)` provider (3.15t is the
+ *   only flavour).
+ * @param extensionSuffix the target's `EXT_SUFFIX` for [pythonAbi] (`.abi3t-darwin.so`,
+ *   `.cpython-315t-darwin.so`, `.cpython-315t-aarch64-linux-android.so`), supplied with [includeDir];
  *   the slot does not derive it.
  * @param libDir the directory holding `libpython`, set only where the target links it
  *   (`isLinkRequired(target)` in `python-multiplatform` #56: Android, later Windows). macOS and
  *   Linux build unlinked and ignore it. An Android or Windows request without it is refused with a
  *   [NoCompileBackendException].
  * @param libraryName the library's file name in [libDir] as `python-multiplatform` #56 reports it
- *   (`libpython3.14.so`, `python314.lib`); the slot derives the linker's form (`-lpython3.14`, or the
+ *   (`libpython3.15t.so`, `python315t.lib`); the slot derives the linker's form (`-lpython3.15t`, or the
  *   `.lib` path). Set together with [libDir].
  * @param minSdk the Android API level for the NDK compiler's target triple; `null` uses the floor
  *   of the Android CPython build. Meaningful for the `android` family only.
@@ -155,7 +154,7 @@ data class ExtensionCompileRequest(
  * One built extension module: the only artefact for [moduleName].
  *
  * @param relativePath the extension's path under [ExtensionCompileResult.outputDir], `/`-separated
- *   (`app/physics/nbody.cpython-314-darwin.so`); the same path is valid under the bundle's
+ *   (`app/physics/nbody.abi3t-darwin.so` or `app/physics/nbody.cpython-315t-darwin.so`); the same path is valid under the bundle's
  *   `python/` root.
  */
 data class CompiledExtension(
@@ -218,9 +217,9 @@ sealed class ExtensionCompileException(
 /**
  * The target has no backend: no toolchain adapter exists for it or it is out of scope (iOS,
  * Windows for 2026-11), the toolchain is not installed, the host cannot build it, the request's
- * CPython headers are missing or of another version or flavour than [pythonAbi], or the target
- * links `libpython` and the request has no `libDir`/`libraryName`. Returned before anything is
- * compiled.
+ * CPython headers are missing, of another version than [pythonAbi], or missing `Py_GIL_DISABLED`
+ * (a GIL build), or the target links `libpython` and the request has no `libDir`/`libraryName`.
+ * Returned before anything is compiled.
  *
  * @param toolchain the adapter the target maps to, or `null` when none does.
  */
@@ -231,7 +230,7 @@ class NoCompileBackendException(
     val reason: String,
 ) : ExtensionCompileException(
         "Cannot build CPython extension modules for target '$target' " +
-            "(Python ${pythonAbi.version}${if (pythonAbi.freeThreaded) "t" else ""}): $reason",
+            "(Python ${pythonAbi.version}t): $reason",
     )
 
 /**
@@ -252,7 +251,9 @@ class ModuleCompileException(
 interface ExtensionCompilerInterface {
     /**
      * Whether this host can build extension modules for [target] and [pythonAbi]: a success, or a
-     * failure carrying a [NoCompileBackendException]. Cheap enough to call before bundling starts.
+     * failure carrying a [NoCompileBackendException]. Verifies that `includeDir/Python.h` exists,
+     * `patchlevel.h`'s `PY_VERSION` matches `pythonAbi.version`, and `pyconfig.h` defines
+     * `Py_GIL_DISABLED` (free-threaded headers required). Cheap enough to call before bundling starts.
      *
      * @param includeDir as [ExtensionCompileRequest.includeDir].
      * @param libDir as [ExtensionCompileRequest.libDir]; required for Android (and, later, Windows).

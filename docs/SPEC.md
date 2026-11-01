@@ -961,7 +961,7 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `<project>/.venv`; `debug` keeps the `.py` beside the `.pyc`, `release` keeps only the `.pyc`.
     `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
 - `native`: native code where it exists. The developer's modules become CPython extensions built
-  from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`, #19).
+  from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`, #19, #60).
   A developer module without C is allowed as an exception: it ships as bytecode, and the build
   warns, naming the module and the reason. C that fails to compile fails the build. Libraries ship
   their prebuilt native wheels.
