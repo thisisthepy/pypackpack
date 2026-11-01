@@ -126,6 +126,28 @@ interface BackendInterface {
     ): Result<String>
 
     /**
+     * Install named requirement specifiers into an existing virtual environment (`--python`),
+     * without reading or modifying `pyproject.toml`.
+     *
+     * @param venvPath Path to the existing virtual environment
+     * @param requirements Requirement specifiers (e.g. `typedpython==0.1.0`, `pyrefly==1.3.2`).
+     *   May be empty only when `extraArgs` passes a requirements file (`requirement` or `r`).
+     * @param noIndex When true, passes `--no-index` so nothing is fetched from PyPI
+     * @param findLinks Optional local wheel directory passed via `--find-links`
+     * @param extraArgs Extra options forwarded as `--<key> [value]`
+     * @param workingDir Working directory for the command
+     * @return Result of the install
+     */
+    suspend fun installRequirementsToVenv(
+        venvPath: String,
+        requirements: List<String>,
+        noIndex: Boolean = false,
+        findLinks: String? = null,
+        extraArgs: Map<String, String>? = null,
+        workingDir: File? = null,
+    ): Result<String> = Result.failure(NotImplementedError("installRequirementsToVenv is not implemented by ${this::class.simpleName}"))
+
+    /**
      * Show dependency tree
      * @param venvPath Virtual environment path
      * @param extraArgs Extra arguments (optional)
