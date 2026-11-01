@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
@@ -97,7 +98,7 @@ class CrossEnv {
                 "Package directory not found: ${packageDir.absolutePath}"
             }
 
-            val deleted = packageDir.deleteRecursively()
+            val deleted = packageDir.deleteWithoutFollowingLinks()
             require(deleted) {
                 "Failed to delete package directory: ${packageDir.absolutePath}"
             }
@@ -188,6 +189,14 @@ class CrossEnv {
             "Removed dependencies from package '${packageSpec.input}' for targets: ${normalizedTargets.joinToString(", ")}"
         }
 
+    private companion object {
+        /** Options for the per-target install that `uv sync` does not accept. */
+        val TARGET_INSTALL_ONLY_OPTIONS = setOf("python-version", "only-binary")
+
+        /** Options only `uv pip install` accepts (not `uv tree`). */
+        val INSTALL_ONLY_OPTIONS = setOf("only-binary")
+    }
+
     fun syncDependencies(
         packageName: String,
         targets: List<String>?,
@@ -199,14 +208,18 @@ class CrossEnv {
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
             val options = extraArgs.orEmpty()
 
-            val syncArgs = options.filterKeys { it != "python-platform" }
+            // Target-install options exist only on some uv commands (#50): `uv sync` (the host
+            // .venv) has neither, `uv tree` has --python-version, `uv pip install` has both.
+            val syncArgs = options.filterKeys { it != "python-platform" && it !in TARGET_INSTALL_ONLY_OPTIONS }
             runBlocking {
                 backend.syncDependencies("", syncArgs + mapOf("package" to packageSpec.name), workspaceRoot)
             }.getOrThrow()
 
             val installArgs = options.filterKeys { it != "python-platform" && it != "package" }
             for (target in normalizedTargets) {
-                val treeArgs = options + mapOf("package" to packageSpec.name, "python-platform" to target)
+                val treeArgs =
+                    options.filterKeys { it !in INSTALL_ONLY_OPTIONS } +
+                        mapOf("package" to packageSpec.name, "python-platform" to target)
                 runBlocking {
                     backend.showDependencyTree(packageSpec.name, treeArgs, workspaceRoot)
                 }.getOrThrow()

@@ -15,32 +15,32 @@ is a conversation with the maintainer, not an implementation task.
 | `pyproject.toml` | "PyPackPack (PPP) - A multiplatform solution to distribute python project". |
 
 Anything below that is an inference rather than a statement from those sources is marked
-`> Inferred — confirm with the maintainer.`
+`> Inferred: confirm with the maintainer.`
 
 ## 1. What pypackpack is for
 
-**A Python project is built once and distributed to every platform it targets — desktop, mobile
-and the web — without the developer configuring Python, a JVM or a cross-compiler by hand.**
+**A Python project is built once and distributed to every platform it targets (desktop, mobile
+and the web) without the developer configuring Python, a JVM or a cross-compiler by hand.**
 
 The README's formula names the four parts, and the SPEC's core items restate them:
 
-1. **crossenv** — per-target environments, so dependencies are resolved and installed for a
+1. **crossenv**: per-target environments, so dependencies are resolved and installed for a
    platform other than the host (SPEC core (2)). Targets are declared per project and per package;
    dependencies are scoped to a target.
-2. **compiler** — building packages written in C, C++ and Rust (SPEC core (1)), and compiling,
+2. **compiler**: building packages written in C, C++ and Rust (SPEC core (1)), and compiling,
    optimizing or minifying Python code itself (nuitka, lpython, …; SPEC core (3)), at a selectable
    build level (`instant`, `bytecode`, `native`, `mixed`).
-3. **bundler** — packaging the result with its resources, dependencies and runtime metadata into one
+3. **bundler**: packaging the result with its resources, dependencies and runtime metadata into one
    deployment unit (`binary`, `single`, `fat`, `patch`, `resource`).
-4. **codepush** — a "code update fast track API" (SPEC core (4)): shipping a changed bundle, or a
+4. **codepush**: a "code update fast track API" (SPEC core (4)): shipping a changed bundle, or a
    patch against an earlier one, to an app that is already installed.
 
 Around those, the SPEC's goals:
 
-5. **Python acquisition** — the developer does not install or point at a Python; pypackpack fetches
+5. **Python acquisition**: the developer does not install or point at a Python; pypackpack fetches
    the distributions it builds against and the tools it drives (`uv`, `meson`).
-6. **One self-contained binary** — no OS dependency, via GraalVM Native Image.
-7. **Speed** — build speed matters.
+6. **One self-contained binary**: no OS dependency, via GraalVM Native Image.
+7. **Speed**: build speed matters.
 
 And it serves two audiences with the same code:
 
@@ -73,29 +73,34 @@ need patches to build), `pip-central` (a closed-source service distributing them
   happen in `python-multiplatform`. The `resource` bundle is the handoff format between the two.
 - **Not a package index or a deploy server.** `deploy` uploads to servers someone else runs (PyPI,
   FastTrack, ResourceHub); `pip-central` and `brainWave/intelliPush` are separate projects.
-  > Inferred — confirm with the maintainer. The SPEC lists the destinations as clients
+  > Inferred: confirm with the maintainer. The SPEC lists the destinations as clients
   > (`ResourceHubAPI.kt # deploy client`, `FastTrackAPI.kt # deploy client`), not as servers to
   > build here.
 - **Not a replacement for `uv`.** Dependency resolution and installation are delegated to `uv`;
   pypackpack adds targets, markers and per-target install directories on top.
-  > Inferred — confirm with the maintainer. Stated by the code (`UVBackend`) and `ecosystem.md` §5
+  > Inferred: confirm with the maintainer. Stated by the code (`UVBackend`) and `ecosystem.md` §5
   > ("dependency resolution (`uv`)"), not by a maintainer-authored sentence.
 - **Not a patcher of packages that need source patches to build.** SPEC core (1) excludes them
   ("except when patches are required"); recipes for them are `pip-jit`'s job.
 
 ## 4. Open questions for the maintainer
 
-1. **Python versions.** `python install` accepts only 3.13, "due to python-multiplatform
-   limitations". Is 3.13 the only version pypackpack intends to support for now, or is the
-   restriction expected to follow python-multiplatform?
-2. **WASM.** The README lists WASM as a target with no architecture, and `Platforms.kt` accepts
-   `wasm32-pyodide2024` (family `wasm`), but `python install` has no WASM distribution and nothing
-   compiles for it. Is it in scope for the first release?
-3. **`build` and `bundle`.** The SPEC defines `build` as the stage that coordinates dependency
-   verification, compile and bundle, but bundling has no CLI command and `build` does not call it.
-   Should `build` take a bundle type, or should `bundle` become its own command?
-4. **Deploy destinations.** "Need to specify the target deploy server (PyPI or FastTrack)" is still
-   open in the SPEC.
-5. **The Python wrapper.** `pyproject.toml` describes a Python package around the native binary
-   (`packpack/src/main/python/`, both files empty). Is distributing `pypackpack` through PyPI
-   intended?
+1. ~~**Python versions.**~~ **Answered (2026-10-04):** CPython 3.15 and later, free-threaded only
+   (python-multiplatform #158: the free-threaded build is the default and the only build, there is
+   no GIL build option; the base is 3.15t, with PEP 803's `abi3t`).
+2. ~~**WASM.**~~ **Answered (2026-10-04):** in the first release's scope.
+3. ~~**`build` and `bundle`.**~~ **Answered by the maintainer's spec sheet** (`spec.md`, 686b1ad,
+   2025-05-04; `docs/spec_ko.md` until 27b1eb3): `build` is the orchestration stage and takes the
+   bundle as an argument (`pypackpack build <package> source [<bundle type>] …`,
+   `pypackpack build <package> resource …`). There is no separate `bundle` command.
+4. ~~**Deploy destinations.**~~ **Not a choice (2026-10-04):** the destination follows the artefact.
+   Libraries go to PyPI, apps to FastTrack.
+5. ~~**The Python wrapper.** Is distributing `pypackpack` through PyPI intended?~~ **Answered
+   (2026-10-03):** yes. The wheel carries the native binary per platform; see `docs/SPEC.md`,
+   *Distribution through PyPI*.
+6. ~~**Rust packages.**~~ **Answered (2026-10-17, through the project lead; #65):** there is no
+   separate `pythonx-native` repository. Rust crates become CPython extension modules through
+   pypackpack's Cargo backend, built with maturin and PyO3 (abi3t, `gil_used = false`). pypackpack
+   acquires the Rust targets and locates the NDK and Xcode; `tcl` and `toolchain` only call it. Kotlin
+   reaches the module through python-multiplatform like any other Python module, never directly.
+   `docs/SPEC.md`, *Rust extension modules (Cargo backend)*, records the plan.

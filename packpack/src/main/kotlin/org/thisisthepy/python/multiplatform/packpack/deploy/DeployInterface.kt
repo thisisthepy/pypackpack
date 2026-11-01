@@ -34,7 +34,9 @@ enum class DeployType(
  * @param target platform target string
  * @param buildType `debug` / `release`
  * @param buildLevel `instant` / `bytecode` / `native` / `mixed`
- * @param destination target server or registry destination URL / identifier
+ * @param destination target server or registry destination URL / identifier (for PyPI, `uv publish
+ *   --publish-url`; `null` is uv's default, PyPI)
+ * @param dryRun go through the upload without publishing anything (`uv publish --dry-run`)
  */
 data class DeployRequest(
     val packageDir: File,
@@ -44,6 +46,7 @@ data class DeployRequest(
     val buildType: String = "debug",
     val buildLevel: String = "instant",
     val destination: String? = null,
+    val dryRun: Boolean = false,
 )
 
 /**

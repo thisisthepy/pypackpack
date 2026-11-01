@@ -252,6 +252,68 @@ class ResourceBundlerTest {
         assertTrue(result.manifestFile.readText().contains("\"path\": \"python/core/api.pyi\""))
     }
 
+    /** A crate directory inside a package is Rust source for the Cargo backend, not payload (#92). */
+    @Test
+    fun bundle_leavesRustCrateDirectoriesOutOfThePayload() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        write(pkg, "src/main/core/_fast/Cargo.toml", "[package]\nname = \"fast\"\n")
+        write(pkg, "src/main/core/_fast/src/lib.rs", "// rust\n")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+
+        assertTrue(File(result.outputDir, "python/core/__init__.py").isFile)
+        assertFalse(File(result.outputDir, "python/core/_fast").exists())
+    }
+
+    /** SPEC Scope decisions (#72): a GIL-tagged dependency extension is a build warning, not a failure. */
+    @Test
+    fun bundle_warnsAboutGilTaggedExtensionsOnAnyTarget() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        val libDir = File(tempDir, "site-packages")
+        write(libDir, "legacy/_old.cpython-315-aarch64-linux-android.so", "binary")
+        write(libDir, "modern/_new.cpython-315t-aarch64-linux-android.so", "binary")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android", libDirs = listOf(libDir)))
+                .getOrThrow()
+
+        assertEquals(1, result.warnings.size, result.warnings.joinToString("\n"))
+        assertTrue("legacy._old" in result.warnings.single(), result.warnings.single())
+        assertTrue(File(result.outputDir, "python/legacy/_old.cpython-315-aarch64-linux-android.so").isFile)
+    }
+
+    /**
+     * On the host, each extension is imported by the project's free-threaded `.venv` interpreter in its
+     * own process; `gilImportProbe = false` turns that off. The fake interpreter answers `1` to
+     * everything: "free-threaded" and "the GIL came on".
+     */
+    @Test
+    fun bundle_probesHostExtensionsWithTheVenvInterpreterUnlessTurnedOff() {
+        if (System.getProperty("os.name").lowercase().contains("windows")) return
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        write(pkg, "src/main/core/_fast.abi3t.so", "binary")
+        val calls = File(tempDir, "calls.log")
+        val python = File(pkg, ".venv/bin/python3")
+        write(pkg, ".venv/bin/python3", "#!/bin/sh\necho \"\$@\" >> '${calls.absolutePath}'\necho 1\n")
+        python.setExecutable(true)
+        val host = org.thisisthepy.python.multiplatform.packpack.utils.Platforms.detectHostTarget()
+
+        val probed = bundler().bundle(BundleRequest(packageDir = pkg, target = host)).getOrThrow()
+
+        assertTrue(probed.warnings.any { "core._fast" in it && "re-enables the GIL" in it }, probed.warnings.joinToString("\n"))
+        assertTrue(calls.readText().contains("core._fast"), calls.readText())
+
+        calls.delete()
+        val off = bundler().bundle(BundleRequest(packageDir = pkg, target = host, overwrite = true, gilImportProbe = false)).getOrThrow()
+
+        assertTrue(off.warnings.isEmpty(), off.warnings.joinToString("\n"))
+        assertFalse(calls.exists(), "the interpreter must not run when the probe is off")
+    }
+
     /**
      * `BundleRequest.libDirs` is prebuilt/vendored library content (per the same reference DSL's
      * `libDirs("src/commonMain/build/site-packages")`) -- a site-packages-shaped tree merged wholesale
@@ -355,6 +417,28 @@ class ResourceBundlerTest {
             second.exceptionOrNull()?.message.orEmpty().contains("--overwrite"),
             "message should tell the user how to proceed: ${second.exceptionOrNull()?.message}",
         )
+    }
+
+    /** `--overwrite` clears the output without following a link out of it (#96). */
+    @Test
+    fun bundle_overwriteDoesNotFollowALinkOutOfTheOutput() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+        val first = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        val keep = linkOutside(File(first.outputDir, "python"), File(tempDir, "outside"))
+
+        bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", overwrite = true)).getOrThrow()
+
+        assertEquals("keep", keep.readText())
+    }
+
+    /** `<dir>/link` -> an outside directory holding `keep.txt` (#96). */
+    private fun linkOutside(dir: File, outside: File): File {
+        outside.mkdirs()
+        File(outside, "keep.txt").writeText("keep")
+        dir.mkdirs()
+        java.nio.file.Files.createSymbolicLink(File(dir, "link").toPath(), outside.toPath())
+        return File(outside, "keep.txt")
     }
 
     @Test

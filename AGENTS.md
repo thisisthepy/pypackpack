@@ -14,19 +14,18 @@ overrides any default your tooling has.
 
 ## 2. Nothing is created outside this repository
 
-Everything your work produces — worktrees, agent prompts, logs, measurements, experiments, scratch
-files — lives **inside this repository's root directory.**
+Everything your work produces (worktrees, agent prompts, logs, measurements, experiments, scratch
+files) lives **inside this repository's root directory.**
 
 | What | Where |
 |---|---|
 | Worktrees | `.worktrees/<name>` (git-ignored) |
-| Temporary files | `.tmp/` (git-ignored); delete when done |
-| Benchmarks | `benchmarks/` |
-| Developer tooling | `tools/` |
+| Temporary files | the session scratchpad directory, or `.cache/` (git-ignored); delete when done |
+| CI-only scripts | `.github/scripts/` |
 
 Before writing a file, check that its absolute path starts with this repository's root. If it does
 not, stop. The only exceptions are a path the user names explicitly, and caches that build tools
-manage themselves. **Re-pointing a shared cache or a home-directory symlink reaches other projects —
+manage themselves. **Re-pointing a shared cache or a home-directory symlink reaches other projects;
 ask first.**
 
 Writing to *another* repository is not an exception either. Do it only when told to work there.
@@ -35,8 +34,8 @@ Writing to *another* repository is not an exception either. Do it only when told
 
 **Never add a new directory (or a new file) at the repository root on your own.** The root layout is
 the maintainer's: source modules, `docs/`, `gradle/`, `.github/` and the files that tools require
-there. Work belongs inside an existing module or directory — sources under `src/<sourceSet>/`,
-CI-only scripts under `.github/scripts/`, temporary files under the git-ignored `.tmp/`. If you think
+there. Work belongs inside an existing module or directory: sources under `src/<sourceSet>/`,
+CI-only scripts under `.github/scripts/`, temporary files under the git-ignored `.cache/`. If you think
 a new top-level entry is needed, propose it (what, why, which alternatives inside existing
 directories you ruled out) and wait for approval. This was added after unapproved root folders
 (`ksp-fixtures/`, `tools/`, `kotlin-js-store/`, `iosApp/`, `sample/python`) had to be dismantled.
@@ -49,7 +48,7 @@ build caches, model weights, `node_modules`) into every worktree is how 86 workt
 
 - Create worktrees under `.worktrees/<name>`.
 - **Symlink** large untracked directories from the main checkout instead of copying or rebuilding
-  them. If `tools/worktree-add.sh` exists, use it — it does the linking.
+  them.
 - Delete a worktree once its branch is merged: `git worktree remove .worktrees/<name>`.
 - Periodically delete `build/` directories inside worktrees; they only grow.
 
@@ -60,7 +59,7 @@ build caches, model weights, `node_modules`) into every worktree is how 86 workt
 | `feat/<topic>` | You. All work happens here. Never name a branch `work/...`. |
 | `develop` | Merged into from `feat/` branches after verification. Never commit to it directly. |
 | `release` | **CI only.** Not a standing branch: CI regenerates it from every push to `develop`, in the main-only file layout, and opens the PR into `main`. It may not exist. Never write to it. |
-| `main` | **Pull request from `release` only.** Never push or merge to it directly. |
+| `main` | **Pull request from `release` only.** Never push or merge to it directly. The maintainer protects it in the repository settings (locked) and merges the `release` PR after checking its head; no script or workflow does this, and agents do not change those settings (decision 2026-10-03). |
 
 Only `main`, `develop` and `release` are standing branches. A `feat/` branch lives until its pull
 request merges: merge with `gh pr merge --delete-branch`, then delete the local branch and its
@@ -70,7 +69,7 @@ landed or reported, not left. Branches named `release-*` are preserved snapshots
 
 `main` carries a reduced layout: of the Markdown files, only `README.md` stays at the repository
 root, and `docs/` keeps only its subdirectories (no Markdown files directly under `docs/`).
-CI runs `tools/release/sync-release.sh` (`.github/workflows/release-sync.yml`) to produce that layout; do not hand-edit `release` or `main`.
+CI runs `.github/scripts/release/sync-release.sh` (`.github/workflows/release-sync.yml`) to produce that layout; do not hand-edit `release` or `main`.
 
 ### Issues and pull requests
 
@@ -78,7 +77,7 @@ Every new feature goes through an issue and a pull request:
 
 1. Before starting, search the repository's issues (`gh issue list --state all --search "<keywords>"`).
 2. If no issue covers the work, open one (`gh issue create`) stating what and why, and the
-   completion criterion — which tests must pass.
+   completion criterion: which tests must pass.
 3. Work on a `feat/<topic>` branch, push every commit, and open a pull request into `develop`
    whose body contains `Closes #<number>`.
 4. Merge into `develop` through that pull request (`gh pr merge`), not by a local merge, so the
@@ -102,18 +101,18 @@ If a request conflicts with `docs/INTENT.md`, say so instead of implementing it.
 
 ## 6. User-authored files are specification
 
-Files the user wrote by hand — notebooks, example build files, sample apps — are the specification.
+Files the user wrote by hand (notebooks, example build files, sample apps) are the specification.
 Read them **first**. Never delete, rewrite, or `git add` them without being told to. Generated
 documentation (roadmaps, design notes) is a record of work, not a requirement; when the two
 disagree, the user's file wins.
 
 ## 7. Show a conclusion before acting on it
 
-Anything beyond the immediate request — another repository, a public API signature, deleting
-files, killing processes, force-pushing, changing branch protection — state what you would do and
+Anything beyond the immediate request (another repository, a public API signature, deleting
+files, killing processes, force-pushing, changing branch protection): state what you would do and
 why, and wait. Investigating, measuring, and reporting are always fine.
 
-**Push every commit right away.** After you commit — on a work branch or on `develop` — push it to
+**Push every commit right away.** After you commit (on a work branch or on `develop`) push it to
 the remote immediately; no confirmation is needed. Never push to `main` or `release` by hand, and
 never force-push without the user's explicit approval.
 
@@ -153,19 +152,18 @@ to implement", say what you counted against.
 - Give every agent prompt the absolute paths it may write to, and repeat rule 2 in it.
 - **Subagents do not run heavy local builds.** Subagents write code, design, investigate, review
   and document. Gradle builds, cargo builds, the test gate and model runs are done by the session
-  itself — one at a time on this machine — or by CI (GitHub Actions) on a pushed branch. Several
+  itself (one at a time on this machine) or by CI (GitHub Actions) on a pushed branch. Several
   sessions share one machine; parallel local builds slow every one of them.
 
 ---
 
-# Repository-specific rules — `pypackpack`
+# Repository-specific rules: `pypackpack`
 
 ## 11. Layout
 
 | Module | What it is |
 |---|---|
-| `:packpack` | The library (`org.thisisthepy.python.multiplatform.packpack`). `dependency/`, `compile/`, `bundle/`, `deploy/` (each a frontend → middleware → backend stack, or a factory for `bundle`/`deploy`) and `utils/` (`Platforms`, `Workspace`, `Downloader`, `Archive`, `toml/`). Published to Maven with `maven-publish`. |
-| `:cli` | The `pypackpack` / `ppp` command line (Clikt, `application`, GraalVM native image). Depends on `:packpack` as a project, never the other way round, so a consumer of the library never resolves Clikt. |
+| `:packpack` | The library (`org.thisisthepy.python.multiplatform.packpack`, source set `main`): `dependency/`, `compile/`, `bundle/`, `deploy/` (each a frontend → middleware → backend stack, or a factory for `bundle`/`deploy`) and `utils/` (`Platforms`, `Workspace`, `Downloader`, `Archive`, `toml/`). Published to Maven with `maven-publish`. The `pypackpack` / `ppp` command line is the module's `cli` source set (Clikt, GraalVM native image, launcher `installCliDist`), placed as the first spec sheet has it (`utils/CommandLine.kt` the endpoint, each domain's `frontend/` its commands). It depends on `main`, never the other way round, and is not part of the published component, so a consumer of the library never resolves Clikt (#73). |
 | `:usage-example` | A build file that depends on `:packpack`. It has no sources. |
 
 - `docs/SPEC.md` holds the directory tree of both modules and of a user project. When you add, move
@@ -173,9 +171,12 @@ to implement", say what you counted against.
 - Many files are empty placeholders that only name a future feature (every compile backend except
   `Meson`, all of `compile/middleware/{external,transcompile,minification}`, `bundle/binary/`, every
   class under `deploy/`). Do not count them as implemented; `docs/SPEC.md` marks them `planned`.
-- The root `pyproject.toml` describes a Python wrapper (`packpack/src/main/python/`, both files
-  empty) around the native binary. Nothing builds it. Do not add Python code to satisfy it without
-  asking.
+- The root `pyproject.toml` is the PyPI distribution (user decision, 2026-10-03, #52): a platform
+  wheel per OS that carries the native CLI as the `pypackpack` script, plus a small Python package
+  (`packpack/src/main/python/`, published as `pypackpack`) whose `ppp` and `python -m pypackpack` run
+  that binary. `.github/workflows/publish-pypi.yml` builds, smoke-tests and uploads the wheels; its
+  version must equal `packpack/build.gradle.kts`'s `cliVersion`. Keep that Python package a launcher: the work stays in
+  Kotlin.
 
 ## 12. pypackpack owns the work
 
@@ -217,7 +218,7 @@ is acceptable for the CLI and nowhere else.
 resolves it from `~/.m2`, not through `includeBuild`. Therefore:
 
 - A change to a public signature in `:packpack` breaks `toolchain` silently until someone republishes.
-  Run `./gradlew :packpack:publishToMavenLocal` and make the matching change in `toolchain` — that is
+  Run `./gradlew :packpack:publishToMavenLocal` and make the matching change in `toolchain`; that is
   another repository, so rule 7 applies: state the change and wait.
 - The coordinate and version live in `packpack/build.gradle.kts` (`group`, `version`, `artifactId`).
   Changing any of them is a change to `toolchain` too.
@@ -243,21 +244,22 @@ export JAVA_HOME=/Users/ibrew/Library/Java/JavaVirtualMachines/jdk-21.0.12+8/Con
 Prerequisites: `python3` on `PATH` (`ResourceBundlerTest`'s `bytecode` tests run `compileall`).
 Building the native CLI additionally needs GraalVM with `native-image` (`GRAALVM_HOME`).
 
-Run each module separately (rule 8), with output to a file under `.tmp/`:
+Run each module separately (rule 8), with output to a file under `.cache/`:
 
 ```bash
 rm -rf packpack/build/test-results
-./gradlew :packpack:test --rerun --console=plain > .tmp/packpack-test.log 2>&1; echo "EXIT=$?"
-rm -rf cli/build/test-results
-./gradlew :cli:test --rerun --console=plain > .tmp/cli-test.log 2>&1; echo "EXIT=$?"
+./gradlew :packpack:test --rerun --console=plain > .cache/packpack-test.log 2>&1; echo "EXIT=$?"
+rm -rf packpack/build/test-results/cliTest
+./gradlew :packpack:cliTest --rerun --console=plain > .cache/cli-test.log 2>&1; echo "EXIT=$?"
 ```
 
-Count results from `<module>/build/test-results/test/*.xml`, not from the log.
+Count results from `packpack/build/test-results/{test,cliTest}/*.xml`, not from the log.
 
 ```bash
 ./gradlew :packpack:publishToMavenLocal       # before building toolchain against a change here
-./gradlew :cli:nativeCompile                  # GraalVM native binary
-bash tools/release/test-sync-release.sh       # tests for the release-branch generator
+./gradlew :packpack:nativeCompile             # GraalVM native binary of the CLI
+./gradlew :packpack:installCliDist            # JVM launcher: packpack/build/install/pypackpack/bin/pypackpack
+bash .github/scripts/release/test-sync-release.sh       # tests for the release-branch generator
 ```
 
 There are no Python tests in this repository.
@@ -272,7 +274,7 @@ There are no Python tests in this repository.
 | `docs/INTENT.md` | English | Why the project exists and what it is not. |
 | `docs/SPEC.md` | English | The behavioural contract, one `Status:` per item. |
 | `docs/issues/KNOWN_ISSUES.md` | English | Open and fixed defects that are not yet a spec item. |
-| `docs/<topic>/` | — | Anything else. No other `.md` directly in `docs/`. |
+| `docs/<topic>/` | - | Anything else. No other `.md` directly in `docs/`. |
 
 - `Status: implemented` requires a test in this repository that exercises the behaviour; cite it.
   Wiring with no test is `partial`.
@@ -286,3 +288,15 @@ There are no Python tests in this repository.
 - KDoc comments cite `docs/SPEC.md` (this repository's) and `toolchain` files such as `DSLBuild.kt`
   and `(플러그인예시)build.gradle.kts` (another repository's). When you touch such a comment, name
   the repository.
+
+## 18. Writing
+
+- **No em-dash (U+2014)**, anywhere: documentation, the guide, code comments, KDoc, docstrings and
+  strings. Use a comma, a colon, parentheses, or two sentences. An empty table cell is `-`.
+- **Examples install and run with `uv`, `ppp` (pypackpack) or `tcl` (toolchain-lite), never
+  `pip install`.** For this package: `uv tool install pypackpack` or `uvx pypackpack`. `uv pip …`
+  is fine where a pip-style command is the point.
+- The licence is Apache-2.0 everywhere it is stated: `LICENSE`, `pyproject.toml` (`license`), the
+  READMEs and the guide footer.
+
+(User directives, 2026-10-03.)

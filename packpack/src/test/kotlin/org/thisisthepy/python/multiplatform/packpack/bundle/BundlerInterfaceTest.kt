@@ -73,6 +73,8 @@ class BundlerInterfaceTest {
         val exception = result.exceptionOrNull()
         assertTrue(exception is NotImplementedError)
         assertTrue(exception.message.orEmpty().contains("binary"))
+        // It names every type that does work, so the reader knows what to ask for instead.
+        listOf("resource", "single", "fat", "patch").forEach { assertTrue("'$it'" in exception.message.orEmpty(), exception.message) }
     }
 
     @Test

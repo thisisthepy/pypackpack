@@ -1,0 +1,113 @@
+name: Publish packpack to Maven Central
+
+# Publishing a GitHub Release tagged `packpack-v<version>` signs the packpack library, checks the
+# bundle against Maven Central's requirements (.github/scripts/maven/check_central_bundle.py) and
+# uploads it to the Sonatype Central Portal as USER_MANAGED: the Portal validates it and waits, and
+# a person presses Publish there. A manual run does everything except the upload (#102).
+#
+# Nothing can upload until the user has created the `maven-central` environment (restricted to
+# `packpack-v*` tags) with its four secrets and published such a release; without a secret the
+# job stops and names it. The Central namespace (`org.thisisthepy`) must be verified first; see
+# docs/SPEC.md, "Distribution through Maven Central".
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-maven-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Releases tagged v* are the CLI's (publish-pypi.yml).
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'packpack-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ github.event_name == 'release' && 'maven-central' || '' }}
+    env:
+      IS_RELEASE: ${{ github.event_name == 'release' }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tag names gradle.properties' version, which is not on Central yet
+        run: |
+          group=$(sed -n 's/^mavenGroup=//p' gradle.properties)
+          version=$(sed -n 's/^packpackVersion=//p' gradle.properties)
+          echo "coordinate: $group:packpack:$version   tag: ${TAG:-none (dry run)}"
+          echo "GROUP=$group" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$IS_RELEASE" = true ] && [ "$TAG" != "packpack-v$version" ]; then
+            echo "::error::release tag '$TAG' is not 'packpack-v$version' (gradle.properties packpackVersion)"; exit 1
+          fi
+          pom="https://repo1.maven.org/maven2/${group//.//}/packpack/$version/packpack-$version.pom"
+          if curl -fsS -o /dev/null "$pom"; then
+            if [ "$IS_RELEASE" = true ]; then echo "::error::$group:packpack:$version is already on Maven Central"; exit 1; fi
+            echo "::warning::$group:packpack:$version is already on Maven Central; bump packpackVersion before releasing"
+          fi
+
+      - name: The publishing secrets are there
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+        run: |
+          missing=""
+          for name in SIGNING_KEY SIGNING_KEY_PASSWORD CENTRAL_PORTAL_USERNAME CENTRAL_PORTAL_PASSWORD; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            if [ "$IS_RELEASE" = true ]; then
+              echo "::error::missing secrets in the maven-central environment:$missing (docs/SPEC.md, Distribution through Maven Central)"; exit 1
+            fi
+            echo "::notice::dry run without:$missing; the bundle is built unsigned and nothing is uploaded"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Stage the bundle (signed when a key is there)
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ORG_GRADLE_PROJECT_signingInMemoryKey" ]; then
+            unset ORG_GRADLE_PROJECT_signingInMemoryKey ORG_GRADLE_PROJECT_signingInMemoryKeyPassword
+          fi
+          ./gradlew :packpack:centralBundle --console=plain
+
+      - name: The bundle meets Central's requirements
+        env:
+          SIGNED: ${{ secrets.SIGNING_KEY != '' }}
+        run: |
+          flag=""
+          [ "$SIGNED" = true ] || flag="--unsigned"
+          python3 .github/scripts/maven/check_central_bundle.py packpack/build/staging-deploy "$GROUP" packpack "$VERSION" $flag
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: central-bundle-${{ env.VERSION }}
+          path: packpack/build/central/central-bundle-${{ env.VERSION }}.zip
+
+      - name: Upload to the Central Portal (USER_MANAGED; press Publish in the Portal)
+        if: github.event_name == 'release'
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+        run: |
+          token=$(printf '%s:%s' "$CENTRAL_PORTAL_USERNAME" "$CENTRAL_PORTAL_PASSWORD" | base64 -w0)
+          id=$(curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $token" \
+            -F "bundle=@packpack/build/central/central-bundle-$VERSION.zip" \
+            "https://central.sonatype.com/api/v1/publisher/upload?publishingType=USER_MANAGED&name=packpack-$VERSION")
+          echo "Central Portal deployment: $id"
+          echo "::notice::uploaded as deployment $id; check it at https://central.sonatype.com/publishing/deployments and press Publish"

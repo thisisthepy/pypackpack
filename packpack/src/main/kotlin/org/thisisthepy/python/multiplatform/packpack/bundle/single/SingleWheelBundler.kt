@@ -1,9 +1,11 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.single
 
+import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
+import org.thisisthepy.python.multiplatform.packpack.bundle.PythonTags
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
@@ -50,11 +52,11 @@ import java.util.zip.ZipOutputStream
  *
  * ### 2. Wheel filename / tag scheme (PEP 427 filename, PEP 425/600/656/730/738 platform tags)
  *
- * The python tag and ABI tag are hardcoded to `cp313`/`cp313`: this codebase's Python distribution is
- * pinned to 3.13 everywhere else (`docs/SPEC.md` -> "Additional project Python-related features" ->
- * *"Only Python 3.13 is supported due to python-multiplatform limitations"*), and Meson's
- * `py.extension_module()` calls here are never given `limited_api`, so the produced `.so`/`.pyd` links
- * against the full (non-limited) C API -- `abi3` would be a false promise.
+ * The python tag and ABI tag come from the target interpreter ([BundleRequest.pythonVersion], default the
+ * ecosystem's free-threaded 3.15): `cp315`/`cp315` for a GIL build, `cp315`/`cp315t` for a free-threaded
+ * one (see [PythonTags]). Meson's `py.extension_module()` calls here are never given `limited_api`, so
+ * the produced `.so`/`.pyd` links against the full (non-limited) C API -- `abi3`/`abi3t` would be a
+ * false promise.
  *
  * The platform tag is derived from [Platforms.describeTarget] per family, deliberately **not** reusing
  * [Platforms.TargetDescriptor.markerMachine]: that field is the PEP 508 `platform_machine` value
@@ -129,8 +131,6 @@ class SingleWheelBundler : BundlerInterface {
     private companion object {
         const val SUPPORTED_BUILD_LEVEL = "instant"
         const val SITE_PACKAGES_DIR_NAME = "site-packages"
-        const val PYTHON_TAG = "cp313"
-        const val ABI_TAG = "cp313"
         const val METADATA_VERSION = "2.1"
         const val WHEEL_VERSION = "1.0"
         const val GENERATOR = "pypackpack 0.1.0"
@@ -189,8 +189,9 @@ class SingleWheelBundler : BundlerInterface {
 
             val escapedName = packageName.wheelEscaped()
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
+            val tags = PythonTags.of(request.pythonVersion)
             val distInfoDir = "$escapedName-$version.dist-info"
-            val wheelFileName = "$escapedName-$version-$PYTHON_TAG-$ABI_TAG-$platformTag.whl"
+            val wheelFileName = "$escapedName-$version-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl"
             val rootIsPurelib = payload.keys.none { it.substringAfterLast('.', "") in NATIVE_EXTENSION_EXTENSIONS }
 
             val outputDir = resolveOutputDir(request, packageDir)
@@ -204,6 +205,7 @@ class SingleWheelBundler : BundlerInterface {
                 packageName = packageName,
                 version = version,
                 platformTag = platformTag,
+                tags = tags,
                 rootIsPurelib = rootIsPurelib,
             )
 
@@ -241,7 +243,7 @@ class SingleWheelBundler : BundlerInterface {
             require(overwrite) {
                 "Bundle output already exists: ${outputDir.absolutePath}. Use --overwrite to replace it."
             }
-            outputDir.listFiles()?.forEach { it.deleteRecursively() }
+            outputDir.listFiles()?.forEach { it.deleteWithoutFollowingLinks() }
         }
         check(outputDir.mkdirs() || outputDir.isDirectory) {
             "Failed to create bundle output: ${outputDir.absolutePath}"
@@ -371,10 +373,11 @@ class SingleWheelBundler : BundlerInterface {
         packageName: String,
         version: String,
         platformTag: String,
+        tags: PythonTags,
         rootIsPurelib: Boolean,
     ) {
         val metadata = renderMetadata(packageName, version)
-        val wheelFile = renderWheelFile(platformTag, rootIsPurelib)
+        val wheelFile = renderWheelFile(platformTag, tags, rootIsPurelib)
 
         val recordRows = mutableListOf<Triple<String, String, Long>>()
 
@@ -433,13 +436,14 @@ class SingleWheelBundler : BundlerInterface {
 
     private fun renderWheelFile(
         platformTag: String,
+        tags: PythonTags,
         rootIsPurelib: Boolean,
     ): String =
         buildString {
             appendLine("Wheel-Version: $WHEEL_VERSION")
             appendLine("Generator: $GENERATOR")
             appendLine("Root-Is-Purelib: ${if (rootIsPurelib) "true" else "false"}")
-            appendLine("Tag: $PYTHON_TAG-$ABI_TAG-$platformTag")
+            appendLine("Tag: ${tags.pythonTag}-${tags.abiTag}-$platformTag")
         }
 
     private fun renderRecord(
