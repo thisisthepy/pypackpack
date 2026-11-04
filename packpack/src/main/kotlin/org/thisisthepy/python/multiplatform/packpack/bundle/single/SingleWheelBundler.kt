@@ -60,8 +60,8 @@ import java.util.zip.ZipOutputStream
  *
  * The platform tag is derived from [Platforms.describeTarget] per family, deliberately **not** reusing
  * [Platforms.TargetDescriptor.markerMachine]: that field is the PEP 508 `platform_machine` value
- * (`arm64` on Apple, `ARM64`/`x86` on Windows, `aarch64` on Linux/Android), which is not the wheel
- * tag's spelling either: tags use `win_arm64`/`win32`, keep `aarch64` for manylinux/musllinux, and
+ * (`arm64` on Apple, `AMD64`/`ARM64`/`x86` on Windows, `aarch64` on Linux/Android), which is not the wheel
+ * tag's spelling either: tags use `win_amd64`/`win_arm64`/`win32`, keep `aarch64` for manylinux/musllinux, and
  * the Android NDK ABI `arm64_v8a` (PEP 738). This class computes its own per-family arch spelling
  * instead of risking that cross-contamination.
  *

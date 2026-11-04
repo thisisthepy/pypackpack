@@ -118,13 +118,13 @@ class CrossEnvTest {
     @Test
     fun removeDependenciesMatchesUvNormalizedMarkerText() {
         // `MarkerPolicy.markerForTarget("windows")` writes `platform_system == 'Windows' and
-        // platform_machine == 'x86_64'` via `uv add --marker <text>`. Real uv (0.12.3, verified
-        // by hand) does not persist that text verbatim: it rewrites the `platform_system` clause
-        // into an equivalent `sys_platform` clause and reorders the clauses alphabetically, so
-        // pyproject.toml ends up holding `platform_machine == 'x86_64' and sys_platform ==
-        // 'win32'` -- exactly what this fixture pre-seeds below. `removeDependencies` must still
-        // find this entry when asked to remove the same target it was added for (see
-        // docs/SPEC.md's "remove --target" limitation and docs/issues/KNOWN_ISSUES.md).
+        // platform_machine == 'AMD64'` via `uv add --marker <text>`. Real uv does not persist
+        // that text verbatim: it rewrites the `platform_system` clause into an equivalent
+        // `sys_platform` clause and reorders the clauses alphabetically, so pyproject.toml ends
+        // up holding `platform_machine == 'AMD64' and sys_platform == 'win32'` -- exactly what
+        // this fixture pre-seeds below. `removeDependencies` must still find this entry when
+        // asked to remove the same target it was added for (see docs/SPEC.md's "remove --target"
+        // limitation and docs/issues/KNOWN_ISSUES.md).
         withWorkspace(
             """
             [project]
@@ -140,7 +140,7 @@ class CrossEnvTest {
                 [project]
                 name = "core"
                 dependencies = [
-                    "requests>=2.34.2 ; platform_machine == 'x86_64' and sys_platform == 'win32'",
+                    "requests>=2.34.2 ; platform_machine == 'AMD64' and sys_platform == 'win32'",
                 ]
                 """.trimIndent(),
             )
