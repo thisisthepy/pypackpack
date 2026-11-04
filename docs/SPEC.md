@@ -309,7 +309,7 @@ pypackpack version
 - Prints the pypackpack version and the detected uv version.
 - The pypackpack version is `packpack/build.gradle.kts`'s `cliVersion`, which the build writes into the CLI's
   resources (`build-info.properties`, read by `BuildInfo`). It is the PyPI wheel's version too.
-- If uv is not detected, downloads uv into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
+- If uv is not detected, downloads uv (`0.13.6`) into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
 - The download is uv's release archive for the host. The `.tar.gz` archives (Linux, macOS) keep their
   files under one top-level directory, which is stripped; the Windows `.zip` holds `uv.exe` at its root.
   A binary missing after extraction is a failure, not a success (`packpack/.../dependency/backend/external/UVInstallTest.kt`).
@@ -690,6 +690,7 @@ pypackpack mypackage add numpy --target windows linux
 - The target package is resolved among workspace members by name or relative path.
 - `add` computes a marker for each target (`platform_system == '<system>' and platform_machine == '<machine>'`) and repeatedly calls `uv add --package <name> --marker <marker>`.
 - `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `AMD64`, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Pyodide. Status: implemented. `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
+- Minimum uv version for `x86_64-pc-windows-msvc` target resolution is `0.13.6` (astral-sh/uv#22935 changed `--python-platform x86_64-pc-windows-msvc` from `platform_machine == 'x86_64'` to `'AMD64'`; #107, #109). When `add`, `sync`, or `tree` includes `x86_64-pc-windows-msvc` and the detected uv version is older than `0.13.6`, the command fails before running uv (`MarkerPolicy.requireUvForTargets`), rather than silently skipping `AMD64`-marked dependencies (`MarkerPolicyTest`, `CrossEnvTest.syncDependenciesRefusesUvOlderThan0136ForX8664Windows`).
 - Markers written before #49 or #107 (`arm64` for Linux/Android/Windows aarch64, `x86_64` for 64-bit x86 Windows, `i686` for 32-bit Windows) do not match under current uv (`0.13.6+`), so those dependencies are not installed. `remove --target` still finds them under the corrected target (`MarkerPolicyTest`); to install them, remove and add them again.
 - If `--target` is absent, uses the `[tool.ppp.dependencies].platforms` value from the package's `pyproject.toml` as the default target.
 - If there is no default target and `--target` is also empty, raises an error.

@@ -233,6 +233,32 @@ class CrossEnvTest {
     }
 
     @Test
+    fun syncDependenciesRefusesUvOlderThan0136ForX8664Windows() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+
+            val backend = FakeBackend(uvVersion = "uv 0.13.5")
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val result = crossEnv.syncDependencies("core", listOf("windows"), null)
+            assertTrue(result.isFailure, "Expected syncDependencies to fail on uv 0.13.5 for windows")
+            val message = result.exceptionOrNull()?.message.orEmpty()
+            assertTrue("0.13.6" in message && "AMD64" in message, message)
+            assertTrue(backend.targetInstallCalls.isEmpty(), "Should fail before invoking target install")
+        }
+    }
+
+    @Test
     fun syncDependenciesSendsTargetInstallOptionsOnlyToTheUvCommandsThatHaveThem() {
         // #50: `ppp core sync --target … --python-version 3.13 --only-binary :all:` forwarded both
         // to `uv sync` too, which has neither flag. --python-version selects the runtime's wheels
@@ -377,7 +403,9 @@ class CrossEnvTest {
         }
     }
 
-    private class FakeBackend : BackendInterface {
+    private class FakeBackend(
+        private val uvVersion: String = "uv 0.13.6",
+    ) : BackendInterface {
         companion object {
             var lastInitPath: String? = null
             var lastInitExtraArgs: Map<String, String> = emptyMap()
@@ -396,7 +424,7 @@ class CrossEnvTest {
 
         override fun initialize() = Unit
 
-        override suspend fun getVersion(): Result<String> = Result.success("uv 0.0.0")
+        override suspend fun getVersion(): Result<String> = Result.success(uvVersion)
 
         override suspend fun isToolInstalled(): Boolean = true
 

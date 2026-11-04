@@ -535,4 +535,54 @@ internal object MarkerPolicy {
         val descriptor = Platforms.describeTarget(target)
         return descriptor.markerSystem to descriptor.markerMachine
     }
+
+    private val MIN_UV_FOR_WINDOWS_AMD64 = Triple(0, 13, 6)
+
+    /**
+     * Parses `uv --version` output (e.g. `uv 0.13.6` or `uv 0.12.3 (Homebrew 2026-08-07 aarch64-apple-darwin)`)
+     * into `(major, minor, patch)`. Returns null if the output does not contain a recognizable version.
+     */
+    fun parseUvVersion(versionOutput: String): Triple<Int, Int, Int>? {
+        val match = Regex("""\buv\s+(\d+)\.(\d+)\.(\d+)""").find(versionOutput) ?: return null
+        return Triple(
+            match.groupValues[1].toInt(),
+            match.groupValues[2].toInt(),
+            match.groupValues[3].toInt(),
+        )
+    }
+
+    private fun isOlderThan(
+        actual: Triple<Int, Int, Int>,
+        minimum: Triple<Int, Int, Int>,
+    ): Boolean {
+        if (actual.first != minimum.first) return actual.first < minimum.first
+        if (actual.second != minimum.second) return actual.second < minimum.second
+        return actual.third < minimum.third
+    }
+
+    /**
+     * Rejects `uv < 0.13.6` when [targets] contains `x86_64-pc-windows-msvc` (#107, #109).
+     *
+     * Since `uv 0.13.6` (astral-sh/uv#22935), `uv` evaluates `platform_machine` under
+     * `--python-platform x86_64-pc-windows-msvc` as `AMD64`, matching Python's `platform.machine()`
+     * on 64-bit x86 Windows. Under `uv < 0.13.6` it evaluated `platform_machine` as `x86_64`, so
+     * the `platform_machine == 'AMD64'` marker [markerForTarget] writes would silently fail to
+     * match during `sync` or `tree`.
+     */
+    fun requireUvForTargets(
+        targets: Collection<String>,
+        uvVersionOutput: String,
+    ) {
+        val canonicalTargets = targets.map { Platforms.normalizeTarget(it) ?: it }
+        if ("x86_64-pc-windows-msvc" !in canonicalTargets) return
+        val version = parseUvVersion(uvVersionOutput) ?: return
+        if (isOlderThan(version, MIN_UV_FOR_WINDOWS_AMD64)) {
+            val found = "${version.first}.${version.second}.${version.third}"
+            throw IllegalStateException(
+                "Target x86_64-pc-windows-msvc requires uv >= 0.13.6 (found uv $found): " +
+                    "uv < 0.13.6 evaluates platform_machine as 'x86_64' instead of 'AMD64' " +
+                    "(astral-sh/uv#22935) and would silently skip x86_64-pc-windows-msvc dependencies.",
+            )
+        }
+    }
 }
