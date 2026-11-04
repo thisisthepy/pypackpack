@@ -467,8 +467,8 @@ internal object MarkerPolicy {
      * `uv add --marker "<text from [markerForTarget]>"` does not persist that text verbatim into
      * `pyproject.toml`: it rewrites the `platform_system == '<value>'` clause into an equivalent
      * `sys_platform == '<value>'` clause and reorders the clauses alphabetically (verified by hand
-     * against uv 0.12.3 -- `platform_system == 'Windows' and platform_machine == 'x86_64'` round-trips
-     * as `platform_machine == 'x86_64' and sys_platform == 'win32'`; likewise Linux/Darwin/Android/
+     * against uv: `platform_system == 'Windows' and platform_machine == 'AMD64'` round-trips as
+     * `platform_machine == 'AMD64' and sys_platform == 'win32'`; likewise Linux/Darwin/Android/
      * Emscripten). `iOS` was the one family that round-tripped unchanged in that same check, so
      * [targetKeyFor] treats both spellings as equivalent for every family rather than special-casing
      * iOS -- a future uv version normalizing it the same way should not silently break matching again.
@@ -517,14 +517,16 @@ internal object MarkerPolicy {
     }
 
     /**
-     * Machine values written before #49, which never matched their target, mapped to the value
-     * [markerForTarget] writes now, so `remove --target` still finds those entries.
+     * Machine values written before #49 or #107, which do not match their target under current uv,
+     * mapped to the value [markerForTarget] writes now, so `remove --target` still finds those
+     * entries.
      */
     private val LEGACY_MACHINE: Map<Pair<String, String>, String> =
         mapOf(
             ("Linux" to "arm64") to "aarch64",
             ("Android" to "arm64") to "aarch64",
             ("Windows" to "arm64") to "ARM64",
+            ("Windows" to "x86_64") to "AMD64",
             ("Windows" to "i686") to "x86",
         )
 

@@ -341,9 +341,10 @@ object Platforms {
     }
 
     /**
-     * The `platform_machine` value uv evaluates for [target] under `--python-platform` (#49): Apple
-     * spells 64-bit ARM `arm64`, Windows `ARM64` and 32-bit x86 `x86`, Linux and Android keep the
-     * triple's `aarch64`. `MarkerPolicyUvTest` checks every canonical target against uv itself.
+     * The `platform_machine` value uv evaluates for [target] under `--python-platform` (#49, #107):
+     * Apple spells 64-bit ARM `arm64`, Windows `AMD64`, `ARM64` and 32-bit x86 `x86`, Linux and
+     * Android keep the triple's `aarch64`. `MarkerPolicyUvTest` checks every canonical target
+     * against uv itself.
      */
     private fun markerMachine(
         target: String,
@@ -354,6 +355,7 @@ object Platforms {
             "macos", "ios" -> if (arch == "aarch64") "arm64" else arch
             "windows" ->
                 when (arch) {
+                    "x86_64" -> "AMD64"
                     "aarch64" -> "ARM64"
                     "i686" -> "x86"
                     else -> arch
