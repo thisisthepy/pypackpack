@@ -128,6 +128,7 @@ class CrossEnv {
             val packageSpec = resolvePackageSpec(packageName)
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = resolveCrossTargets(packageSpec, targets)
+            checkUvVersionForTargets(normalizedTargets)
             val options = extraArgs.orEmpty()
 
             for (target in normalizedTargets) {
@@ -206,6 +207,7 @@ class CrossEnv {
             val packageSpec = resolvePackageSpec(packageName)
             val workspaceRoot = packageSpec.workspaceRoot
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
+            checkUvVersionForTargets(normalizedTargets)
             val options = extraArgs.orEmpty()
 
             // Target-install options exist only on some uv commands (#50): `uv sync` (the host
@@ -250,6 +252,7 @@ class CrossEnv {
         runCatching {
             val packageSpec = resolvePackageSpec(packageName)
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets, listOf(Platforms.detectHostTarget()))
+            checkUvVersionForTargets(normalizedTargets)
             val baseDir = packageSpec.workspaceRoot
             val options = extraArgs.orEmpty()
 
@@ -335,6 +338,12 @@ class CrossEnv {
         packageDir: File,
         target: String,
     ): File = File(packageDir, "build/crossenv/$target")
+
+    private fun checkUvVersionForTargets(targets: List<String>) {
+        if ("x86_64-pc-windows-msvc" !in targets) return
+        val uvVersion = runBlocking { backend.getVersion() }.getOrNull() ?: return
+        MarkerPolicy.requireUvForTargets(targets, uvVersion)
+    }
 
     private fun resolveCrossTargets(
         packageSpec: PackageSpec,
