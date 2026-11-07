@@ -118,13 +118,13 @@ class CrossEnvTest {
     @Test
     fun removeDependenciesMatchesUvNormalizedMarkerText() {
         // `MarkerPolicy.markerForTarget("windows")` writes `platform_system == 'Windows' and
-        // platform_machine == 'x86_64'` via `uv add --marker <text>`. Real uv (0.12.3, verified
-        // by hand) does not persist that text verbatim: it rewrites the `platform_system` clause
-        // into an equivalent `sys_platform` clause and reorders the clauses alphabetically, so
-        // pyproject.toml ends up holding `platform_machine == 'x86_64' and sys_platform ==
-        // 'win32'` -- exactly what this fixture pre-seeds below. `removeDependencies` must still
-        // find this entry when asked to remove the same target it was added for (see
-        // docs/SPEC.md's "remove --target" limitation and docs/issues/KNOWN_ISSUES.md).
+        // platform_machine == 'AMD64'` via `uv add --marker <text>`. Real uv does not persist
+        // that text verbatim: it rewrites the `platform_system` clause into an equivalent
+        // `sys_platform` clause and reorders the clauses alphabetically, so pyproject.toml ends
+        // up holding `platform_machine == 'AMD64' and sys_platform == 'win32'` -- exactly what
+        // this fixture pre-seeds below. `removeDependencies` must still find this entry when
+        // asked to remove the same target it was added for (see docs/SPEC.md's "remove --target"
+        // limitation and docs/issues/KNOWN_ISSUES.md).
         withWorkspace(
             """
             [project]
@@ -140,7 +140,7 @@ class CrossEnvTest {
                 [project]
                 name = "core"
                 dependencies = [
-                    "requests>=2.34.2 ; platform_machine == 'x86_64' and sys_platform == 'win32'",
+                    "requests>=2.34.2 ; platform_machine == 'AMD64' and sys_platform == 'win32'",
                 ]
                 """.trimIndent(),
             )
@@ -229,6 +229,32 @@ class CrossEnvTest {
             )
             assertEquals("x86_64-pc-windows-msvc", call.pythonPlatform)
             assertEquals(File(workspaceRoot, "src/core").absolutePath, call.workingDir?.absolutePath)
+        }
+    }
+
+    @Test
+    fun syncDependenciesRefusesUvOlderThan0136ForX8664Windows() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+
+            val backend = FakeBackend(uvVersion = "uv 0.13.5")
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val result = crossEnv.syncDependencies("core", listOf("windows"), null)
+            assertTrue(result.isFailure, "Expected syncDependencies to fail on uv 0.13.5 for windows")
+            val message = result.exceptionOrNull()?.message.orEmpty()
+            assertTrue("0.13.6" in message && "AMD64" in message, message)
+            assertTrue(backend.targetInstallCalls.isEmpty(), "Should fail before invoking target install")
         }
     }
 
@@ -377,7 +403,9 @@ class CrossEnvTest {
         }
     }
 
-    private class FakeBackend : BackendInterface {
+    private class FakeBackend(
+        private val uvVersion: String = "uv 0.13.6",
+    ) : BackendInterface {
         companion object {
             var lastInitPath: String? = null
             var lastInitExtraArgs: Map<String, String> = emptyMap()
@@ -396,7 +424,7 @@ class CrossEnvTest {
 
         override fun initialize() = Unit
 
-        override suspend fun getVersion(): Result<String> = Result.success("uv 0.0.0")
+        override suspend fun getVersion(): Result<String> = Result.success(uvVersion)
 
         override suspend fun isToolInstalled(): Boolean = true
 

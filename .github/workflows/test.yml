@@ -44,6 +44,8 @@ jobs:
           python-version: "3.13"
 
       - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
 
       - name: Test ${{ matrix.name }}
         run: ./gradlew :packpack:${{ matrix.task }} --rerun --console=plain
