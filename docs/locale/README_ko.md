@@ -49,7 +49,7 @@ pypackpack 은 그 위에 타깃, 타깃별 마커, 타깃별 설치 디렉터�
 
 ```shell
 uv tool install pypackpack    # PATH 에 pypackpack 과 ppp 를 둠
-ppp --version                 # PyPackPack version 0.3.0
+ppp --version                 # 0.3.0 부터; 0.2.0 에서는 `ppp version`
 pypackpack --help             # 별칭: ppp
 uvx pypackpack --help         # 설치 없이 실행
 ```
