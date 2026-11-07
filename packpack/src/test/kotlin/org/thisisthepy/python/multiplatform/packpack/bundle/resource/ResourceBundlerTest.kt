@@ -457,18 +457,200 @@ class ResourceBundlerTest {
     }
 
     @Test
-    fun bundle_rejectsBuildLevelsThatAreNotImplementedYet() {
+    fun bundle_rejectsUnknownBuildLevels() {
         val pkg = packageDir()
         write(pkg, "src/main/core/__init__.py", "")
 
-        // "bytecode" used to be in this list; it is implemented now (below), so it moved out --
-        // see `bundle_bytecodeLevel*`.
-        listOf("native", "mixed").forEach { level ->
-            val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level))
-            assertTrue(result.isFailure, "build level '$level' should not silently succeed")
-            val message = result.exceptionOrNull()?.message.orEmpty()
-            assertTrue(message.contains(level), message)
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = "unknown-level"))
+        assertTrue(result.isFailure, "build level 'unknown-level' should not silently succeed")
+        val message = result.exceptionOrNull()?.message.orEmpty()
+        assertTrue(message.contains("unknown-level"), message)
+    }
+
+    @Test
+    fun bundle_mixedLevelCompilesDeveloperModulesToBytecodeAndKeepsLibraryExtensions() {
+        val pkg = packageDir()
+        installVenvPython(pkg)
+        write(pkg, "src/main/core/__init__.py", "VERSION = '0.1.0'\n")
+        write(pkg, "src/main/core/app.py", "def run():\n    return 1\n")
+        val libDir = File(tempDir, "site-packages")
+        write(libDir, "vendor/_ext.abi3t-darwin.so", "prebuilt-so")
+        write(libDir, "vendor/pure.py", "PURE = True\n")
+        val fakeC = File(tempDir, "app.c").apply { writeText("/* unused at mixed */\n") }
+
+        val result =
+            bundler()
+                .bundle(
+                    BundleRequest(
+                        packageDir = pkg,
+                        target = "macos",
+                        buildType = "release",
+                        buildLevel = "mixed",
+                        libDirs = listOf(libDir),
+                        gilImportProbe = false,
+                        nativeModules =
+                            listOf(
+                                org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionModuleSource(
+                                    moduleName = "core.app",
+                                    sources = listOf(fakeC),
+                                ),
+                            ),
+                    ),
+                ).also { assertTrue(it.isSuccess, it.exceptionOrNull()?.stackTraceToString()) }
+                .getOrThrow()
+
+        assertEquals(
+            File(pkg, "build/packpack/resource/release/mixed").canonicalFile,
+            result.outputDir.canonicalFile,
+        )
+        // At mixed, developer modules and pure-Python library modules become bytecode (.pyc only in release),
+        // TypedPython's C is ignored, and prebuilt library extensions are kept.
+        assertFalse(File(result.outputDir, "python/core/app.py").exists())
+        assertTrue(File(result.outputDir, "python/core/app.pyc").isFile)
+        assertTrue(File(result.outputDir, "python/core/__init__.pyc").isFile)
+        assertTrue(File(result.outputDir, "python/vendor/pure.pyc").isFile)
+        assertEquals("prebuilt-so", File(result.outputDir, "python/vendor/_ext.abi3t-darwin.so").readText())
+        assertTrue(result.manifestFile.readText().contains("\"buildLevel\": \"mixed\""))
+        assertFalse(result.manifestFile.readText().contains("\"nativeModules\""))
+    }
+
+    @Test
+    fun bundle_nativeLevelCompilesListedModulesBytecodesTheRestAndRecordsWarningsAndManifest() {
+        val pkg = packageDir()
+        installVenvPython(pkg)
+        write(pkg, "src/main/core/__init__.py", "VERSION = '0.1.0'\n")
+        write(pkg, "src/main/core/fast.py", "def inc(n: int) -> int:\n    return n + 1\n")
+        write(pkg, "src/main/core/plain.py", "def hello():\n    return 'hi'\n")
+        write(pkg, "src/main/core/text.py", "def f(s: str) -> str:\n    return s[1:]\n")
+        write(pkg, "src/main/core/unlisted.py", "X = 1\n")
+        val libDir = File(tempDir, "site-packages")
+        write(libDir, "vendor/helper.py", "H = 1\n")
+
+        val headers = File(tempDir, "include/python3.15t").apply {
+            mkdirs()
+            File(this, "Python.h").writeText("#include \"patchlevel.h\"\n#include \"pyconfig.h\"\n")
+            File(this, "patchlevel.h").writeText("#define PY_VERSION \"3.15.0a2\"\n")
+            File(this, "pyconfig.h").writeText("#define Py_GIL_DISABLED 1\n")
         }
+        val fastC = File(tempDir, "fast.c").apply { writeText("/* generated C */\n") }
+
+        val fakeSlot =
+            object : org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompilerInterface {
+                override fun checkSupport(
+                    target: String,
+                    pythonAbi: org.thisisthepy.python.multiplatform.packpack.compile.extension.PythonAbi,
+                    includeDir: File,
+                    libDir: File?,
+                    libraryName: String?,
+                ): Result<Unit> = Result.success(Unit)
+
+                override fun compile(
+                    request: org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompileRequest,
+                ): Result<org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompileResult> {
+                    val out = File(request.outputDir, "core/fast${request.extensionSuffix}")
+                    out.parentFile.mkdirs()
+                    out.writeText("compiled-so")
+                    return Result.success(
+                        org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompileResult(
+                            outputDir = request.outputDir,
+                            target = request.target,
+                            pythonAbi = request.pythonAbi,
+                            toolchain = org.thisisthepy.python.multiplatform.packpack.compile.extension.NativeToolchain.CLANG,
+                            extensionSuffix = request.extensionSuffix,
+                            modules =
+                                listOf(
+                                    org.thisisthepy.python.multiplatform.packpack.compile.extension.CompiledExtension(
+                                        moduleName = "core.fast",
+                                        relativePath = "core/fast${request.extensionSuffix}",
+                                    ),
+                                ),
+                            toolVersions = mapOf("cc" to "Apple clang 17.0.0"),
+                        ),
+                    )
+                }
+            }
+
+        val result =
+            ResourceBundler(extensionCompiler = { fakeSlot })
+                .bundle(
+                    BundleRequest(
+                        packageDir = pkg,
+                        target = "macos",
+                        buildType = "release",
+                        buildLevel = "native",
+                        libDirs = listOf(libDir),
+                        gilImportProbe = false,
+                        pythonAbi = org.thisisthepy.python.multiplatform.packpack.compile.extension.PythonAbi("3.15"),
+                        cpythonIncludeDir = headers,
+                        extensionSuffix = ".abi3t-darwin.so",
+                        nativeModules =
+                            listOf(
+                                org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionModuleSource(
+                                    moduleName = "core.fast",
+                                    sources = listOf(fastC),
+                                ),
+                            ),
+                        notNativeModules =
+                            listOf(
+                                org.thisisthepy.python.multiplatform.packpack.compile.extension.NotNativeModule(
+                                    module = "core.plain",
+                                    kind = org.thisisthepy.python.multiplatform.packpack.compile.extension.NotNativeModule.Kind.NOT_MARKED,
+                                ),
+                                org.thisisthepy.python.multiplatform.packpack.compile.extension.NotNativeModule(
+                                    module = "core.text",
+                                    kind = org.thisisthepy.python.multiplatform.packpack.compile.extension.NotNativeModule.Kind.NOTHING_COMPILED,
+                                    items =
+                                        listOf(
+                                            org.thisisthepy.python.multiplatform.packpack.compile.extension.SkippedItem(
+                                                name = "f",
+                                                file = "core/text.py",
+                                                line = 2,
+                                                message = "slice is not supported",
+                                            ),
+                                        ),
+                                ),
+                            ),
+                    ),
+                ).also { assertTrue(it.isSuccess, it.exceptionOrNull()?.stackTraceToString()) }
+                .getOrThrow()
+
+        // Compiled module has only its .so (no .py, no .pyc)
+        assertEquals("compiled-so", File(result.outputDir, "python/core/fast.abi3t-darwin.so").readText())
+        assertFalse(File(result.outputDir, "python/core/fast.py").exists())
+        assertFalse(File(result.outputDir, "python/core/fast.pyc").exists())
+
+        // Uncompiled developer modules and __init__.py and library modules ship as bytecode (.pyc in release)
+        assertTrue(File(result.outputDir, "python/core/__init__.pyc").isFile)
+        assertTrue(File(result.outputDir, "python/core/plain.pyc").isFile)
+        assertTrue(File(result.outputDir, "python/core/text.pyc").isFile)
+        assertTrue(File(result.outputDir, "python/core/unlisted.pyc").isFile)
+        assertTrue(File(result.outputDir, "python/vendor/helper.pyc").isFile)
+
+        // Warnings name the three uncompiled developer modules (not __init__, not vendor/helper.py)
+        val warningsText = result.warnings.joinToString("\n")
+        assertTrue(result.warnings.any { "core.plain" in it && "not marked for compilation" in it }, warningsText)
+        assertTrue(result.warnings.any { "core/text.py:2: f: slice is not supported" in it }, warningsText)
+        assertTrue(result.warnings.any { "core.unlisted" in it && "no C was supplied" in it }, warningsText)
+        assertFalse(result.warnings.any { "__init__" in it || "vendor.helper" in it }, warningsText)
+
+        // Manifest carries pythonAbi, extensionSuffix, nativeModules and tools
+        val manifest = result.manifestFile.readText()
+        assertTrue(manifest.contains("\"pythonAbi\": \"cp315t\""), manifest)
+        assertTrue(manifest.contains("\"extensionSuffix\": \".abi3t-darwin.so\""), manifest)
+        assertTrue(manifest.contains("\"module\": \"core.fast\""), manifest)
+        assertTrue(manifest.contains("\"path\": \"python/core/fast.abi3t-darwin.so\""), manifest)
+        assertTrue(manifest.contains("\"cc\": \"Apple clang 17.0.0\""), manifest)
+        assertBalancedJson(manifest)
+    }
+
+    @Test
+    fun bundle_nativeLevelFailsWhenRequiredCpythonInputsAreMissing() {
+        val pkg = packageDir()
+        write(pkg, "src/main/core/__init__.py", "")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = "native"))
+        assertTrue(result.isFailure)
+        assertTrue("pythonAbi" in result.exceptionOrNull()?.message.orEmpty(), result.exceptionOrNull()?.message)
     }
 
     /**

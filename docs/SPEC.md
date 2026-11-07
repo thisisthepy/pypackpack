@@ -49,8 +49,9 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     digest as `3.15.0t`, and this exception is deleted.
 - Extension modules are free-threaded by default:
   - Builds target PEP 803's `abi3t`, so one extension serves every free-threaded 3.15+ runtime.
-    Meson's `py.extension_module()`: implemented (see *Package build*). The compile slot (#19, #60):
-    planned.
+    Meson's `py.extension_module()`: implemented (see *Package build*). The compile slot (#19, #20, #60):
+    implemented for macOS (`Clang.kt`), Linux host arch (`Clang.kt`) and Android `aarch64-linux-android` (`NDK.kt`)
+    (see *Build Level*).
   - The Cargo backend builds with PyO3's `abi3t` by default (implemented for the host, #92); `gil_used = false`
     is the crate's own `#[pymodule]` option, and the GIL warning catches a module without it.
   - A dependency whose extension does not declare `Py_mod_gil = Py_MOD_GIL_NOT_USED` makes CPython
@@ -188,9 +189,9 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - BaseMinifyInterface.kt  # placeholder
         - backend
           - external
-            - Clang.kt  # placeholder
+            - Clang.kt  # desktop C compiler adapter (macOS xcrun clang -arch, Linux host clang/cc) for the compile slot (#20)
             - MSVC.kt  # placeholder
-            - NDK.kt  # placeholder (adapter of Clang.kt)
+            - NDK.kt  # Android aarch64 NDK clang adapter for the compile slot (#20)
             - XCode.kt  # placeholder (adapter of Clang.kt)
             - Emscripten.kt  # placeholder
             - Cargo.kt  # Rust crates -> extension modules: discovery, maturin (abi3t), placement in crossenv
@@ -198,7 +199,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # strategy pattern
         - extension
-          - ExtensionCompiler.kt  # interface and data types only: the native/mixed compile slot (docs/design/compile-slot.md); nothing implements or calls it
+          - ExtensionCompiler.kt  # the native compile slot (#19, #20, #60; docs/design/compile-slot.md): ExtensionCompilerInterface, NativeExtensionCompiler, data types and exceptions
       - bundle
         - BundlerInterface.kt  # factory pattern; BundleType, BundleRequest, BundleResult
         - DefaultBundler.kt  # placeholder
@@ -963,14 +964,24 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `<project>/.venv`; `debug` keeps the `.py` beside the `.pyc`, `release` keeps only the `.pyc`.
     `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
 - `native`: native code where it exists. The developer's modules become CPython extensions built
-  from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`, #19, #60).
+  from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`, #19, #20, #60).
   A developer module without C is allowed as an exception: it ships as bytecode, and the build
-  warns, naming the module and the reason. C that fails to compile fails the build. Libraries ship
-  their prebuilt native wheels.
-  - Status: planned. Every bundler rejects it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet`).
+  warns, naming the module and the reason (`NotNativeModule`: `NOT_MARKED` or `NOTHING_COMPILED`).
+  C that fails to compile fails the build (`ModuleCompileException`). Libraries ship their prebuilt
+  native wheels.
+  - Status: partial. Implemented for bundle type `resource` on macOS (`aarch64-apple-darwin`,
+    `x86_64-apple-darwin` via `Clang.kt`), Linux host architecture (`x86_64-unknown-linux-gnu`,
+    `aarch64-unknown-linux-gnu` via `Clang.kt`), and Android `aarch64-linux-android` (via `NDK.kt`)
+    (`packpack/.../compile/extension/ExtensionCompilerTest.kt`,
+    `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Windows, iOS, wasm, Linux cross-arch and
+    `x86_64-linux-android` are refused by `ExtensionCompilerInterface.checkSupport` with
+    `NoCompileBackendException`. `single`, `fat` and `patch` reject `native`
+    (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
 - `mixed`: bytecode for the developer's code, native code for libraries. The developer's modules ship
   as bytecode and TypedPython's C is not applied; libraries ship their prebuilt native wheels.
-  - Status: planned. Every bundler rejects it.
+  - Status: partial. Implemented for bundle type `resource`
+    (`packpack/.../bundle/resource/ResourceBundlerTest.kt`: `bundle_mixedLevelCompilesDeveloperModulesToBytecodeAndKeepsLibraryExtensions`).
+    `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
 
 The two levels' meaning is the user's (2026-10-03), reading `toolchain`'s user-authored
 `(플러그인예시)build.gradle.kts`, which is specification (`AGENTS.md` rule 6):
@@ -1012,7 +1023,7 @@ There is no `pypackpack bundle` command.
   - A directory, not an archive: `python/` (the payload, meant to be placed on `sys.path`) beside `resource-manifest.json` (identity, target, per-file SHA-256; sorted, no timestamp).
   - Reads the package *source*, not the compiled `dist/` output: `src/main` first, then `src/<family>` on top, then each `BundleRequest.metaDirs` entry, then each `libDirs` entry; a later stage wins for the same path.
   - Drops `__pycache__/`, `*.pyc`/`*.pyo`/`*.pyd`, dot-entries, `build/`, `dist/` and `node_modules/`. Because it reads source, extension modules that `build` compiles never reach it, unlike the wheel bundlers.
-  - Supports the `instant` and `bytecode` build levels (see *Build Level*).
+  - Supports the `instant`, `bytecode`, `mixed` and `native` build levels (see *Build Level*). At `native`, `resource-manifest.json` also records `pythonAbi` (`"cp315t"`), `extensionSuffix`, `nativeModules` (`module`, `path`) and `tools` (`cc`).
   - Validates a declared `minSdk` and records it in the manifest. It does not select a CPython build by API level, because no target-aware download exists here.
   - Records `BundleRequest.versionName` / `versionCode` (the app's payload version, from toolchain's `defaultConfig`) as `"versionName"` / `"versionCode"` beside the package's own `"version"`, only when set.
   - It is the one bundle type another repository consumes: `toolchain` calls it, and the payload it writes reaches the desktop jar's root and the APK's `assets/python/`.

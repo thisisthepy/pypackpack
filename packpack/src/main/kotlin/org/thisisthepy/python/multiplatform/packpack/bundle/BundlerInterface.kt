@@ -5,6 +5,10 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.fat.FatWheelBundler
 import org.thisisthepy.python.multiplatform.packpack.bundle.patch.WheelPatchBundler
 import org.thisisthepy.python.multiplatform.packpack.bundle.resource.ResourceBundler
 import org.thisisthepy.python.multiplatform.packpack.bundle.single.SingleWheelBundler
+import org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompileOptions
+import org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionModuleSource
+import org.thisisthepy.python.multiplatform.packpack.compile.extension.NotNativeModule
+import org.thisisthepy.python.multiplatform.packpack.compile.extension.PythonAbi
 import java.io.File
 
 /**
@@ -86,6 +90,25 @@ data class BundleRequest(
      * That runs the package's code; `false` skips it. The file-name tag check always runs.
      */
     val gilImportProbe: Boolean = true,
+    /**
+     * Inputs for the `native` build level (`docs/design/compile-slot.md` §2, #20):
+     * - [pythonAbi]: the target CPython ABI (`PythonAbi("3.15")` for 3.15t), required at `native`.
+     * - [nativeModules]: the developer modules TypedPython generated C for.
+     * - [notNativeModules]: the developer modules TypedPython produced no C for, and why (§4).
+     * - [nativeOptions]: request-wide C/link flags, defines and header directories (`runtime/tp_runtime.h`).
+     * - [cpythonIncludeDir]: the directory containing `Python.h`, required at `native`.
+     * - [extensionSuffix]: the target's `EXT_SUFFIX` (`.abi3t-darwin.so`, `.cpython-315t-darwin.so`, ...), required at `native`.
+     * - [cpythonLibDir] and [cpythonLibraryName]: required on targets that link `libpython` (`aarch64-linux-android`).
+     * Ignored at `instant`, `bytecode` and `mixed`.
+     */
+    val pythonAbi: PythonAbi? = null,
+    val nativeModules: List<ExtensionModuleSource> = emptyList(),
+    val notNativeModules: List<NotNativeModule> = emptyList(),
+    val nativeOptions: ExtensionCompileOptions = ExtensionCompileOptions(),
+    val cpythonIncludeDir: File? = null,
+    val extensionSuffix: String? = null,
+    val cpythonLibDir: File? = null,
+    val cpythonLibraryName: String? = null,
 )
 
 /**
