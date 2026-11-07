@@ -5,6 +5,7 @@ import org.thisisthepy.python.multiplatform.packpack.compile.frontend.*
 import org.thisisthepy.python.multiplatform.packpack.deploy.frontend.*
 
 import com.github.ajalt.clikt.core.*
+import com.github.ajalt.clikt.parameters.options.versionOption
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendInterface
 import org.thisisthepy.python.multiplatform.packpack.dependency.frontend.FrontendType
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MiddlewareInterface
@@ -22,13 +23,18 @@ class PyPackPackCommand : CliktCommand(name = "pypackpack") {
         to execute commands on specific packages.
         """.trimIndent()
 
+    // Aliases of this command's subcommands (Clikt applies `aliases()` to the subcommand token).
     override fun aliases() =
         mapOf(
             "ppp" to listOf("pypackpack"),
+            "v" to listOf("version"),
         )
 
     init {
         configureCliTerminal()
+        // `pypackpack --version` / `-v` (and `ppp --version`, the same binary): the first line of
+        // `pypackpack version`, printed before any middleware or uv is touched.
+        versionOption(BuildInfo.version, names = setOf("--version", "-v")) { "PyPackPack version $it" }
 
         subcommands(
             InitCommand(),

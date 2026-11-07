@@ -5,8 +5,8 @@
 
 Fails (exit 1) unless, from that venv:
   1. `pypackpack --help` exits 0 and prints the usage line;
-  2. `pypackpack version`, `ppp version` and `python -m pypackpack version` all print
-     "PyPackPack version <pyproject.toml's version>";
+  2. `pypackpack version`, `ppp version`, `python -m pypackpack version`, `pypackpack --version` and
+     `ppp --version` all print "PyPackPack version <pyproject.toml's version>";
   3. `pypackpack init smoke --python 3.13` creates a project (a real command, which needs uv:
      pypackpack finds it on PATH or downloads it into ~/.pypackpack/uv).
 """
@@ -47,6 +47,8 @@ def main() -> int:
         check([str(bin_dir / f"pypackpack{exe}"), "version"], expected)
         check([str(bin_dir / f"ppp{exe}"), "version"], expected)
         check([str(python), "-m", "pypackpack", "version"], expected)
+        check([str(bin_dir / f"pypackpack{exe}"), "--version"], expected)
+        check([str(bin_dir / f"ppp{exe}"), "--version"], expected)
 
         work = Path(tmp) / "work"
         work.mkdir()

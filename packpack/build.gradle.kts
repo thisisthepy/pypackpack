@@ -149,7 +149,7 @@ signing {
 // version, which `pypackpack version` prints and the PyPI wheel carries; publish-pypi.yml refuses
 // to publish unless it equals pyproject.toml's. The library keeps `version`, because toolchain
 // resolves `packpack:0.1.0`.
-val cliVersion = "0.2.0"
+val cliVersion = "0.3.0"
 val cliMainClass = "org.thisisthepy.python.multiplatform.packpack.utils.CommandLineKt"
 
 val cli: SourceSet by sourceSets.creating

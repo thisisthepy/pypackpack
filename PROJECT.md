@@ -51,7 +51,7 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **부분**
 - `init`, `python use`, `package add/remove`, `target list`
-- `version`: `pypackpack version` 만 동작. `--version` / `-v` / `v` 는 실패한다
+- `version`: `pypackpack version` 과 `v`, `--version` / `-v` (첫 줄만) 가 동작. uv 부분은 테스트 없음
 - 루트 `add/remove/sync/tree`, `<package> add/tree`: CLI 전달만 테스트, `uv` 호출은 테스트 없음
 - `build`: Meson 으로 C/C++ 만. `--level` / `--target` 은 디렉터리 이름만 바꾸고 교차 컴파일하지 않음
 - `build` 가 의존성 확인을 하지 않음 (사양서의 오케스트레이션). `build <package> source` 의 기본 `binary` 번들은 미구현이라 거부

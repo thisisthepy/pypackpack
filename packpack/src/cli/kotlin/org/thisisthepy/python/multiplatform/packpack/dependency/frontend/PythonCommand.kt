@@ -34,7 +34,7 @@ class PythonUseCommand : CliktCommand(name = "use") {
 
     override fun run() {
         if (!validatePythonVersion(version)) {
-            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
+            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z, optionally with a t suffix (3.15t)", statusCode = 1)
         }
 
         val middleware = requireMiddleware()
@@ -69,7 +69,7 @@ class PythonFindCommand : CliktCommand(name = "find") {
 
     override fun run() {
         if (!validatePythonVersion(version)) {
-            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
+            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z, optionally with a t suffix (3.15t)", statusCode = 1)
         }
 
         val middleware = requireMiddleware()
@@ -87,7 +87,7 @@ class PythonInstallCommand : CliktCommand(name = "install") {
 
     override fun run() {
         if (!validatePythonVersion(version)) {
-            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
+            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z, optionally with a t suffix (3.15t)", statusCode = 1)
         }
 
         val middleware = requireMiddleware()
@@ -108,7 +108,7 @@ class PythonUninstallCommand : CliktCommand(name = "uninstall") {
 
     override fun run() {
         if (!validatePythonVersion(version)) {
-            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z", statusCode = 1)
+            throw PrintMessage("Invalid python version format. Expected X.Y or X.Y.Z, optionally with a t suffix (3.15t)", statusCode = 1)
         }
 
         val middleware = requireMiddleware()
