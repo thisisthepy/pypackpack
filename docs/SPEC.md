@@ -31,7 +31,7 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 - Must be easy to install and use (let's not make users configure paths for Python, JVM, etc.)
   - Status: partial. `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
     installed through `uv tool install` when absent (see *CLI Version* and *Package build*).
-    `uv tool install pypackpack` installs the native CLI from PyPI (0.2.0; see *Distribution through PyPI*).
+    `uv tool install pypackpack` installs the native CLI from PyPI (see *Distribution through PyPI*).
 - Must be fast (build speed matters)
   - Status: planned. Nothing measures build speed today.
 
@@ -300,27 +300,23 @@ Limitation
 
 #### CLI Version
 
-Status: partial. `cli/.../BuildInfoTest.kt` checks the printed version's source; nothing tests the uv
-part.
+Status: partial. `cli/.../BuildInfoTest.kt` checks the printed version's source, `--version` / `-v` and
+the `v` alias; nothing tests the uv part.
 
 ```bash
-pypackpack version
+pypackpack version          # alias: pypackpack v
+pypackpack --version        # or -v; also `ppp --version`
 ```
 
-- Prints the pypackpack version and the detected uv version.
+- `version` prints the pypackpack version and the detected uv version.
+- `--version` and `-v` print only the first line, `PyPackPack version <cliVersion>`, and touch neither
+  the middleware nor uv. `ppp` runs the same binary, so `ppp --version` prints the same.
 - The pypackpack version is `packpack/build.gradle.kts`'s `cliVersion`, which the build writes into the CLI's
   resources (`build-info.properties`, read by `BuildInfo`). It is the PyPI wheel's version too.
 - If uv is not detected, downloads uv (`0.13.6`) into `~/.pypackpack/uv` (`dependency/backend/external/UV.kt`) and uses it.
 - The download is uv's release archive for the host. The `.tar.gz` archives (Linux, macOS) keep their
   files under one top-level directory, which is stripped; the Windows `.zip` holds `uv.exe` at its root.
   A binary missing after extraction is a failure, not a success (`packpack/.../dependency/backend/external/UVInstallTest.kt`).
-
-Limitation
-
-- `pypackpack --version`, `pypackpack -v` and `pypackpack v` fail (`no such option --version`,
-  `no such option -v`, `no such subcommand v`; observed by running the `:packpack:installCliDist` launcher).
-  `VersionCommand.aliases()` declares them, but Clikt applies `aliases()` to a command's own
-  subcommands, and `VersionCommand` has none.
 
 #### Distribution through Maven Central
 
@@ -360,7 +356,9 @@ only for `v*` releases, so a `packpack-v*` release does not touch PyPI.
 Status: implemented. 0.2.0 is on PyPI (uploaded 2026-10-03 by `.github/workflows/publish-pypi.yml` from
 the `v0.2.0` release): the four wheels below, each smoke-tested before upload. `uvx --from pypackpack==0.2.0
 pypackpack version` prints `PyPackPack version 0.2.0` (checked 2026-10-17, macOS arm64). PyPI's 0.1.0 is
-the old repository's Windows-only wheel. The workflow also builds and smoke-tests the wheels, without
+the old repository's Windows-only wheel. 0.3.0 (`cliVersion` and `pyproject.toml`) is the next
+release; it is not on PyPI until a `v0.3.0` GitHub Release is published (notes:
+`docs/release-notes/0.3.0.md`). The workflow also builds and smoke-tests the wheels, without
 uploading, on every pull request that touches the publishing files.
 
 ```bash
@@ -381,7 +379,8 @@ ppp --help                 # the same binary, through the `pypackpack` Python pa
 - Before uploading, the workflow requires the release tag to be `v<version>`, `pyproject.toml` and
   `packpack/build.gradle.kts`'s `cliVersion` to carry the same version, the version to be new on PyPI, and every wheel
   to pass `.github/scripts/pypi/smoke_wheel.py`: installed into a fresh venv, `pypackpack --help`
-  works, `pypackpack`/`ppp`/`python -m pypackpack version` print that version, and
+  works, `pypackpack`/`ppp`/`python -m pypackpack version` and `pypackpack`/`ppp --version` print that
+  version, and
   `pypackpack init` creates a project.
 - Upload is trusted publishing from the `pypi` environment, on a published GitHub Release only.
 
@@ -394,13 +393,18 @@ Limitation
 #### Project creation
 
 Status: partial. `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
-generated `README.md` and `LICENSE`.
+generated `README.md` and `LICENSE`, and (with the real uv) that an ancestor `pyproject.toml` is left
+untouched.
 
 ```bash
 pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package]
 ```
 
-- Project initialization is performed based on `uv init --bare`.
+- Project initialization is performed based on `uv init --bare --no-workspace`.
+- `init` never modifies a project above the new one. Without `--no-workspace`, uv adds the new project
+  as a workspace member of the nearest ancestor `pyproject.toml` and writes `[tool.uv.workspace]` into that
+  file, even when it belongs to an unrelated repository. A package inside a ppp workspace is created with
+  `package add`, not `init`.
 - `path`, `--python`, `--name`, `--package` are passed as `uv init` options, but `uv` only generates `pyproject.toml`, and ppp generates the other necessary files.
 - If `targets` is given (library API only, see Limitation), updates `[tool.ppp.dependencies].platforms` in the root `pyproject.toml`.
 - After `uv init --bare`, ppp additionally generates `.gitignore`, `README.md`, and `LICENSE`. `.python-version` is only generated when `--python` is passed.

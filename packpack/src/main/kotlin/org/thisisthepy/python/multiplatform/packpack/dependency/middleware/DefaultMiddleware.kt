@@ -44,6 +44,10 @@ class DefaultMiddleware : MiddlewareInterface {
         val uvArgs =
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")
+                // A standalone project: without this, uv joins the nearest ancestor pyproject.toml
+                // as a workspace member and writes [tool.uv.workspace] into that unrelated file.
+                // A package inside a ppp workspace is created by `package add` (CrossEnv), not here.
+                putIfAbsent("no-workspace", "")
             }
         val result = runBlocking { backend.initProject(path, uvArgs) }
         if (result.isFailure) return result

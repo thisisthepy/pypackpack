@@ -12,13 +12,6 @@ import com.github.ajalt.clikt.parameters.options.*
 class VersionCommand : CliktCommand(name = "version") {
     override fun help(context: Context) = "Show version information"
 
-    override fun aliases() =
-        mapOf(
-            "v" to listOf("version"),
-            "--version" to listOf("version"),
-            "-v" to listOf("version"),
-        )
-
     override fun run() {
         echo("PyPackPack version ${BuildInfo.version}")
         requireMiddleware()

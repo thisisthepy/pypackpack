@@ -24,28 +24,34 @@
 <main>
 <div class="wrap doc"><nav class="doc-side" aria-label="Documentation" data-label-en="Documentation" data-label-ko="문서"><p data-lang="en">Documentation</p><p data-lang="ko">문서</p><a href="getting-started.html" aria-current="page"><span data-lang="en">Getting started</span><span data-lang="ko">시작하기</span></a><a href="guide-projects.html"><span data-lang="en">Projects, targets & dependencies</span><span data-lang="ko">프로젝트, 타깃, 의존성</span></a><a href="guide-python.html"><span data-lang="en">Python distributions</span><span data-lang="ko">Python 배포판</span></a><a href="guide-build.html"><span data-lang="en">Build levels & bundles</span><span data-lang="ko">빌드 레벨과 번들</span></a><a href="guide-compile-slot.html"><span data-lang="en">The native compile slot</span><span data-lang="ko">native 컴파일 슬롯</span></a><a href="guide-library.html"><span data-lang="en">Using the library</span><span data-lang="ko">라이브러리로 쓰기</span></a><a href="status.html"><span data-lang="en">Status & known issues</span><span data-lang="ko">상태와 알려진 문제</span></a></nav><article class="doc-body">
 <h1><span data-lang="en">Getting started</span><span data-lang="ko">시작하기</span></h1>
-<p data-lang="en" class="muted">From a checkout to a package with per-target dependencies and a first build.</p><p data-lang="ko" class="muted">체크아웃에서 타깃별 의존성을 가진 패키지와 첫 빌드까지.</p>
+<p data-lang="en" class="muted">From installing <code>ppp</code> to a package with per-target dependencies and a first build.</p><p data-lang="ko" class="muted"><code>ppp</code> 설치부터 타깃별 의존성을 가진 패키지와 첫 빌드까지.</p>
 
 <section>
 <h2><span data-lang="en">1. Prerequisites</span><span data-lang="ko">1. 준비물</span></h2>
-<div class="table-wrap"><table><thead><tr><th><span data-lang="en">Need</span><span data-lang="ko">필요한 것</span></th><th><span data-lang="en">Why</span><span data-lang="ko">이유</span></th></tr></thead><tbody><tr><td><span data-lang="en">JDK 21</span><span data-lang="ko">JDK 21</span></td><td><span data-lang="en">Both modules build with <code>jvmToolchain(21)</code>; the wrapper brings Gradle 9.4.1.</span><span data-lang="ko">두 모듈 모두 <code>jvmToolchain(21)</code> 로 빌드합니다. Gradle 9.4.1 은 래퍼가 받아옵니다.</span></td></tr><tr><td><span data-lang="en"><code>uv</code></span><span data-lang="ko"><code>uv</code></span></td><td><span data-lang="en">Every dependency operation runs it. When none is found, pypackpack downloads one into <code>~/.pypackpack/uv</code>.</span><span data-lang="ko">모든 의존성 작업이 이것을 실행합니다. 찾지 못하면 pypackpack 이 <code>~/.pypackpack/uv</code> 에 내려받습니다.</span></td></tr><tr><td><span data-lang="en">Network access</span><span data-lang="ko">네트워크</span></td><td><span data-lang="en">uv, wheels, Python distributions and, for <code>ppp build</code>, <code>meson</code> and <code>ninja</code> (installed with <code>uv tool install</code> when missing).</span><span data-lang="ko">uv, 휠, Python 배포판, 그리고 <code>ppp build</code> 에 쓰이는 <code>meson</code>, <code>ninja</code> (없으면 <code>uv tool install</code> 로 설치).</span></td></tr><tr><td><span data-lang="en">GraalVM (optional)</span><span data-lang="ko">GraalVM (선택)</span></td><td><span data-lang="en">Only for the single native <code>pypackpack</code> binary.</span><span data-lang="ko">단일 네이티브 <code>pypackpack</code> 바이너리를 만들 때만.</span></td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th><span data-lang="en">Need</span><span data-lang="ko">필요한 것</span></th><th><span data-lang="en">Why</span><span data-lang="ko">이유</span></th></tr></thead><tbody><tr><td><span data-lang="en"><code>uv</code></span><span data-lang="ko"><code>uv</code></span></td><td><span data-lang="en">It installs pypackpack, and every dependency operation runs it. When none is on <code>PATH</code> at run time, pypackpack downloads one into <code>~/.pypackpack/uv</code>.</span><span data-lang="ko">pypackpack 을 설치하고, 모든 의존성 작업이 이것을 실행합니다. 실행할 때 <code>PATH</code> 에 없으면 pypackpack 이 <code>~/.pypackpack/uv</code> 에 내려받습니다.</span></td></tr><tr><td><span data-lang="en">A supported platform</span><span data-lang="ko">지원 플랫폼</span></td><td><span data-lang="en">The wheel carries a native binary: macOS 11+ on Apple silicon, Linux x86_64 and aarch64 (glibc), Windows x86_64. Elsewhere, build from a checkout (below).</span><span data-lang="ko">휠에는 네이티브 바이너리가 들어 있습니다: Apple silicon 의 macOS 11+, Linux x86_64 와 aarch64 (glibc), Windows x86_64. 그 밖의 플랫폼에서는 체크아웃에서 빌드하세요 (아래).</span></td></tr><tr><td><span data-lang="en">Network access</span><span data-lang="ko">네트워크</span></td><td><span data-lang="en">uv, wheels, Python distributions and, for <code>ppp build</code>, <code>meson</code> and <code>ninja</code> (installed with <code>uv tool install</code> when missing).</span><span data-lang="ko">uv, 휠, Python 배포판, 그리고 <code>ppp build</code> 에 쓰이는 <code>meson</code>, <code>ninja</code> (없으면 <code>uv tool install</code> 로 설치).</span></td></tr></tbody></table></div>
 </section>
 
 <section>
-<h2><span data-lang="en">2. Build the command line</span><span data-lang="ko">2. 명령줄 도구 빌드</span></h2>
-<p data-lang="en">There is no released binary yet. Build the launcher from a checkout:</p><p data-lang="ko">아직 배포된 바이너리가 없습니다. 체크아웃에서 런처를 빌드하세요.</p>
+<h2><span data-lang="en">2. Install the command line</span><span data-lang="ko">2. 명령줄 도구 설치</span></h2>
+<pre><code class="language-shell">uv tool install pypackpack   # puts pypackpack and ppp on PATH
+ppp --version                # PyPackPack version 0.3.0
+ppp version                  # pypackpack and uv versions
+ppp --help
+uvx pypackpack --help        # or run it without installing</code></pre>
+<p data-lang="en">To upgrade later: <code>uv tool upgrade pypackpack</code>.</p><p data-lang="ko">나중에 올리려면 <code>uv tool upgrade pypackpack</code>.</p>
+<details><summary><span data-lang="en">Build from a checkout instead</span><span data-lang="ko">대신 체크아웃에서 빌드하기</span></summary>
+<p data-lang="en">For an unreleased change or an unsupported platform. Needs JDK 21 (the wrapper brings Gradle).</p><p data-lang="ko">아직 배포되지 않은 변경이나 지원하지 않는 플랫폼용입니다. JDK 21 이 필요합니다 (Gradle 은 래퍼가 받아옵니다).</p>
 <pre><code class="language-shell">git clone -b develop https://github.com/thisisthepy/pypackpack
 cd pypackpack
 ./gradlew :packpack:installCliDist
-alias ppp=&quot;$PWD/packpack/build/install/pypackpack/bin/pypackpack&quot;
-ppp --help
-ppp version          # pypackpack and uv versions</code></pre>
+alias ppp=&quot;$PWD/packpack/build/install/pypackpack/bin/pypackpack&quot;</code></pre>
 <p data-lang="en">For one self-contained binary, <code>./gradlew :packpack:nativeCompile</code> writes <code>packpack/build/native/nativeCompile/pypackpack</code> with GraalVM Native Image (GraalVM as <code>JAVA_HOME</code>). The PyPI wheels carry the same binary.</p><p data-lang="ko">실행 파일 하나로 쓰려면 <code>./gradlew :packpack:nativeCompile</code> 가 GraalVM Native Image 로 <code>packpack/build/native/nativeCompile/pypackpack</code> 를 만듭니다 (<code>JAVA_HOME</code> 이 GraalVM 이어야 함). PyPI 휠에 든 것과 같은 바이너리입니다.</p>
+</details>
 </section>
 
 <section>
 <h2><span data-lang="en">3. A project and a package</span><span data-lang="ko">3. 프로젝트와 패키지</span></h2>
-<pre><code class="language-shell">ppp init myapp --python 3.15t      # uv init --bare, plus .gitignore, README.md, LICENSE
+<pre><code class="language-shell">ppp init myapp --python 3.15t      # uv init --bare --no-workspace, plus .gitignore, README.md, LICENSE
 cd myapp
 ppp package add packages/core      # a uv workspace member with ppp&#x27;s scaffolding
 ppp target add aarch64-linux-android arm64-apple-ios</code></pre>
@@ -65,15 +71,18 @@ ppp target add aarch64-linux-android arm64-apple-ios</code></pre>
 <h2><span data-lang="en">4. Dependencies per target</span><span data-lang="ko">4. 타깃별 의존성</span></h2>
 <pre><code class="language-shell">ppp core add requests                         # one marker per target in the package&#x27;s platforms
 ppp core add six --target arm64-apple-ios     # only for that target
-ppp core sync --target aarch64-linux-android arm64-apple-ios   # → packages/core/build/crossenv/&lt;triple&gt;/
+ppp core sync --target aarch64-linux-android arm64-apple-ios \
+    --python-version 3.15 --only-binary :all:   # → packages/core/build/crossenv/&lt;triple&gt;/
 ppp core tree --target arm64-apple-ios</code></pre>
 </section>
 
 <section>
 <h2><span data-lang="en">5. Build</span><span data-lang="ko">5. 빌드</span></h2>
 <pre><code class="language-shell">ppp build core --target aarch64-apple-darwin
-# → packages/core/dist/aarch64-apple-darwin/debug/instant/   (meson install --destdir)</code></pre>
-<p data-lang="en"><code>ppp build</code> generates a <code>meson.build</code>, compiles C/C++ extensions and installs the package for the host. It does not cross-compile and does not bundle yet; bundling is a library call today. Next: <a href="guide-projects.html">Projects, targets &amp; dependencies</a>.</p><p data-lang="ko"><code>ppp build</code> 는 <code>meson.build</code> 를 생성하고, C/C++ 확장을 컴파일하고, 호스트용으로 패키지를 설치합니다. 아직 크로스 컴파일과 번들링은 하지 않으며, 번들링은 지금은 라이브러리 호출입니다. 다음: <a href="guide-projects.html">프로젝트, 타깃, 의존성</a>.</p>
+# → packages/core/dist/aarch64-apple-darwin/debug/instant/   (meson install --destdir)
+ppp build core resource --target aarch64-linux-android
+# → packages/core/build/packpack/resource/debug/instant/     (the bundle python-multiplatform loads)</code></pre>
+<p data-lang="en"><code>ppp build</code> generates a <code>meson.build</code>, compiles C/C++ extensions and installs the package for the host. It does not cross-compile C/C++ yet. Given a bundle kind (<code>source</code> or <code>resource</code>), <code>build</code> also bundles: see <a href="guide-build.html">Build levels &amp; bundles</a>. Next: <a href="guide-projects.html">Projects, targets &amp; dependencies</a>.</p><p data-lang="ko"><code>ppp build</code> 는 <code>meson.build</code> 를 생성하고, C/C++ 확장을 컴파일하고, 호스트용으로 패키지를 설치합니다. C/C++ 크로스 컴파일은 아직 하지 않습니다. 번들 종류 (<code>source</code> 또는 <code>resource</code>) 를 주면 <code>build</code> 가 번들까지 만듭니다: <a href="guide-build.html">빌드 레벨과 번들</a> 을 보세요. 다음: <a href="guide-projects.html">프로젝트, 타깃, 의존성</a>.</p>
 </section>
 </article></div>
 </main>

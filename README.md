@@ -52,6 +52,7 @@ per-target install directories on top.
 
 ```shell
 uv tool install pypackpack    # puts pypackpack and ppp on PATH
+ppp --version                 # PyPackPack version 0.3.0
 pypackpack --help             # alias: ppp
 uvx pypackpack --help         # or run it without installing
 ```
@@ -132,7 +133,7 @@ item-by-item contract.
 | C/C++ extensions through Meson | 🟡 host only, no cross-compiling yet |
 | Bundles: `resource`, `single`, `fat`, `patch` | ✅ implemented |
 | Build levels: `instant` / `bytecode` | ✅ / 🟡 (`resource` only) |
-| Build levels: `native` / `mixed` | ⏳ planned; semantics decided, compile slot in draft |
+| Build levels: `native` / `mixed` | 🟡 `resource` bundle only (macOS, Linux host, Android arm64) |
 | `deploy code single\|fat` to PyPI (`uv publish`) | ✅ implemented |
 | `deploy` to FastTrack and ResourceHub, code push, `binary` bundle | ⏳ planned |
 
