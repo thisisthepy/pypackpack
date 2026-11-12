@@ -342,14 +342,23 @@ javadoc jar, no checksums or signatures, no url, license, developer or SCM in th
 To publish (the user's steps): a Central Portal account; the namespace `org.thisisthepy` verified by a DNS
 TXT record on thisisthepy.org (it covers `org.thisisthepy.python.multiplatform`, and python-multiplatform's
 `org.thisisthepy` after its #95); a PGP key whose public half is on a public keyserver; a Portal user token.
-Then publish a GitHub Release tagged `packpack-v<version>` (#102): `.github/workflows/publish-maven.yml` runs in
-the `maven-central` environment (to be restricted to `packpack-v*` tags), checks that the tag names
-`gradle.properties`' `packpackVersion` and that the version is not on Central, stops naming any missing secret
-(`SIGNING_KEY`, `SIGNING_KEY_PASSWORD`, `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD`), stages and signs the
-bundle, runs the check, and uploads it to the Portal as `USER_MANAGED`: the Portal validates it and waits for a
-person to press Publish. A manual run does all of it except the upload, unsigned without a key. The group and
-version are written once, in `gradle.properties` (`mavenGroup`, `packpackVersion`). `publish-pypi.yml` runs
-only for `v*` releases, so a `packpack-v*` release does not touch PyPI.
+The workflow is python-multiplatform's mechanism (`maven-central.yml`, `central-upload.sh`), at the leader's
+request (boost 2026-11-13, #116):
+
+- **Release:** push the tag `packpack-v<packpackVersion>`. `.github/workflows/publish-maven.yml` checks that
+  the tag names `gradle.properties`' `packpackVersion` and that the version is not on Central, stages the
+  bundle signed with `MAVEN_GPG_PRIVATE_KEY` / `MAVEN_GPG_PASSPHRASE`, runs the check and `gpg --verify` on
+  every `.asc`, and then, in the `maven-central` environment, uploads it with
+  `.github/scripts/release/central-upload.sh` (`CENTRAL_TOKEN_USERNAME`, `CENTRAL_TOKEN_PASSWORD`) as
+  `USER_MANAGED`. The script waits for the Portal's validation and fails on `FAILED`; the deployment then
+  waits for a person to press Publish. A missing secret stops the job and names it.
+- **Dry run:** a pull request touching the publishing setup (the workflow, `.github/scripts/maven/`,
+  `central-upload.sh`, `packpack/build.gradle.kts`, `gradle.properties`) and a manual run do everything except
+  the upload, signing with a key made in the job and thrown away, so signing is proven before a tag
+  depends on it. A manual run with `dry_run` off publishes the tag it names.
+
+The group and version are written once, in `gradle.properties` (`mavenGroup`, `packpackVersion`).
+`publish-pypi.yml` runs only for `v*` releases, so a `packpack-v*` tag does not touch PyPI.
 
 #### Distribution through PyPI
 
