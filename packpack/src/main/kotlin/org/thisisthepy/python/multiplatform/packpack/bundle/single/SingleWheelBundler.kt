@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.single
 
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.ANDROID_API_LEVEL
 import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
@@ -87,13 +88,16 @@ import java.util.zip.ZipOutputStream
  *   measure per build.
  * - **Android** (PEP 738, accepted): `android_<api-level>_<abi>`, e.g. `android_21_arm64_v8a`. The
  *   api-level segment is [BundleRequest.minSdk] when the caller declares one (validated against
- *   [ANDROID_MIN_SDK_FLOOR] by `bundle`), and falls back to `21` -- PEP 738's own minimum supported
- *   Android version -- otherwise. `Platforms.kt`'s `TARGET_ALIASES` still collapses `android_21_*` and
+ *   [ANDROID_MIN_SDK_FLOOR], PEP 738's floor, by `bundle`), and falls back to `24` otherwise: the API
+ *   level every Android extension is linked for (`ANDROID_API_LEVEL`, #118), so an undeclared wheel
+ *   never claims a device its binary cannot load on. `Platforms.kt`'s `TARGET_ALIASES` still collapses `android_21_*` and
  *   `android_24_*` onto the same canonical target, so the target string alone still carries no api
  *   level; `minSdk` is the field that recovers the distinction the target string cannot.
  * - **iOS** (PEP 730, accepted): `ios_<major>_<minor>_<arch>_<iphoneos|iphonesimulator>`, e.g.
  *   `ios_13_0_arm64_iphoneos`. `13.0` is assumed as the floor -- it is literally PEP 730's own worked
- *   example tag, and `SUPPORTED_TARGETS` carries no iOS version of its own.
+ *   example tag, and `SUPPORTED_TARGETS` carries no iOS version of its own -- except the arm64
+ *   simulator, `14.0`: Rust's `aarch64-apple-ios-sim` cannot target lower, so the Cargo backend's
+ *   extensions for it are 14.0 binaries (#118).
  * - **wasm** (`wasm32-pyodide2024`, matching Pyodide's own pre-PEP-783 tag spelling exactly):
  *   `pyodide_<year>_<patch>_wasm32`. `SUPPORTED_TARGETS`' target string encodes the year but not a
  *   patch number, so patch `0` is assumed.
@@ -328,7 +332,10 @@ class SingleWheelBundler : BundlerInterface {
     private fun iosPlatformTag(canonicalTarget: String): String {
         val arch = rawArch(canonicalTarget)
         val sdk = if (canonicalTarget.contains("simulator")) "iphonesimulator" else "iphoneos"
-        return "ios_13_0_${arch}_$sdk"
+        // Rust's `aarch64-apple-ios-sim` cannot go below iOS 14.0, so the Cargo backend's arm64
+        // simulator extensions are 14.0 binaries; the tag must not claim 13.0 (#118).
+        val floor = if (sdk == "iphonesimulator" && arch == "arm64") "14_0" else "13_0"
+        return "ios_${floor}_${arch}_$sdk"
     }
 
     private fun androidPlatformTag(
@@ -341,7 +348,9 @@ class SingleWheelBundler : BundlerInterface {
                 "x86_64" -> "x86_64"
                 else -> throw IllegalArgumentException("Unsupported Android arch in target: $canonicalTarget ($arch)")
             }
-        val apiLevel = minSdk ?: ANDROID_MIN_SDK_FLOOR
+        // Undeclared: the level every Android extension is linked for (Cargo.kt's ANDROID_API_LEVEL,
+        // the NDK's `<triple>24-clang`), not PEP 738's lower floor (#118).
+        val apiLevel = minSdk ?: ANDROID_API_LEVEL
         return "android_${apiLevel}_$abi"
     }
 

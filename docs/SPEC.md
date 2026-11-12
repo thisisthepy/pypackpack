@@ -1022,7 +1022,7 @@ There is no `pypackpack bundle` command.
 - `single`: Produces a wheel-like archive that includes only the current package.
   - Status: implemented. `packpack/.../bundle/single/SingleWheelBundlerTest.kt`.
   - Reads `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`) and keeps native extension modules.
-  - The Android platform tag uses the declared `minSdk`, falling back to the PEP 738 floor, and rejects a `minSdk` below that floor.
+  - The Android platform tag uses the declared `minSdk`, falling back to API 24, the level every Android extension is linked for (#118), and rejects a `minSdk` below PEP 738's floor (21). The iOS tag is `ios_13_0_*`, except the arm64 simulator, `ios_14_0_arm64_iphonesimulator`: Rust's `aarch64-apple-ios-sim` cannot target lower (#118). The same rules hold in the `fat` and `patch` bundlers.
   - Only the `instant` build level is currently supported.
 - `patch`: Produces a patch archive containing only the changes relative to the existing primary bundle.
   - Status: implemented. `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`.
