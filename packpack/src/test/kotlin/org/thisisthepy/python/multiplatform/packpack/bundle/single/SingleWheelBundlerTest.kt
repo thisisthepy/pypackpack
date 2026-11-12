@@ -367,10 +367,10 @@ class SingleWheelBundlerTest {
                 "x86_64-manylinux2014" to "manylinux_2_17_x86_64",
                 "x86_64-manylinux_2_28" to "manylinux_2_28_x86_64",
                 "aarch64-manylinux_2_17" to "manylinux_2_17_aarch64",
-                "aarch64-linux-android" to "android_21_arm64_v8a",
-                "x86_64-linux-android" to "android_21_x86_64",
+                "aarch64-linux-android" to "android_24_arm64_v8a",
+                "x86_64-linux-android" to "android_24_x86_64",
                 "arm64-apple-ios" to "ios_13_0_arm64_iphoneos",
-                "arm64-apple-ios-simulator" to "ios_13_0_arm64_iphonesimulator",
+                "arm64-apple-ios-simulator" to "ios_14_0_arm64_iphonesimulator",
                 "x86_64-apple-ios-simulator" to "ios_13_0_x86_64_iphonesimulator",
                 "wasm32-pyodide2024" to "pyodide_2024_0_wasm32",
             )
@@ -421,8 +421,13 @@ class SingleWheelBundlerTest {
         )
     }
 
+    /**
+     * Undeclared minSdk: the API level every Android extension is linked for (`ANDROID_API_LEVEL`, the
+     * NDK's `<triple>24-clang`, Cargo.kt), not PEP 738's lower tag floor, so the wheel never claims a
+     * device its binary cannot load on (#118).
+     */
     @Test
-    fun bundle_androidPlatformTagFallsBackToThePep738FloorWhenMinSdkIsNotDeclared() {
+    fun bundle_androidPlatformTagFallsBackToTheLinkedApiLevelWhenMinSdkIsNotDeclared() {
         val pkg = packageDir(name = "minsdk-undeclared")
         writeDestdir(pkg, "core/__init__.py", target = "aarch64-linux-android")
 
@@ -431,7 +436,24 @@ class SingleWheelBundlerTest {
                 .bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android"))
                 .getOrThrow()
 
-        assertTrue(result.artifactFile!!.name.endsWith("-android_21_arm64_v8a.whl"))
+        assertTrue(
+            result.artifactFile!!.name.endsWith("-android_24_arm64_v8a.whl"),
+            "expected the linked API level 24 in tag, got '${result.artifactFile!!.name}'",
+        )
+    }
+
+    /** A declared minSdk between PEP 738's floor and the linked level is still taken as declared. */
+    @Test
+    fun bundle_androidPlatformTagKeepsADeclaredMinSdkBelowTheLinkedLevel() {
+        val pkg = packageDir(name = "minsdk-21")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-linux-android")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "aarch64-linux-android", minSdk = 21))
+                .getOrThrow()
+
+        assertTrue(result.artifactFile!!.name.endsWith("-android_21_arm64_v8a.whl"), result.artifactFile!!.name)
     }
 
     @Test
