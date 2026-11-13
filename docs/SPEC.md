@@ -351,7 +351,9 @@ request (boost 2026-11-13, #116):
   every `.asc`, and then, in the `maven-central` environment, uploads it with
   `.github/scripts/release/central-upload.sh` (`CENTRAL_TOKEN_USERNAME`, `CENTRAL_TOKEN_PASSWORD`) as
   `USER_MANAGED`. The script waits for the Portal's validation and fails on `FAILED`; the deployment then
-  waits for a person to press Publish. A missing secret stops the job and names it.
+  waits for a person to press Publish. A missing secret stops the job and names it. The four secrets are
+  repository secrets with python-multiplatform's names (#120): the signing job has no environment, so an
+  environment-only key would not reach it.
 - **Dry run:** a pull request touching the publishing setup (the workflow, `.github/scripts/maven/`,
   `central-upload.sh`, `packpack/build.gradle.kts`, `gradle.properties`) and a manual run do everything except
   the upload, signing with a key made in the job and thrown away, so signing is proven before a tag
