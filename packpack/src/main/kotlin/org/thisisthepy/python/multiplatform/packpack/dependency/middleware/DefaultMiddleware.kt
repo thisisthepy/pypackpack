@@ -44,6 +44,10 @@ class DefaultMiddleware : MiddlewareInterface {
         val uvArgs =
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")
+                // A standalone project: without this, uv joins the nearest ancestor pyproject.toml
+                // as a workspace member and writes [tool.uv.workspace] into that unrelated file.
+                // A package inside a ppp workspace is created by `package add` (CrossEnv), not here.
+                putIfAbsent("no-workspace", "")
             }
         val result = runBlocking { backend.initProject(path, uvArgs) }
         if (result.isFailure) return result
@@ -467,8 +471,8 @@ internal object MarkerPolicy {
      * `uv add --marker "<text from [markerForTarget]>"` does not persist that text verbatim into
      * `pyproject.toml`: it rewrites the `platform_system == '<value>'` clause into an equivalent
      * `sys_platform == '<value>'` clause and reorders the clauses alphabetically (verified by hand
-     * against uv 0.12.3 -- `platform_system == 'Windows' and platform_machine == 'x86_64'` round-trips
-     * as `platform_machine == 'x86_64' and sys_platform == 'win32'`; likewise Linux/Darwin/Android/
+     * against uv: `platform_system == 'Windows' and platform_machine == 'AMD64'` round-trips as
+     * `platform_machine == 'AMD64' and sys_platform == 'win32'`; likewise Linux/Darwin/Android/
      * Emscripten). `iOS` was the one family that round-tripped unchanged in that same check, so
      * [targetKeyFor] treats both spellings as equivalent for every family rather than special-casing
      * iOS -- a future uv version normalizing it the same way should not silently break matching again.
@@ -517,14 +521,16 @@ internal object MarkerPolicy {
     }
 
     /**
-     * Machine values written before #49, which never matched their target, mapped to the value
-     * [markerForTarget] writes now, so `remove --target` still finds those entries.
+     * Machine values written before #49 or #107, which do not match their target under current uv,
+     * mapped to the value [markerForTarget] writes now, so `remove --target` still finds those
+     * entries.
      */
     private val LEGACY_MACHINE: Map<Pair<String, String>, String> =
         mapOf(
             ("Linux" to "arm64") to "aarch64",
             ("Android" to "arm64") to "aarch64",
             ("Windows" to "arm64") to "ARM64",
+            ("Windows" to "x86_64") to "AMD64",
             ("Windows" to "i686") to "x86",
         )
 
@@ -532,5 +538,55 @@ internal object MarkerPolicy {
     fun targetKeyForTarget(target: String): Pair<String, String> {
         val descriptor = Platforms.describeTarget(target)
         return descriptor.markerSystem to descriptor.markerMachine
+    }
+
+    private val MIN_UV_FOR_WINDOWS_AMD64 = Triple(0, 13, 6)
+
+    /**
+     * Parses `uv --version` output (e.g. `uv 0.13.6` or `uv 0.12.3 (Homebrew 2026-08-07 aarch64-apple-darwin)`)
+     * into `(major, minor, patch)`. Returns null if the output does not contain a recognizable version.
+     */
+    fun parseUvVersion(versionOutput: String): Triple<Int, Int, Int>? {
+        val match = Regex("""\buv\s+(\d+)\.(\d+)\.(\d+)""").find(versionOutput) ?: return null
+        return Triple(
+            match.groupValues[1].toInt(),
+            match.groupValues[2].toInt(),
+            match.groupValues[3].toInt(),
+        )
+    }
+
+    private fun isOlderThan(
+        actual: Triple<Int, Int, Int>,
+        minimum: Triple<Int, Int, Int>,
+    ): Boolean {
+        if (actual.first != minimum.first) return actual.first < minimum.first
+        if (actual.second != minimum.second) return actual.second < minimum.second
+        return actual.third < minimum.third
+    }
+
+    /**
+     * Rejects `uv < 0.13.6` when [targets] contains `x86_64-pc-windows-msvc` (#107, #109).
+     *
+     * Since `uv 0.13.6` (astral-sh/uv#22935), `uv` evaluates `platform_machine` under
+     * `--python-platform x86_64-pc-windows-msvc` as `AMD64`, matching Python's `platform.machine()`
+     * on 64-bit x86 Windows. Under `uv < 0.13.6` it evaluated `platform_machine` as `x86_64`, so
+     * the `platform_machine == 'AMD64'` marker [markerForTarget] writes would silently fail to
+     * match during `sync` or `tree`.
+     */
+    fun requireUvForTargets(
+        targets: Collection<String>,
+        uvVersionOutput: String,
+    ) {
+        val canonicalTargets = targets.map { Platforms.normalizeTarget(it) ?: it }
+        if ("x86_64-pc-windows-msvc" !in canonicalTargets) return
+        val version = parseUvVersion(uvVersionOutput) ?: return
+        if (isOlderThan(version, MIN_UV_FOR_WINDOWS_AMD64)) {
+            val found = "${version.first}.${version.second}.${version.third}"
+            throw IllegalStateException(
+                "Target x86_64-pc-windows-msvc requires uv >= 0.13.6 (found uv $found): " +
+                    "uv < 0.13.6 evaluates platform_machine as 'x86_64' instead of 'AMD64' " +
+                    "(astral-sh/uv#22935) and would silently skip x86_64-pc-windows-msvc dependencies.",
+            )
+        }
     }
 }

@@ -41,6 +41,7 @@ class MarkerPolicyUvTest {
     @Test
     fun markerForTarget_selectsExactlyItsOwnTargetInUv() {
         val targets = Platforms.SUPPORTED_TARGETS.filter { Platforms.normalizeTarget(it) == it }
+        MarkerPolicy.requireUvForTargets(targets, uvVersionOutput())
         val mismatches = mutableListOf<String>()
         for (markerTarget in targets) {
             val marker = MarkerPolicy.markerForTarget(markerTarget)
@@ -77,6 +78,18 @@ class MarkerPolicyUvTest {
         val output = process.inputStream.bufferedReader().readText()
         if (process.waitFor() != 0) fail("uv pip compile failed for --python-platform $platform:\n$output")
         return output.lines().any { it.startsWith("probe==") }
+    }
+
+    private fun uvVersionOutput(): String {
+        val process =
+            try {
+                ProcessBuilder("uv", "--version").directory(workDir).redirectErrorStream(true).start()
+            } catch (e: java.io.IOException) {
+                fail("uv is not on PATH; this test needs it: ${e.message}")
+            }
+        val output = process.inputStream.bufferedReader().readText()
+        if (process.waitFor() != 0) fail("uv --version failed:\n$output")
+        return output
     }
 
     private fun writeProbeWheel(dir: File) {

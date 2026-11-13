@@ -177,6 +177,45 @@ open class UVBackend(
             return Result.failure(describeInstallFailure(failure, target))
         }
 
+    /** Install named requirements into an existing virtual environment (`uv pip install --python <venvPath>`) */
+    override suspend fun installRequirementsToVenv(
+        venvPath: String,
+        requirements: List<String>,
+        noIndex: Boolean,
+        findLinks: String?,
+        extraArgs: Map<String, String>?,
+        workingDir: File?,
+    ): Result<String> {
+        if (venvPath.isBlank()) {
+            return Result.failure(IllegalArgumentException("Virtual environment path cannot be blank"))
+        }
+        val options = extraArgs.orEmpty()
+        val hasRequirementFile = !options["requirement"].isNullOrBlank() || !options["r"].isNullOrBlank()
+        if (requirements.isEmpty() && !hasRequirementFile) {
+            return Result.failure(IllegalArgumentException("No requirements specified"))
+        }
+        if (requirements.any { it.isBlank() || it.startsWith("-") }) {
+            return Result.failure(
+                IllegalArgumentException("Requirements must be non-blank specifiers, not options: $requirements"),
+            )
+        }
+        val command = mutableListOf("pip", "install")
+        if (options["python"].isNullOrBlank()) {
+            command.add("--python")
+            command.add(venvPath)
+        }
+        if (noIndex && !options.containsKey("no-index")) {
+            command.add("--no-index")
+        }
+        if (!findLinks.isNullOrBlank() && options["find-links"].isNullOrBlank()) {
+            command.add("--find-links")
+            command.add(findLinks)
+        }
+        appendOptions(command, options)
+        command.addAll(requirements)
+        return executeCommand(command, workingDir)
+    }
+
     /** Show dependency tree */
     override suspend fun showDependencyTree(
         packageName: String?,

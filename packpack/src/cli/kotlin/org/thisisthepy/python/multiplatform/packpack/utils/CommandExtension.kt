@@ -123,10 +123,11 @@ internal fun CliktCommand.runResultCommand(
 }
 
 /**
- * Validate Python version format
+ * Validate Python version format: `X.Y` or `X.Y.Z`, optionally with the free-threaded `t` suffix
+ * (`3.15t`, `3.15.0t`; docs/SPEC.md, *Version and target selection*).
  */
 fun validatePythonVersion(version: String): Boolean {
-    val pythonVersionRegex = Regex("^\\d+\\.\\d+(\\.\\d+)?$")
+    val pythonVersionRegex = Regex("^\\d+\\.\\d+(\\.\\d+)?t?$")
     return pythonVersionRegex.matches(version)
 }
 

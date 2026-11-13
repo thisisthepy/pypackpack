@@ -4,6 +4,8 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendI
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DefaultMiddlewareInitTest {
@@ -33,6 +35,58 @@ class DefaultMiddlewareInitTest {
         }
     }
 
+    /**
+     * `ppp init` must not join an unrelated ancestor project: uv's `init` otherwise adds the new
+     * project as a workspace member of the nearest ancestor `pyproject.toml` and writes
+     * `[tool.uv.workspace]` into that file (docs/SPEC.md, *Project creation*). The middleware asks
+     * uv for a standalone project with `--no-workspace`.
+     */
+    @Test
+    fun initProjectAsksUvForAStandaloneProject() {
+        val tempRoot = Files.createTempDirectory("ppp-init-").toFile()
+        try {
+            val backend = FakeBackend()
+            DefaultMiddleware().withBackend(backend)
+                .initProject(path = tempRoot.absolutePath, targets = null, extraArgs = null)
+                .getOrThrow()
+
+            val args = backend.initArgs ?: error("initProject never reached the backend")
+            assertTrue(args.containsKey("no-workspace"), args.toString())
+            assertEquals("", args["no-workspace"])
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /**
+     * The same with the real uv: an ancestor `pyproject.toml` stays byte for byte as it was, and the
+     * new project carries no workspace table. Requires `uv` (from PATH or the copy pypackpack
+     * downloads); `uv init --bare` needs no network.
+     */
+    @Test
+    fun initProjectWithRealUvLeavesAnAncestorProjectUntouched() {
+        val tempRoot = Files.createTempDirectory("ppp-init-ancestor-").toFile()
+        try {
+            val ancestorToml = File(tempRoot, "pyproject.toml")
+            val ancestorText = "[project]\nname = \"unrelated\"\nversion = \"1.0.0\"\nrequires-python = \">=3.9\"\n"
+            ancestorToml.writeText(ancestorText)
+            val projectDir = File(tempRoot, "nested/myapp")
+            projectDir.mkdirs()
+
+            val middleware = DefaultMiddleware().apply { initialize() }
+            middleware
+                .initProject(path = projectDir.absolutePath, targets = null, extraArgs = null)
+                .getOrThrow()
+
+            assertEquals(ancestorText, ancestorToml.readText(), "ppp init edited the ancestor pyproject.toml")
+            val created = File(projectDir, "pyproject.toml")
+            assertTrue(created.isFile, "no pyproject.toml at ${created.absolutePath}")
+            assertFalse(created.readText().contains("tool.uv.workspace"), created.readText())
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
     private fun DefaultMiddleware.withBackend(backend: BackendInterface): DefaultMiddleware {
         DefaultMiddleware::class.java
             .getDeclaredField("backend")
@@ -42,6 +96,8 @@ class DefaultMiddlewareInitTest {
     }
 
     private class FakeBackend : BackendInterface {
+        var initArgs: Map<String, String>? = null
+
         override fun initialize() = Unit
 
         override suspend fun getVersion(): Result<String> = Result.success("uv 0.0.0")
@@ -62,6 +118,7 @@ class DefaultMiddlewareInitTest {
             extraArgs: Map<String, String>?,
             workingDir: File?,
         ): Result<String> {
+            initArgs = extraArgs
             val projectDir = path?.let { File(it) } ?: workingDir ?: return Result.failure(IllegalArgumentException("path required"))
             projectDir.mkdirs()
             File(projectDir, "pyproject.toml").writeText("[project]\nname = \"${projectDir.name}\"\n")

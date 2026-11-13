@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle.patch
 
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.ANDROID_API_LEVEL
 import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
@@ -341,7 +342,10 @@ class WheelPatchBundler : BundlerInterface {
     private fun iosPlatformTag(canonicalTarget: String): String {
         val arch = rawArch(canonicalTarget)
         val sdk = if (canonicalTarget.contains("simulator")) "iphonesimulator" else "iphoneos"
-        return "ios_13_0_${arch}_$sdk"
+        // Rust's `aarch64-apple-ios-sim` cannot go below iOS 14.0, so the Cargo backend's arm64
+        // simulator extensions are 14.0 binaries; the tag must not claim 13.0 (#118).
+        val floor = if (sdk == "iphonesimulator" && arch == "arm64") "14_0" else "13_0"
+        return "ios_${floor}_${arch}_$sdk"
     }
 
     private fun androidPlatformTag(
@@ -354,7 +358,9 @@ class WheelPatchBundler : BundlerInterface {
                 "x86_64" -> "x86_64"
                 else -> throw IllegalArgumentException("Unsupported Android arch in target: $canonicalTarget ($arch)")
             }
-        val apiLevel = minSdk ?: ANDROID_MIN_SDK_FLOOR
+        // Undeclared: the level every Android extension is linked for (Cargo.kt's ANDROID_API_LEVEL,
+        // the NDK's `<triple>24-clang`), not PEP 738's lower floor (#118).
+        val apiLevel = minSdk ?: ANDROID_API_LEVEL
         return "android_${apiLevel}_$abi"
     }
 

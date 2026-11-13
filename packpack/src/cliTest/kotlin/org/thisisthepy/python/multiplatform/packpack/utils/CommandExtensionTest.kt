@@ -82,4 +82,16 @@ class CommandExtensionTest {
         assertEquals(listOf("requests", "numpy"), result.positionals)
         assertEquals(mapOf("dev" to "", "upgrade" to ""), result.extraArgs)
     }
+
+    // `ppp python install 3.15t <target>` (docs/SPEC.md, *Version and target selection*): the
+    // free-threaded `t` suffix is part of the version the CLI accepts, for every `python` subcommand.
+    @Test
+    fun validatePythonVersion_acceptsTheFreeThreadedSuffix() {
+        for (accepted in listOf("3.15", "3.15t", "3.15.0", "3.15.0t")) {
+            assertEquals(true, validatePythonVersion(accepted), accepted)
+        }
+        for (rejected in listOf("3", "3.15tt", "t3.15", "3.15.0.1", "3.15-t", "latest")) {
+            assertEquals(false, validatePythonVersion(rejected), rejected)
+        }
+    }
 }
