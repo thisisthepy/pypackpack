@@ -39,7 +39,7 @@ class TargetListCommand : CliktCommand(name = "list") {
             SectionRule("Linux") { (it.contains("unknown-linux") || it.contains("manylinux")) && it != "linux" },
             SectionRule("macOS") { it.contains("apple-darwin") && it != "macos" },
             SectionRule("Android") { it.contains("android") },
-            SectionRule("Wasm") { it.contains("wasm") || it.contains("pyodide") },
+            SectionRule("Wasm") { it.contains("wasm") || it.contains("emscripten") },
             SectionRule("iOS") { it.contains("apple-ios") },
         )
 
