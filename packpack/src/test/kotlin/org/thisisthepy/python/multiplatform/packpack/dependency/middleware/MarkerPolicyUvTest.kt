@@ -67,7 +67,7 @@ class MarkerPolicyUvTest {
             listOf(
                 "uv", "pip", "compile", requirements.absolutePath, "--no-index",
                 "--find-links", File(workDir, "wheels").absolutePath,
-                "--python-platform", platform, "--python-version", "3.13", "--no-header", "--quiet",
+                "--python-platform", Platforms.uvPythonPlatform(platform), "--python-version", "3.13", "--no-header", "--quiet",
             )
         val process =
             try {

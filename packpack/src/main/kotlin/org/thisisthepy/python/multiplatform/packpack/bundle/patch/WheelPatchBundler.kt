@@ -366,10 +366,10 @@ class WheelPatchBundler : BundlerInterface {
 
     private fun wasmPlatformTag(canonicalTarget: String): String {
         val suffix = canonicalTarget.substringAfter('-')
-        val year =
-            Regex("pyodide(\\d+)").find(suffix)?.groupValues?.get(1)
-                ?: throw IllegalArgumentException("Unsupported wasm target (expected 'pyodide<year>'): $canonicalTarget")
-        return "pyodide_${year}_0_${rawArch(canonicalTarget)}"
+        if (suffix != "emscripten") {
+            throw IllegalArgumentException("Unsupported wasm target (expected 'wasm32-emscripten'): $canonicalTarget")
+        }
+        return "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_${rawArch(canonicalTarget)}"
     }
 
     private fun linuxPlatformTag(canonicalTarget: String): String {

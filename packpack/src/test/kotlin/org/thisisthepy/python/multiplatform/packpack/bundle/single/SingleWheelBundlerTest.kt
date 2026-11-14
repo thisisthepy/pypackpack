@@ -4,6 +4,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleRequest
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 import java.util.zip.ZipFile
 import kotlin.test.Test
@@ -346,12 +347,13 @@ class SingleWheelBundlerTest {
     /**
      * Platform tag per target family. Standards-based where a standard exists (PEP 425/600/656 for
      * Windows/macOS/manylinux/musllinux); PEP 730/738 for iOS/Android (accepted PEPs, not our
-     * invention); a documented, cited convention for wasm (Pyodide's own pre-PEP-783 tag scheme,
-     * matching this project's `wasm32-pyodide2024` target spelling exactly). See `SingleWheelBundler`
+     * invention); CPython sysconfig / PEP 783 spelling for wasm (`emscripten_<pin>_wasm32`,
+     * matching this project's `wasm32-emscripten` target spelling, #82). See `SingleWheelBundler`
      * KDoc for the citations and the floor-version assumptions spelled out per family.
      */
     @Test
     fun bundle_platformTagPerFamily() {
+        assertEquals("emscripten_4_0_19_wasm32", "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_wasm32")
         val cases =
             mapOf(
                 "x86_64-pc-windows-msvc" to "win_amd64",
@@ -372,7 +374,7 @@ class SingleWheelBundlerTest {
                 "arm64-apple-ios" to "ios_13_0_arm64_iphoneos",
                 "arm64-apple-ios-simulator" to "ios_14_0_arm64_iphonesimulator",
                 "x86_64-apple-ios-simulator" to "ios_13_0_x86_64_iphonesimulator",
-                "wasm32-pyodide2024" to "pyodide_2024_0_wasm32",
+                "wasm32-emscripten" to "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_wasm32",
             )
 
         cases.forEach { (target, expectedTag) ->

@@ -98,9 +98,9 @@ import java.util.zip.ZipOutputStream
  *   example tag, and `SUPPORTED_TARGETS` carries no iOS version of its own -- except the arm64
  *   simulator, `14.0`: Rust's `aarch64-apple-ios-sim` cannot target lower, so the Cargo backend's
  *   extensions for it are 14.0 binaries (#118).
- * - **wasm** (`wasm32-pyodide2024`, matching Pyodide's own pre-PEP-783 tag spelling exactly):
- *   `pyodide_<year>_<patch>_wasm32`. `SUPPORTED_TARGETS`' target string encodes the year but not a
- *   patch number, so patch `0` is assumed.
+ * - **wasm** (`wasm32-emscripten`, CPython `sysconfig.get_platform()` / PEP 783 spelling, #82):
+ *   `emscripten_<pin>_wasm32`, with the Emscripten SDK version pinned in [Platforms.EMSCRIPTEN_VERSION_TAG]
+ *   (`4_0_19`).
  *
  * ### 3. What goes in the archive
  *
@@ -356,10 +356,10 @@ class SingleWheelBundler : BundlerInterface {
 
     private fun wasmPlatformTag(canonicalTarget: String): String {
         val suffix = canonicalTarget.substringAfter('-')
-        val year =
-            Regex("pyodide(\\d+)").find(suffix)?.groupValues?.get(1)
-                ?: throw IllegalArgumentException("Unsupported wasm target (expected 'pyodide<year>'): $canonicalTarget")
-        return "pyodide_${year}_0_${rawArch(canonicalTarget)}"
+        if (suffix != "emscripten") {
+            throw IllegalArgumentException("Unsupported wasm target (expected 'wasm32-emscripten'): $canonicalTarget")
+        }
+        return "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_${rawArch(canonicalTarget)}"
     }
 
     private fun linuxPlatformTag(canonicalTarget: String): String {
