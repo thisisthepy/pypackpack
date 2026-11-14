@@ -26,13 +26,6 @@ on:
   push:
     tags:
       - 'packpack-v*'
-  pull_request:
-    paths:
-      - '.github/workflows/publish-maven.yml'
-      - '.github/scripts/maven/**'
-      - '.github/scripts/release/central-upload.sh'
-      - 'packpack/build.gradle.kts'
-      - 'gradle.properties'
   workflow_dispatch:
     inputs:
       dry_run:
