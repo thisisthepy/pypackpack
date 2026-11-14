@@ -41,12 +41,8 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
 
 - Python: CPython 3.15 and later, free-threaded only (python-multiplatform #158: the free-threaded
   build is the default and the only one; the base is 3.15t). `python install` offers `3.15.0t` on every
-  desktop target (see *Version and target selection*), and the wheel bundlers derive their tags from the
+  desktop and mobile target (see *Version and target selection*), and the wheel bundlers derive their tags from the
   target interpreter (see *Wheel tags*).
-  - **Temporary exception:** Android and iOS install python.org's 3.15.0 GIL build, because no
-    free-threaded mobile build exists yet. It goes when python-multiplatform #163 publishes 3.15t
-    Android and iOS builds: their rows in `PythonDistributions.kt` then take that build's URL and
-    digest as `3.15.0t`, and this exception is deleted.
 - Extension modules are free-threaded by default:
   - Builds target PEP 803's `abi3t`, so one extension serves every free-threaded 3.15+ runtime.
     Meson's `py.extension_module()`: implemented (see *Package build*). The compile slot (#19, #20, #60):
@@ -468,18 +464,17 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 `installPython_returnsFailureForUnsupportedTargetPlatform`).
 
 - The runtime is CPython 3.15t (Scope decisions). `3.15` and `3.15t` are shorthands for `3.15.0t`, the
-  free-threaded build. The GIL builds 3.14.7, 3.13.0 and 3.15.0 (desktop) are no longer offered (#72).
+  free-threaded build. The GIL builds 3.14.7, 3.13.0 and 3.15.0 (desktop and mobile) are no longer offered (#72, #124).
 - Every (version, canonical target) pair maps to one archive URL and one pinned SHA-256 in
   `dependency/backend/PythonDistributions.kt`, which cites where each digest came from:
 
 | Version | Targets | Source | Digest provenance |
 |---|---|---|---|
 | 3.15.0t | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | python-build-standalone `20261013`, `cpython-3.15.0+20261013-<triple>-freethreaded-install_only.tar.gz` | `shasum -a 256` of the download, equal to the release's `SHA256SUMS` |
-| 3.15.0 (GIL; Scope decisions exception until python-multiplatform #163) | `aarch64-linux-android`, `x86_64-linux-android` | python.org `python-3.15.0-<arch>-linux-android.tar.gz` | `shasum -a 256` of the download (python.org publishes no checksum file) |
-| 3.15.0 (same exception) | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | python.org `python-3.15.0-iOS-XCframework.tar.gz` (one XCframework for all three) | `shasum -a 256` of the download |
+| 3.15.0t | `aarch64-linux-android`, `x86_64-linux-android` | `thisisthepy/python-multiplatform` release `cpython-3.15.0t-mobile`, `python-3.15.0t-<target>.tar.gz` | `thisisthepy/python-multiplatform` `cpython-3.15.0t-mobile` `SHA256SUMS` |
+| 3.15.0t | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | `thisisthepy/python-multiplatform` release `cpython-3.15.0t-mobile`, `python-3.15.0t-iOS-XCframework.tar.gz` (one XCframework for all three) | `thisisthepy/python-multiplatform` `cpython-3.15.0t-mobile` `SHA256SUMS` |
 
 - A pair not in the table fails with `Python <version> is not available for <target>. Supported: <version/target, ...>`.
-  `3.15t` for a mobile target is such a pair until #163; ask for `3.15.0` there.
 - Every row carries a pin: `PythonDistribution.sha256` is not nullable, so an unpinned archive cannot be
   added.
 
@@ -880,8 +875,8 @@ is torchnative (thisisthepy/torchnative#53).
 
 The target Python is the one `pypackpack python install <version> <target>` puts in the project
 (`android_arm64`, `android_x86_64`, `ios_arm64`, `ios_simulator_arm64`, `ios_simulator_x86_64`), found in the
-nearest such directory above the package. Until python-multiplatform #163's 3.15t mobile builds have a
-fixed URL, those directories hold its CI artifacts (python-multiplatform runs 39013371415 and 39014667720).
+nearest such directory above the package (`pypackpack python install 3.15t <target>` installs
+`thisisthepy/python-multiplatform` `cpython-3.15.0t-mobile`; #163, #328, #124).
 Each target needs its Rust target installed (`rustup target add <triple>`); a missing one is refused,
 naming that command, before anything builds.
 

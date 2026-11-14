@@ -7,14 +7,15 @@ import kotlin.test.assertTrue
 /**
  * Pins the (version, target) -> (URL, SHA-256) table of `PythonDistributions` for every pair, so a
  * changed URL or digest is a deliberate, reviewed edit. The digests' provenance is in
- * `PythonDistributions.kt` (python-build-standalone's `SHA256SUMS`, and `shasum -a 256` of the
- * python.org downloads).
+ * `PythonDistributions.kt` (python-build-standalone's `SHA256SUMS`, and
+ * thisisthepy/python-multiplatform cpython-3.15.0t-mobile SHA256SUMS).
  */
 class PythonDistributionsTest {
     private val pbs315 = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013"
-    private val pyorg315 = "https://www.python.org/ftp/python/3.15.0"
-    private val ios315 = "$pyorg315/python-3.15.0-iOS-XCframework.tar.gz"
-    private val ios315Sha = "68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19"
+    private val pmpMobile315t =
+        "https://github.com/thisisthepy/python-multiplatform/releases/download/${PythonDistributions.MOBILE_RELEASE_TAG}"
+    private val ios315t = "$pmpMobile315t/python-3.15.0t-iOS-XCframework.tar.gz"
+    private val ios315tSha = "b8c0a4b32d31738f6ead7ace28acee0cb2a590bd0ca7015e9c32af613445e6b5"
 
     /** version/target -> (url, sha256). */
     private val pinned: Map<String, Pair<String, String>> =
@@ -37,15 +38,15 @@ class PythonDistributionsTest {
             "3.15.0t/aarch64-pc-windows-msvc" to
                 ("$pbs315/cpython-3.15.0+20261013-aarch64-pc-windows-msvc-freethreaded-install_only.tar.gz" to
                     "53cbedb81dce9885273da9117f2652a7b1cf31afe1b63cbb11f01971658c8d85"),
-            "3.15.0/aarch64-linux-android" to
-                ("$pyorg315/python-3.15.0-aarch64-linux-android.tar.gz" to
-                    "571e4cf4e0aee3d1ab54a52ca3d4e6845b85ec0bb327f7debfb873172f445dab"),
-            "3.15.0/x86_64-linux-android" to
-                ("$pyorg315/python-3.15.0-x86_64-linux-android.tar.gz" to
-                    "2413d51948d612cf42baefba25295bb83c2ed84df5726af6fe5bde2dec5d87e7"),
-            "3.15.0/arm64-apple-ios" to (ios315 to ios315Sha),
-            "3.15.0/arm64-apple-ios-simulator" to (ios315 to ios315Sha),
-            "3.15.0/x86_64-apple-ios-simulator" to (ios315 to ios315Sha),
+            "3.15.0t/aarch64-linux-android" to
+                ("$pmpMobile315t/python-3.15.0t-aarch64-linux-android.tar.gz" to
+                    "40995c530c3e454d829b4fdea8404d8c0b0e58f60c2d41d400daa1fb0ab65991"),
+            "3.15.0t/x86_64-linux-android" to
+                ("$pmpMobile315t/python-3.15.0t-x86_64-linux-android.tar.gz" to
+                    "d52580653858c429f542db0ca4ecfe12452faf6c9a967bb4b62797df7c2c8d24"),
+            "3.15.0t/arm64-apple-ios" to (ios315t to ios315tSha),
+            "3.15.0t/arm64-apple-ios-simulator" to (ios315t to ios315tSha),
+            "3.15.0t/x86_64-apple-ios-simulator" to (ios315t to ios315tSha),
         )
 
     @Test
@@ -77,7 +78,7 @@ class PythonDistributionsTest {
 
     @Test
     fun anUnknownPairIsRefusedWithTheSupportedList() {
-        for ((version, target) in listOf("3.12.0" to "aarch64-apple-darwin", "3.15.0t" to "wasm32-emscripten", "3.15.0t" to "aarch64-linux-android")) {
+        for ((version, target) in listOf("3.12.0" to "aarch64-apple-darwin", "3.15.0t" to "wasm32-emscripten", "3.15.0" to "aarch64-linux-android")) {
             val result = PythonDistributions.resolve(version, target)
             assertTrue(result.isFailure, "$version/$target")
             assertEquals(
@@ -117,15 +118,25 @@ class PythonDistributionsTest {
     }
 
     /**
-     * The one GIL exception (SPEC, until python-multiplatform #163 publishes 3.15t mobile builds):
-     * python.org's 3.15.0 Android and iOS archives, reachable only as the exact version `3.15.0`.
+     * Mobile targets use the free-threaded 3.15t build from thisisthepy/python-multiplatform
+     * (python-multiplatform #163, #328; pypackpack #124).
      */
     @Test
-    fun theMobileTargetsKeepThePythonOrgGilBuildUntilPythonMultiplatform163() {
-        val mobile = listOf("aarch64-linux-android", "x86_64-linux-android", "arm64-apple-ios", "arm64-apple-ios-simulator", "x86_64-apple-ios-simulator")
+    fun theMobileTargetsUseTheFreeThreaded315tBuildFromPythonMultiplatform() {
+        val mobile =
+            listOf(
+                "aarch64-linux-android",
+                "x86_64-linux-android",
+                "arm64-apple-ios",
+                "arm64-apple-ios-simulator",
+                "x86_64-apple-ios-simulator",
+            )
         for (target in mobile) {
-            assertEquals("3.15.0", PythonDistributions.resolve("3.15.0", target).getOrThrow().version, target)
-            assertTrue(PythonDistributions.resolve("3.15t", target).isFailure, target)
+            for (alias in listOf("3.15t", "3.15", "3.15.0t")) {
+                val result = PythonDistributions.resolve(alias, target).getOrThrow()
+                assertEquals("3.15.0t", result.version, "$alias/$target")
+            }
+            assertTrue(PythonDistributions.resolve("3.15.0", target).isFailure, target)
         }
     }
 }

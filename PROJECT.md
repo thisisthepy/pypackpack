@@ -18,9 +18,9 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 
 **구현 (테스트 있음)**
 - `python list` / `find` / `uninstall` (`~/.pypackpack/python/registry.properties` 우선, 설치 루트 스캔)
-- `python install`: CPython 3.15t 만 (#72). 데스크톱은 `3.15.0t` (python-build-standalone 20261013
-  free-threaded, `3.15`·`3.15t` 가 이것을 가리킨다). Android·iOS 는 python.org 3.15.0 GIL 빌드가 임시 예외로
-  남는다 (python-multiplatform #163 의 3.15t 모바일 빌드가 나오면 교체). 3.14.7·3.13.0 은 제거했다. 모든 아카이브를
+- `python install`: CPython 3.15t 만 (#72). 데스크톱, Android, iOS 모두 `3.15.0t` 를 설치한다 (데스크톱은
+  python-build-standalone 20261013 free-threaded, Android 와 iOS 는 thisisthepy/python-multiplatform 의
+  `cpython-3.15.0t-mobile`, #124; `3.15`·`3.15t` 가 이것을 가리킨다). 3.14.7·3.13.0 은 제거했다. 모든 아카이브를
   `PythonDistributions.kt` 에 고정한 SHA-256 으로 압축 해제 전에 검증하고, 불일치하면 실패한다. 스테이징 디렉터리에 받고 풀어서 옮기므로 실패해도 아무것도 남지 않는다. 가짜 아카이브로
   테스트 (`DefaultBackendTest`, `PythonDistributionsTest`); 실제 다운로드 테스트는 없음
 - `installPython(version, target, installDir)` (라이브러리 API, #37): 같은 고정·검증 후 주어진 디렉터리를

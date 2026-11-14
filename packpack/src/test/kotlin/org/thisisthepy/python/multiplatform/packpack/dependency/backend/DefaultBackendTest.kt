@@ -100,7 +100,7 @@ class DefaultBackendTest {
             val message = result.exceptionOrNull()?.message.orEmpty()
             assertTrue(message.startsWith("Python 3.12 is not available for aarch64-apple-darwin."), message)
             assertTrue("3.15.0t/aarch64-apple-darwin" in message, message)
-            assertTrue("3.15.0/aarch64-linux-android" in message, message)
+            assertTrue("3.15.0t/aarch64-linux-android" in message, message)
         }
 
     @Test
