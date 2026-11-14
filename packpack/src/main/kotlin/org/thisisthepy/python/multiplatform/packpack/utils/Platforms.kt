@@ -8,6 +8,32 @@ package org.thisisthepy.python.multiplatform.packpack.utils
  * - **Platform Family**: The general OS family (e.g., `windows`, `linux`).
  */
 object Platforms {
+    /**
+     * The Emscripten SDK version CPython 3.15.0 pins in `Platforms/emscripten/config.toml` and
+     * `python-multiplatform` #175 builds with, formatted with underscores for PEP 783's
+     * `emscripten_<emsdk>_wasm32` wheel platform tag (#82). Kept in one place so a pin change in
+     * `python-multiplatform` #175 updates every wheel bundler together.
+     */
+    const val EMSCRIPTEN_VERSION_TAG: String = "4_0_19"
+
+    /**
+     * `uv`'s `--python-platform` enum does not accept `wasm32-emscripten` yet; its only Emscripten
+     * values (`wasm32-pyodide2024`, `wasm32-pyodide2025`) evaluate the exact same PEP 508 markers
+     * (`platform_system == 'Emscripten'` / `sys_platform == 'emscripten'` and
+     * `platform_machine == 'wasm32'`). [uvPythonPlatform] maps `wasm32-emscripten` to this value
+     * when invoking `uv` (`UVBackend`, `MarkerPolicyUvTest`) while keeping `wasm32-emscripten` as
+     * the canonical target everywhere in `pypackpack` (#82).
+     */
+    private const val UV_EMSCRIPTEN_PYTHON_PLATFORM: String = "wasm32-pyodide2024"
+
+    /** The `--python-platform` argument `uv` accepts for [target] (#82). */
+    fun uvPythonPlatform(target: String): String =
+        if (normalizeTarget(target) == "wasm32-emscripten" || target == "wasm32-emscripten") {
+            UV_EMSCRIPTEN_PYTHON_PLATFORM
+        } else {
+            target
+        }
+
     data class TargetDescriptor(
         val canonicalTarget: String,
         val family: String,
@@ -69,7 +95,7 @@ object Platforms {
             "aarch64-linux-android",
             "x86_64-linux-android",
             // Wasm
-            "wasm32-pyodide2024",
+            "wasm32-emscripten",
             // iOS
             "arm64-apple-ios",
             "arm64-apple-ios-simulator",
@@ -201,7 +227,7 @@ object Platforms {
                 )
             }
 
-            canonical.startsWith("wasm") || canonical.contains("pyodide") || canonical.contains("emscripten") -> {
+            canonical.startsWith("wasm") || canonical.contains("emscripten") -> {
                 TargetDescriptor(
                     canonicalTarget = canonical,
                     family = "wasm",

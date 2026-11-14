@@ -58,8 +58,8 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     re-enable the GIL when it is imported. The build warns, naming the module and saying that it
     re-enables the GIL, because the app would otherwise silently run with the GIL. Implemented for the
     `resource` bundle (see *GIL warning*).
-- WASM (`wasm32-pyodide2024`) is in the first release's scope. Nothing installs or compiles for it yet;
-  the target's name and tag move to our own 3.15t pthreads ABI with python-multiplatform #175 (#82).
+- WASM (`wasm32-emscripten`, tag `emscripten_<emsdk>_wasm32`, pinned to `4.0.19` (#82)) is in the first release's scope. Nothing installs or compiles for it yet;
+  the target's ABI follows our own 3.15t pthreads build from python-multiplatform #175.
 - `build` bundles: it takes the bundle as an argument (see *Package build*; #81). There is no `bundle`
   command.
 - Deploy destination follows the artefact: libraries go to PyPI, apps to FastTrack.
@@ -1024,7 +1024,7 @@ There is no `pypackpack bundle` command.
 - `single`: Produces a wheel-like archive that includes only the current package.
   - Status: implemented. `packpack/.../bundle/single/SingleWheelBundlerTest.kt`.
   - Reads `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`) and keeps native extension modules.
-  - The Android platform tag uses the declared `minSdk`, falling back to API 24, the level every Android extension is linked for (#118), and rejects a `minSdk` below PEP 738's floor (21). The iOS tag is `ios_13_0_*`, except the arm64 simulator, `ios_14_0_arm64_iphonesimulator`: Rust's `aarch64-apple-ios-sim` cannot target lower (#118). The same rules hold in the `fat` and `patch` bundlers.
+  - The Android platform tag uses the declared `minSdk`, falling back to API 24, the level every Android extension is linked for (#118), and rejects a `minSdk` below PEP 738's floor (21). The iOS tag is `ios_13_0_*`, except the arm64 simulator, `ios_14_0_arm64_iphonesimulator`: Rust's `aarch64-apple-ios-sim` cannot target lower (#118). The WASM tag is `emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_wasm32` (PEP 783/CPython sysconfig spelling, `emscripten_4_0_19_wasm32`, #82). The same rules hold in the `fat` and `patch` bundlers.
   - Only the `instant` build level is currently supported.
 - `patch`: Produces a patch archive containing only the changes relative to the existing primary bundle.
   - Status: implemented. `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`.

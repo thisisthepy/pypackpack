@@ -27,6 +27,15 @@ class PlatformsTest {
         assertTrue("linux" in suggestions)
     }
 
+    @Test
+    fun wasmTarget_isWasm32EmscriptenWithNoPyodideSpelling() {
+        assertTrue("wasm32-emscripten" in Platforms.SUPPORTED_TARGETS)
+        assertEquals("wasm32-emscripten", Platforms.normalizeTarget("wasm32-emscripten"))
+        assertEquals(null, Platforms.normalizeTarget("wasm32-pyodide2024"))
+        assertTrue(Platforms.SUPPORTED_TARGETS.none { "pyodide" in it })
+        assertEquals("wasm32-pyodide2024", Platforms.uvPythonPlatform("wasm32-emscripten"))
+    }
+
     /**
      * `BundleRequest.minSdk` (the Android min SDK / API level `toolchain`'s per-variant graph reads
      * but has nowhere to send -- `toolchain`'s `f60bc3b`) is only meaningful for the `android` family:

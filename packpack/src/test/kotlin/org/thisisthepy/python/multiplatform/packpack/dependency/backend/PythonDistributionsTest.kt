@@ -77,7 +77,7 @@ class PythonDistributionsTest {
 
     @Test
     fun anUnknownPairIsRefusedWithTheSupportedList() {
-        for ((version, target) in listOf("3.12.0" to "aarch64-apple-darwin", "3.15.0t" to "wasm32-pyodide2024", "3.15.0t" to "aarch64-linux-android")) {
+        for ((version, target) in listOf("3.12.0" to "aarch64-apple-darwin", "3.15.0t" to "wasm32-emscripten", "3.15.0t" to "aarch64-linux-android")) {
             val result = PythonDistributions.resolve(version, target)
             assertTrue(result.isFailure, "$version/$target")
             assertEquals(
