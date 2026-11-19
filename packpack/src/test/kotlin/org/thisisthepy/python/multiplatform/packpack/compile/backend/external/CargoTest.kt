@@ -488,4 +488,164 @@ class CargoTest {
 
         assertTrue("core._fast" in message && "error[E0433]" in message, message)
     }
+
+    // ABI mode, cargo features, and --no-default-features (#135)
+
+    @Test
+    fun `tool ppp rust inline table configures abi, features, and no-default-features`() {
+        pyproject(
+            """
+            |
+            |[tool.ppp.rust]
+            |abi = "abi3-py313"
+            |features = ["shared"]
+            |default-features = false
+            |"torch._C" = "rust/torch_c"
+            |"torch._exec" = { path = "rust/torch_exec", abi = "cp315t", features = ["executorch"], no-default-features = true }
+            |"torch._compat" = { path = "rust/torch_compat", default-features = true }
+            """.trimMargin(),
+        )
+        write("src/main/core/__init__.py")
+        crate("src/main/core/_fast")
+        crate("rust/torch_c", lib = "_C")
+        crate("rust/torch_exec", lib = "_exec")
+        crate("rust/torch_compat", lib = "_compat")
+
+        val crates = RustCrates.discover(pkg).associateBy { it.module }
+        assertEquals(setOf("core._fast", "torch._C", "torch._compat", "torch._exec"), crates.keys)
+
+        val fast = crates.getValue("core._fast")
+        assertEquals(PyO3Abi.Abi3(13), fast.abi)
+        assertEquals(listOf("shared"), fast.features)
+        assertTrue(fast.noDefaultFeatures)
+        assertEquals(listOf("pyo3/abi3-py313", "shared"), fast.cargoFeatures)
+
+        val torchC = crates.getValue("torch._C")
+        assertEquals(PyO3Abi.Abi3(13), torchC.abi)
+        assertEquals(listOf("shared"), torchC.features)
+        assertTrue(torchC.noDefaultFeatures)
+        assertEquals(listOf("pyo3/abi3-py313", "shared"), torchC.cargoFeatures)
+
+        val torchExec = crates.getValue("torch._exec")
+        assertEquals(PyO3Abi.VersionSpecific(15, true), torchExec.abi)
+        assertEquals(listOf("executorch"), torchExec.features)
+        assertTrue(torchExec.noDefaultFeatures)
+        assertEquals(listOf("executorch"), torchExec.cargoFeatures)
+
+        val torchCompat = crates.getValue("torch._compat")
+        assertEquals(PyO3Abi.Abi3(13), torchCompat.abi)
+        assertEquals(listOf("shared"), torchCompat.features)
+        assertFalse(torchCompat.noDefaultFeatures)
+
+        // Refusals: invalid abi, unknown inline-table option, conflicting default-features/no-default-features.
+        pyproject("\n[tool.ppp.rust]\n\"torch._C\" = { path = \"rust/torch_c\", abi = \"abi3t-py313\" }\n")
+        val badAbi = runCatching { RustCrates.discover(pkg) }.exceptionOrNull()?.message.orEmpty()
+        assertTrue("abi3t" in badAbi && "3.15" in badAbi, badAbi)
+
+        pyproject("\n[tool.ppp.rust]\n\"torch._C\" = { path = \"rust/torch_c\", unknown = true }\n")
+        val unknownKey = runCatching { RustCrates.discover(pkg) }.exceptionOrNull()?.message.orEmpty()
+        assertTrue("unknown" in unknownKey && "torch._C" in unknownKey, unknownKey)
+
+        pyproject("\n[tool.ppp.rust]\n\"torch._C\" = { path = \"rust/torch_c\", default-features = false, no-default-features = false }\n")
+        val conflict = runCatching { RustCrates.discover(pkg) }.exceptionOrNull()?.message.orEmpty()
+        assertTrue("conflicting" in conflict && "torch._C" in conflict, conflict)
+    }
+
+    @Test
+    fun `maturin and ios commands respect configured abi3-py313, cp315t, features, and no-default-features`() {
+        // 1) abi3-py313 with extra features and default-features = false across host, Android, and iOS.
+        pyproject(
+            """
+            |
+            |[tool.ppp.rust]
+            |"torch._C" = { path = "rust/torch_c", abi = "abi3-py313", features = ["executorch"], default-features = false }
+            """.trimMargin(),
+        )
+        crate("rust/torch_c", lib = "_C")
+        val python = venv()
+        sitePackages.mkdirs()
+
+        val hostCalls = mutableListOf<List<String>>()
+        val hostPlaced = Cargo(run = fakeMaturin("_C/_C.abi3.so", calls = hostCalls), environment = available())
+            .build(pkg, null, "release", destdir).getOrThrow()
+        assertEquals(listOf(File(sitePackages, "torch/_C.abi3.so")), hostPlaced)
+        val hostCmd = hostCalls.single()
+        assertTrue("--no-default-features" in hostCmd, "$hostCmd")
+        assertEquals(
+            listOf("--features", "pyo3/abi3-py313,executorch"),
+            hostCmd.subList(hostCmd.indexOf("--features"), hostCmd.indexOf("--features") + 2),
+        )
+        assertTrue("--interpreter" in hostCmd && python.path in hostCmd, "$hostCmd")
+
+        val ndk = fakeNdk()
+        androidPython()
+        val androidCalls = mutableListOf<List<String>>()
+        val androidEnvs = mutableListOf<Map<String, String>>()
+        Cargo(run = fakeMaturin("_C/_C.abi3.so", calls = androidCalls, envs = androidEnvs), environment = available(ndk = ndk))
+            .build(pkg, "aarch64-linux-android", "debug", destdir).getOrThrow()
+        val androidCmd = androidCalls.single()
+        assertTrue("--no-default-features" in androidCmd, "$androidCmd")
+        assertEquals(
+            listOf("--features", "pyo3/abi3-py313,executorch"),
+            androidCmd.subList(androidCmd.indexOf("--features"), androidCmd.indexOf("--features") + 2),
+        )
+        assertEquals("3.13", androidEnvs.single()["PYO3_CROSS_PYTHON_VERSION"])
+
+        iosPython("ios_arm64", "ios-arm64", "lib-arm64")
+        val iosAbi3Calls = mutableListOf<List<String>>()
+        val iosAbi3Envs = mutableListOf<Map<String, String>>()
+        val iosAbi3Placed = Cargo(run = fakeCargo("_C", iosAbi3Calls, iosAbi3Envs), environment = available())
+            .build(pkg, "arm64-apple-ios", "debug", destdir).getOrThrow()
+        assertEquals(listOf(File(sitePackages, "torch/_C.abi3.so")), iosAbi3Placed)
+        val iosAbi3Cmd = iosAbi3Calls.single()
+        assertTrue("--no-default-features" in iosAbi3Cmd, "$iosAbi3Cmd")
+        assertEquals(
+            listOf("--features", "pyo3/abi3-py313,executorch"),
+            iosAbi3Cmd.subList(iosAbi3Cmd.indexOf("--features"), iosAbi3Cmd.indexOf("--features") + 2),
+        )
+        assertTrue(iosAbi3Cmd.any { it.endsWith("@rpath/_C.abi3.so") }, "$iosAbi3Cmd")
+        val iosAbi3Config = File(iosAbi3Envs.single().getValue("PYO3_CONFIG_FILE")).readText().lines()
+        assertTrue("version=3.13" in iosAbi3Config, "$iosAbi3Config")
+        assertTrue("target_abi=CPython-abi3-3.13" in iosAbi3Config, "$iosAbi3Config")
+
+        // 2) cp315t (version-pinned) with extra features and default-features = false: no pyo3/abi3* flag, no target_abi.
+        pyproject(
+            """
+            |
+            |[tool.ppp.rust]
+            |"torch._C" = { path = "rust/torch_c", abi = "cp315t", features = ["executorch"], default-features = false }
+            """.trimMargin(),
+        )
+        val cpHostCalls = mutableListOf<List<String>>()
+        val cpHostPlaced = Cargo(run = fakeMaturin("_C/_C.cpython-315t-darwin.so", calls = cpHostCalls), environment = available())
+            .build(pkg, null, "debug", destdir).getOrThrow()
+        assertEquals(listOf(File(sitePackages, "torch/_C.cpython-315t-darwin.so")), cpHostPlaced)
+        val cpHostCmd = cpHostCalls.single()
+        assertTrue("--no-default-features" in cpHostCmd, "$cpHostCmd")
+        assertEquals(
+            listOf("--features", "executorch"),
+            cpHostCmd.subList(cpHostCmd.indexOf("--features"), cpHostCmd.indexOf("--features") + 2),
+        )
+        assertFalse(cpHostCmd.any { "pyo3/abi3" in it }, "$cpHostCmd")
+
+        val sliceDir = File(pkg, "ios_arm64/Python.xcframework/ios-arm64")
+        File(sliceDir, "lib-arm64/python3.15t/_sysconfigdata_t_ios.py").writeText(
+            "build_time_vars = {'LDLIBRARY': 'Python.framework/Python', 'Py_GIL_DISABLED': 1, 'EXT_SUFFIX': '.cpython-315t-iphoneos.so'}\n",
+        )
+        val iosCpCalls = mutableListOf<List<String>>()
+        val iosCpEnvs = mutableListOf<Map<String, String>>()
+        val iosCpPlaced = Cargo(run = fakeCargo("_C", iosCpCalls, iosCpEnvs), environment = available())
+            .build(pkg, "arm64-apple-ios", "debug", destdir).getOrThrow()
+        assertEquals(listOf(File(sitePackages, "torch/_C.cpython-315t-iphoneos.so")), iosCpPlaced)
+        val iosCpCmd = iosCpCalls.single()
+        assertTrue("--no-default-features" in iosCpCmd, "$iosCpCmd")
+        assertEquals(
+            listOf("--features", "executorch"),
+            iosCpCmd.subList(iosCpCmd.indexOf("--features"), iosCpCmd.indexOf("--features") + 2),
+        )
+        assertTrue(iosCpCmd.any { it.endsWith("@rpath/_C.cpython-315t-iphoneos.so") }, "$iosCpCmd")
+        val iosCpConfig = File(iosCpEnvs.single().getValue("PYO3_CONFIG_FILE")).readText().lines()
+        assertTrue("version=3.15" in iosCpConfig, "$iosCpConfig")
+        assertFalse(iosCpConfig.any { it.startsWith("target_abi=") }, "$iosCpConfig")
+    }
 }
