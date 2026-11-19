@@ -140,6 +140,7 @@ open class Meson(
 
         val installSources = collectInstallSources(project, packages)
         val extensionModules = collectExtensionModules(project, packages)
+        val limitedApiVersion = resolveLimitedApiVersion(editor)
 
         return buildString {
             appendLine("project(")
@@ -166,7 +167,7 @@ open class Meson(
                 appendLine("  files(${extension.path.toMesonString()}),")
                 // abi3t by default (SPEC, Scope decisions): Py_LIMITED_API on a free-threaded 3.15
                 // interpreter selects PEP 803's abi3t. Opt out with -Dpython.allow_limited_api=false.
-                appendLine("  limited_api: '3.15',")
+                appendLine("  limited_api: ${limitedApiVersion.toMesonString()},")
                 appendLine("  install: true,")
                 appendLine("  subdir: ${extension.subdir.toMesonString()},")
                 appendLine(")")
@@ -283,8 +284,42 @@ open class Meson(
     )
 
     companion object {
+        private const val DEFAULT_LIMITED_API_VERSION = "3.15"
+        private val REQUIRES_PYTHON_FLOOR = Regex("""(?:>=|==)\s*(3\.\d+)""")
+        private val RUST_ABI_VERSION = Regex("""^abi3t?-py3(\d+)$""")
         private val EXCLUDED_DIRECTORY_NAMES = setOf("__pycache__", "build", "dist", "target", "node_modules")
         private val EXCLUDED_EXTENSIONS = setOf("pyc", "pyo")
+
+        /**
+         * Derives Meson's `py.extension_module(limited_api:)` version from `pyproject.toml`:
+         * 1. `[project].requires-python` `>=3.<minor>` or `==3.<minor>` floor, when present;
+         * 2. `[tool.ppp.rust]` `abi` (`abi3-py3<minor>` / `abi3t-py3<minor>`), either package-level or
+         *    on a crate inline table;
+         * 3. `"3.15"` (the ecosystem default, PEP 803 `abi3t`).
+         */
+        internal fun resolveLimitedApiVersion(editor: TomlEditor): String {
+            val requiresPython = (editor.getValue("project", "requires-python") as? TomlValue.String)?.value
+            if (!requiresPython.isNullOrBlank()) {
+                REQUIRES_PYTHON_FLOOR.find(requiresPython)?.let { return it.groupValues[1] }
+            }
+
+            val rustAbi =
+                (editor.getValue("tool.ppp.rust", "abi") as? TomlValue.String)?.value
+                    ?: editor.getTableKeys("tool.ppp.rust")
+                        .asSequence()
+                        .mapNotNull { key ->
+                            (editor.getValue("tool.ppp.rust", key) as? TomlValue.InlineTable)
+                                ?.pairs
+                                ?.get("abi")
+                                ?.let { it as? TomlValue.String }
+                                ?.value
+                        }.firstOrNull()
+            if (!rustAbi.isNullOrBlank()) {
+                RUST_ABI_VERSION.matchEntire(rustAbi.trim())?.let { return "3.${it.groupValues[1]}" }
+            }
+
+            return DEFAULT_LIMITED_API_VERSION
+        }
 
         internal fun File.isExcludedDirectory(): Boolean =
             name in EXCLUDED_DIRECTORY_NAMES || name.startsWith(".")

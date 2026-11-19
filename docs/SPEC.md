@@ -816,12 +816,15 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--type` is passed to Meson as `--buildtype=<type>`. `--type`, `--level` and `--target` select the directories: the Meson build directory is `<package>/build/packpack/single/<type>/<level>/<target>`, and `meson install` writes to `<package>/dist/<target>/<type>/<level>` (`<target>` is `default` when `--target` is omitted).
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
-- Each `py.extension_module()` sets `limited_api: '3.15'` (so `meson.build` asks for Meson 1.3.0 or later). On a
-  free-threaded 3.15 interpreter that defines `Py_LIMITED_API` with `Py_GIL_DISABLED`, which CPython's
+- Each `py.extension_module()` sets `limited_api:` derived from `pyproject.toml`: `[project].requires-python`'s
+  `>=3.<minor>` / `==3.<minor>` floor, else `[tool.ppp.rust]`'s `abi3-py3<minor>` / `abi3t-py3<minor>` ABI,
+  defaulting to `'3.15'` (#142; so `meson.build` asks for Meson 1.3.0 or later). On a free-threaded 3.15
+  interpreter, `'3.15'` defines `Py_LIMITED_API` with `Py_GIL_DISABLED`, which CPython's
   `pyabi.h` turns into PEP 803's `abi3t`: the module is `<name>.abi3t-<platform>.so`. abi3t sources must
   export their module with PEP 793's `PyModExport_<name>` slots (`PyModuleDef_HEAD_INIT` is hidden), so a
   package with classic sources opts out with Meson's own `-Dpython.allow_limited_api=false`. Test:
-  `MesonTest.makeMesonBuild_targetsTheStableAbiFrom315ByDefault`.
+  `MesonTest.makeMesonBuild_targetsTheStableAbiFrom315ByDefault`,
+  `MesonTest.makeMesonBuild_derivesLimitedApiFromRequiresPythonOrRustAbi`.
 - `meson setup` builds against the nearest `.venv` interpreter above the package (the same lookup the
   `bytecode` level uses), passed through a native file `build/packpack/meson-python.ini`
   (`[binaries] python = ...`). Without a `.venv`, Meson uses the interpreter it runs on itself, uv's tool
