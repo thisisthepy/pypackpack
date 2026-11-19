@@ -73,6 +73,85 @@ class MesonTest {
     }
 
     @Test
+    fun makeMesonBuild_derivesLimitedApiFromRequiresPythonOrRustAbi() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                version = "0.1.0"
+                requires-python = ">=3.13"
+                """.trimIndent(),
+            )
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "_hello.c").writeText("/* c extension */\n")
+
+            val fromRequiresPython = Meson().makeMesonBuild(absolutePath, overwrite = true).getOrThrow()
+            assertTrue(fromRequiresPython.contains("  limited_api: '3.13',"), fromRequiresPython)
+            assertFalse(fromRequiresPython.contains("  limited_api: '3.15',"), fromRequiresPython)
+
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                version = "0.1.0"
+
+                [tool.ppp.rust]
+                "core._C" = { path = "rust/c", abi = "abi3-py313" }
+                """.trimIndent(),
+            )
+            val fromRustAbi = Meson().makeMesonBuild(absolutePath, overwrite = true).getOrThrow()
+            assertTrue(fromRustAbi.contains("  limited_api: '3.13',"), fromRustAbi)
+        }
+    }
+
+    @Test
+    fun makeMesonBuild_respectsExplicitToolPppCExtensions() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                version = "0.1.0"
+
+                [tool.ppp]
+                c-extensions = []
+                """.trimIndent(),
+            )
+            val packageDir = File(this, "src/main/core")
+            val templatesDir = File(packageDir, "templates").apply { mkdirs() }
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "_hello.c").writeText("#include <Python.h>\n")
+            File(templatesDir, "python_variable_methods.cpp").writeText("#include <Python.h>\n// template\n")
+
+            val disabled = Meson().makeMesonBuild(absolutePath, overwrite = true).getOrThrow()
+            assertFalse(disabled.contains("py.extension_module("), disabled)
+            assertFalse(disabled.contains("  'c',"), disabled)
+            assertFalse(disabled.contains("  'cpp',"), disabled)
+            assertTrue(disabled.contains("'src/main/core/_hello.c'"), disabled)
+            assertTrue(disabled.contains("'src/main/core/templates/python_variable_methods.cpp'"), disabled)
+
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "core"
+                version = "0.1.0"
+
+                [tool.ppp]
+                c-extensions = ["src/main/core/_hello.c"]
+                """.trimIndent(),
+            )
+            val explicit = Meson().makeMesonBuild(absolutePath, overwrite = true).getOrThrow()
+            assertTrue(explicit.contains("  '_hello',"), explicit)
+            assertTrue(explicit.contains("  files('src/main/core/_hello.c'),"), explicit)
+            assertFalse(explicit.contains("  'python_variable_methods',"), explicit)
+            assertTrue(explicit.contains("'src/main/core/templates/python_variable_methods.cpp'"), explicit)
+        }
+    }
+
+    @Test
     fun makeMesonBuild_generatesInstallOnlyProjectWithoutCSource() {
         withWorkspace {
             File(this, "pyproject.toml").writeText(

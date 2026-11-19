@@ -138,8 +138,11 @@ open class Meson(
             "No Python package found under [tool.ppp].python-dir, src/main, src, python, <package>/python, or ${project.absolutePath}"
         }
 
-        val installSources = collectInstallSources(project, packages)
-        val extensionModules = collectExtensionModules(project, packages)
+        val explicitCExtensions = resolveExplicitCExtensions(project, editor)
+        val extensionModules = collectExtensionModules(project, packages, explicitCExtensions)
+        val extensionPaths = extensionModules.map { it.path }.toSet()
+        val installSources = collectInstallSources(project, packages, extensionPaths)
+        val limitedApiVersion = resolveLimitedApiVersion(editor)
 
         return buildString {
             appendLine("project(")
@@ -166,7 +169,7 @@ open class Meson(
                 appendLine("  files(${extension.path.toMesonString()}),")
                 // abi3t by default (SPEC, Scope decisions): Py_LIMITED_API on a free-threaded 3.15
                 // interpreter selects PEP 803's abi3t. Opt out with -Dpython.allow_limited_api=false.
-                appendLine("  limited_api: '3.15',")
+                appendLine("  limited_api: ${limitedApiVersion.toMesonString()},")
                 appendLine("  install: true,")
                 appendLine("  subdir: ${extension.subdir.toMesonString()},")
                 appendLine(")")
@@ -189,9 +192,35 @@ open class Meson(
     private fun findPythonPackages(project: File): List<File> =
         resolvePythonSourceRoot(project)?.let(::pythonPackageDirs).orEmpty()
 
+    private fun resolveExplicitCExtensions(
+        project: File,
+        editor: TomlEditor,
+    ): Set<String>? {
+        val value = editor.getValue("tool.ppp", "c-extensions") ?: return null
+        val array =
+            value as? TomlValue.Array
+                ?: throw IllegalArgumentException("[tool.ppp].c-extensions must be an array of file paths.")
+        val projectCanonical = project.canonicalFile
+        return array.items.map { rawPath ->
+            val normalized = rawPath.replace('\\', '/').trimStart('/')
+            val file = File(projectCanonical, normalized).canonicalFile
+            require(file.toPath().startsWith(projectCanonical.toPath())) {
+                "[tool.ppp].c-extensions: '$rawPath' is outside the package."
+            }
+            require(file.isFile) {
+                "[tool.ppp].c-extensions: '$rawPath' not found."
+            }
+            require(file.extensionLanguage() != null) {
+                "[tool.ppp].c-extensions: '$rawPath' is not a C/C++ source file."
+            }
+            projectCanonical.relativePath(file)
+        }.toSet()
+    }
+
     private fun collectInstallSources(
         project: File,
         packages: List<File>,
+        extensionPaths: Set<String>,
     ): List<InstallSourceGroup> =
         packages
             .flatMap { packageDir ->
@@ -199,7 +228,7 @@ open class Meson(
                     .walkTopDown()
                     // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
                     .onEnter { dir -> dir == packageDir || (!dir.isExcludedDirectory() && !File(dir, "Cargo.toml").isFile) }
-                    .filter { it.isFile && !it.isExcludedFile() && !it.isCExtensionModuleSource() }
+                    .filter { it.isFile && !it.isExcludedFile() && project.relativePath(it) !in extensionPaths }
                     .map { source ->
                         packageDir.installSubdir(source.parentFile) to project.relativePath(source)
                     }
@@ -213,6 +242,7 @@ open class Meson(
     private fun collectExtensionModules(
         project: File,
         packages: List<File>,
+        explicitCExtensions: Set<String>?,
     ): List<ExtensionModule> =
         packages
             .flatMap { packageDir ->
@@ -220,7 +250,15 @@ open class Meson(
                     .walkTopDown()
                     // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
                     .onEnter { dir -> dir == packageDir || (!dir.isExcludedDirectory() && !File(dir, "Cargo.toml").isFile) }
-                    .filter { it.isFile && !it.isExcludedFile() && it.isCExtensionModuleSource() }
+                    .filter { source ->
+                        source.isFile &&
+                            !source.isExcludedFile() &&
+                            if (explicitCExtensions != null) {
+                                project.relativePath(source) in explicitCExtensions
+                            } else {
+                                source.isCExtensionModuleSource()
+                            }
+                    }
                     .mapNotNull { source ->
                         val language = source.extensionLanguage() ?: return@mapNotNull null
                         ExtensionModule(
@@ -283,8 +321,42 @@ open class Meson(
     )
 
     companion object {
+        private const val DEFAULT_LIMITED_API_VERSION = "3.15"
+        private val REQUIRES_PYTHON_FLOOR = Regex("""(?:>=|==)\s*(3\.\d+)""")
+        private val RUST_ABI_VERSION = Regex("""^abi3t?-py3(\d+)$""")
         private val EXCLUDED_DIRECTORY_NAMES = setOf("__pycache__", "build", "dist", "target", "node_modules")
         private val EXCLUDED_EXTENSIONS = setOf("pyc", "pyo")
+
+        /**
+         * Derives Meson's `py.extension_module(limited_api:)` version from `pyproject.toml`:
+         * 1. `[project].requires-python` `>=3.<minor>` or `==3.<minor>` floor, when present;
+         * 2. `[tool.ppp.rust]` `abi` (`abi3-py3<minor>` / `abi3t-py3<minor>`), either package-level or
+         *    on a crate inline table;
+         * 3. `"3.15"` (the ecosystem default, PEP 803 `abi3t`).
+         */
+        internal fun resolveLimitedApiVersion(editor: TomlEditor): String {
+            val requiresPython = (editor.getValue("project", "requires-python") as? TomlValue.String)?.value
+            if (!requiresPython.isNullOrBlank()) {
+                REQUIRES_PYTHON_FLOOR.find(requiresPython)?.let { return it.groupValues[1] }
+            }
+
+            val rustAbi =
+                (editor.getValue("tool.ppp.rust", "abi") as? TomlValue.String)?.value
+                    ?: editor.getTableKeys("tool.ppp.rust")
+                        .asSequence()
+                        .mapNotNull { key ->
+                            (editor.getValue("tool.ppp.rust", key) as? TomlValue.InlineTable)
+                                ?.pairs
+                                ?.get("abi")
+                                ?.let { it as? TomlValue.String }
+                                ?.value
+                        }.firstOrNull()
+            if (!rustAbi.isNullOrBlank()) {
+                RUST_ABI_VERSION.matchEntire(rustAbi.trim())?.let { return "3.${it.groupValues[1]}" }
+            }
+
+            return DEFAULT_LIMITED_API_VERSION
+        }
 
         internal fun File.isExcludedDirectory(): Boolean =
             name in EXCLUDED_DIRECTORY_NAMES || name.startsWith(".")
