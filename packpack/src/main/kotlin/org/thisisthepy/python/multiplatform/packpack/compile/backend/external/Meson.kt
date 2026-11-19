@@ -138,8 +138,10 @@ open class Meson(
             "No Python package found under [tool.ppp].python-dir, src/main, src, python, <package>/python, or ${project.absolutePath}"
         }
 
-        val installSources = collectInstallSources(project, packages)
-        val extensionModules = collectExtensionModules(project, packages)
+        val explicitCExtensions = resolveExplicitCExtensions(project, editor)
+        val extensionModules = collectExtensionModules(project, packages, explicitCExtensions)
+        val extensionPaths = extensionModules.map { it.path }.toSet()
+        val installSources = collectInstallSources(project, packages, extensionPaths)
         val limitedApiVersion = resolveLimitedApiVersion(editor)
 
         return buildString {
@@ -190,9 +192,35 @@ open class Meson(
     private fun findPythonPackages(project: File): List<File> =
         resolvePythonSourceRoot(project)?.let(::pythonPackageDirs).orEmpty()
 
+    private fun resolveExplicitCExtensions(
+        project: File,
+        editor: TomlEditor,
+    ): Set<String>? {
+        val value = editor.getValue("tool.ppp", "c-extensions") ?: return null
+        val array =
+            value as? TomlValue.Array
+                ?: throw IllegalArgumentException("[tool.ppp].c-extensions must be an array of file paths.")
+        val projectCanonical = project.canonicalFile
+        return array.items.map { rawPath ->
+            val normalized = rawPath.replace('\\', '/').trimStart('/')
+            val file = File(projectCanonical, normalized).canonicalFile
+            require(file.toPath().startsWith(projectCanonical.toPath())) {
+                "[tool.ppp].c-extensions: '$rawPath' is outside the package."
+            }
+            require(file.isFile) {
+                "[tool.ppp].c-extensions: '$rawPath' not found."
+            }
+            require(file.extensionLanguage() != null) {
+                "[tool.ppp].c-extensions: '$rawPath' is not a C/C++ source file."
+            }
+            projectCanonical.relativePath(file)
+        }.toSet()
+    }
+
     private fun collectInstallSources(
         project: File,
         packages: List<File>,
+        extensionPaths: Set<String>,
     ): List<InstallSourceGroup> =
         packages
             .flatMap { packageDir ->
@@ -200,7 +228,7 @@ open class Meson(
                     .walkTopDown()
                     // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
                     .onEnter { dir -> dir == packageDir || (!dir.isExcludedDirectory() && !File(dir, "Cargo.toml").isFile) }
-                    .filter { it.isFile && !it.isExcludedFile() && !it.isCExtensionModuleSource() }
+                    .filter { it.isFile && !it.isExcludedFile() && project.relativePath(it) !in extensionPaths }
                     .map { source ->
                         packageDir.installSubdir(source.parentFile) to project.relativePath(source)
                     }
@@ -214,6 +242,7 @@ open class Meson(
     private fun collectExtensionModules(
         project: File,
         packages: List<File>,
+        explicitCExtensions: Set<String>?,
     ): List<ExtensionModule> =
         packages
             .flatMap { packageDir ->
@@ -221,7 +250,15 @@ open class Meson(
                     .walkTopDown()
                     // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
                     .onEnter { dir -> dir == packageDir || (!dir.isExcludedDirectory() && !File(dir, "Cargo.toml").isFile) }
-                    .filter { it.isFile && !it.isExcludedFile() && it.isCExtensionModuleSource() }
+                    .filter { source ->
+                        source.isFile &&
+                            !source.isExcludedFile() &&
+                            if (explicitCExtensions != null) {
+                                project.relativePath(source) in explicitCExtensions
+                            } else {
+                                source.isCExtensionModuleSource()
+                            }
+                    }
                     .mapNotNull { source ->
                         val language = source.extensionLanguage() ?: return@mapNotNull null
                         ExtensionModule(
