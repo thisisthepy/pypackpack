@@ -803,7 +803,7 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
 - An unknown bundle kind, a bundle type after `resource`, or `resource` as a source bundle type is
   refused (exit 1) before anything runs.
 
-- Auto-generates a `meson.build` for the package by scanning `src/main` (falling back to `src`, then the package root) for Python packages: `.c`/`.cc`/`.cpp`/`.cxx` files become Meson `py.extension_module()` targets and `.py`/`.pyi`/`py.typed` files become `py.install_sources()`.
+- Auto-generates a `meson.build` for the package by scanning the first source root containing Python packages in order: `[tool.ppp].python-dir` (when configured in `pyproject.toml`), `src/main`, `src`, `python`, `<package>/python`, and the package root. Inside each Python package, `.c`/`.cc`/`.cpp`/`.cxx` files become Meson `py.extension_module()` targets only when their name starts with `_` or their source references `PyInit_`, `PyModExport_`, or `Python.h`; all other non-excluded files (including `.py`, `.pyi`, `py.typed`, package data files, and data/template `.c`/`.cpp` files) become `py.install_sources()`, while `__pycache__`, `*.pyc`, `*.pyo`, dot-entries, `Thumbs.db`, `meson.build`, and Rust crate directories (`Cargo.toml`) are excluded.
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--type` is passed to Meson as `--buildtype=<type>`. `--type`, `--level` and `--target` select the directories: the Meson build directory is `<package>/build/packpack/single/<type>/<level>/<target>`, and `meson install` writes to `<package>/dist/<target>/<type>/<level>` (`<target>` is `default` when `--target` is omitted).
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
@@ -946,7 +946,8 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
   and the Android extraction constraint (#60 §7).
 - **Declaring a crate.** By convention, a directory holding a `Cargo.toml` inside a Python package is that
   package's extension module, named after the directory: `src/main/core/_fast/Cargo.toml` builds
-  `core._fast`. This is the rule Meson's `.c` scan uses, and it needs no `toolchain` DSL. For a crate outside
+  `core._fast` (scanning `[tool.ppp].python-dir`, `src/main`, `src`, `python`, `<package>/python`, and the
+  package root in order). This is the rule Meson's scan uses, and it needs no `toolchain` DSL. For a crate outside
   the Python packages, a `[tool.ppp.rust]` table in the package's `pyproject.toml` maps a module name to a
   crate directory, relative to the package:
 
@@ -1032,7 +1033,7 @@ There is no `pypackpack bundle` command.
 - `resource`: Produces a resource layout consumable by python-multiplatform/toolchain.
   - Status: implemented. `packpack/.../bundle/resource/ResourceBundlerTest.kt`.
   - A directory, not an archive: `python/` (the payload, meant to be placed on `sys.path`) beside `resource-manifest.json` (identity, target, per-file SHA-256; sorted, no timestamp).
-  - Reads the package *source*, not the compiled `dist/` output: `src/main` first, then `src/<family>` on top, then each `BundleRequest.metaDirs` entry, then each `libDirs` entry; a later stage wins for the same path.
+  - Reads the package *source*, not the compiled `dist/` output: the common source root (`[tool.ppp].python-dir` when configured, `src/main`, `src`, `python`, `<package>/python`, or the package root) first, then `src/<family>` on top, then each `BundleRequest.metaDirs` entry, then each `libDirs` entry; a later stage wins for the same path.
   - Drops `__pycache__/`, `*.pyc`/`*.pyo`/`*.pyd`, dot-entries, `build/`, `dist/` and `node_modules/`. Because it reads source, extension modules that `build` compiles never reach it, unlike the wheel bundlers.
   - Supports the `instant`, `bytecode`, `mixed` and `native` build levels (see *Build Level*). At `native`, `resource-manifest.json` also records `pythonAbi` (`"cp315t"`), `extensionSuffix`, `nativeModules` (`module`, `path`) and `tools` (`cc`).
   - Validates a declared `minSdk` and records it in the manifest. It does not select a CPython build by API level, because no target-aware download exists here.

@@ -23,8 +23,8 @@ data class RustCrate(
 /**
  * Which crates a package builds (`docs/SPEC.md` *Rust extension modules (Cargo backend)*, #92):
  * - by convention, a directory holding a `Cargo.toml` inside a Python package is that package's module
- *   (`src/main/core/_fast` is `core._fast`), under the first of `src/main`, `src` and the package root
- *   that holds a Python package (Meson's rule);
+ *   (`src/main/core/_fast` is `core._fast`), under the first of `[tool.ppp].python-dir`, `src/main`,
+ *   `src`, `python`, `<package>/python` and the package root that holds a Python package (Meson's rule);
  * - `[tool.ppp.rust]` in the package's `pyproject.toml` maps a module to a crate directory relative to the
  *   package, for crates outside the Python packages (torchnative's `"torch._C" = "rust/torch_c"`).
  * A crate in neither place is not built. One module named both ways is an error.
@@ -46,9 +46,7 @@ object RustCrates {
     }
 
     private fun conventionCrates(pkg: File): List<RustCrate> {
-        val root = listOf(File(pkg, "src/main"), File(pkg, "src"), pkg).firstOrNull { candidate ->
-            candidate.listFiles().orEmpty().any { it.isDirectory && File(it, "__init__.py").isFile }
-        } ?: return emptyList()
+        val root = Meson.resolvePythonSourceRoot(pkg) ?: return emptyList()
         val found = mutableListOf<RustCrate>()
         fun visit(dir: File) {
             dir.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith(".") && it.name !in SKIPPED }
@@ -61,7 +59,7 @@ object RustCrates {
                     }
                 }
         }
-        root.listFiles().orEmpty().filter { it.isDirectory && File(it, "__init__.py").isFile }.sortedBy { it.name }.forEach(::visit)
+        Meson.pythonPackageDirs(root).forEach(::visit)
         return found
     }
 

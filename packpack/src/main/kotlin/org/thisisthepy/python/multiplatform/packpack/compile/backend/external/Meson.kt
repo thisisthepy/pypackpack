@@ -135,7 +135,7 @@ open class Meson(
         val packages = findPythonPackages(project)
 
         require(packages.isNotEmpty()) {
-            "No Python package found under src/main, src, or ${project.absolutePath}"
+            "No Python package found under [tool.ppp].python-dir, src/main, src, python, <package>/python, or ${project.absolutePath}"
         }
 
         val installSources = collectInstallSources(project, packages)
@@ -187,18 +187,7 @@ open class Meson(
     }
 
     private fun findPythonPackages(project: File): List<File> =
-        listOf(
-            File(project, "src/main"),
-            File(project, "src"),
-            project,
-        ).firstNotNullOfOrNull { root ->
-            root
-                .takeIf { it.isDirectory }
-                ?.listFiles()
-                ?.filter { it.isDirectory && File(it, "__init__.py").isFile }
-                ?.sortedBy { it.name }
-                ?.takeIf { it.isNotEmpty() }
-        }.orEmpty()
+        resolvePythonSourceRoot(project)?.let(::pythonPackageDirs).orEmpty()
 
     private fun collectInstallSources(
         project: File,
@@ -209,8 +198,8 @@ open class Meson(
                 packageDir
                     .walkTopDown()
                     // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
-                    .onEnter { it == packageDir || !File(it, "Cargo.toml").isFile }
-                    .filter { it.isFile && it.isPythonInstallSource() }
+                    .onEnter { dir -> dir == packageDir || (!dir.isExcludedDirectory() && !File(dir, "Cargo.toml").isFile) }
+                    .filter { it.isFile && !it.isExcludedFile() && !it.isCExtensionModuleSource() }
                     .map { source ->
                         packageDir.installSubdir(source.parentFile) to project.relativePath(source)
                     }
@@ -230,8 +219,8 @@ open class Meson(
                 packageDir
                     .walkTopDown()
                     // A crate directory is the Cargo backend's (#92): none of its files are Meson's.
-                    .onEnter { it == packageDir || !File(it, "Cargo.toml").isFile }
-                    .filter { it.isFile }
+                    .onEnter { dir -> dir == packageDir || (!dir.isExcludedDirectory() && !File(dir, "Cargo.toml").isFile) }
+                    .filter { it.isFile && !it.isExcludedFile() && it.isCExtensionModuleSource() }
                     .mapNotNull { source ->
                         val language = source.extensionLanguage() ?: return@mapNotNull null
                         ExtensionModule(
@@ -259,7 +248,18 @@ open class Meson(
             .toString()
             .replace(File.separatorChar, '/')
 
-    private fun File.isPythonInstallSource(): Boolean = extension == "py" || extension == "pyi" || name == "py.typed"
+    private fun File.isExcludedFile(): Boolean =
+        name.startsWith(".") ||
+            name == "Thumbs.db" ||
+            name == "meson.build" ||
+            extension.lowercase() in EXCLUDED_EXTENSIONS
+
+    private fun File.isCExtensionModuleSource(): Boolean {
+        if (extensionLanguage() == null) return false
+        if (nameWithoutExtension.startsWith("_")) return true
+        val text = runCatching { readText() }.getOrNull() ?: return false
+        return "PyInit_" in text || "PyModExport_" in text || "Python.h" in text
+    }
 
     private fun File.extensionLanguage(): String? =
         when (extension.lowercase()) {
@@ -283,6 +283,52 @@ open class Meson(
     )
 
     companion object {
+        private val EXCLUDED_DIRECTORY_NAMES = setOf("__pycache__", "build", "dist", "target", "node_modules")
+        private val EXCLUDED_EXTENSIONS = setOf("pyc", "pyo")
+
+        internal fun File.isExcludedDirectory(): Boolean =
+            name in EXCLUDED_DIRECTORY_NAMES || name.startsWith(".")
+
+        internal fun pythonPackageDirs(root: File): List<File> =
+            root
+                .takeIf { it.isDirectory }
+                ?.listFiles()
+                .orEmpty()
+                .filter { it.isDirectory && !it.isExcludedDirectory() && File(it, "__init__.py").isFile }
+                .sortedBy { it.name }
+
+        internal fun resolvePythonSourceRoot(project: File): File? {
+            val pyproject = File(project, "pyproject.toml")
+            val editor = pyproject.takeIf { it.isFile }?.let { TomlEditor(it.readText()) }
+            val configuredDir =
+                (editor?.getValue("tool.ppp", "python-dir") as? TomlValue.String)
+                    ?.value
+                    ?.takeIf { it.isNotBlank() }
+            val projectName =
+                (editor?.getValue("project", "name") as? TomlValue.String)
+                    ?.value
+                    ?.takeIf { it.isNotBlank() }
+
+            val candidates =
+                buildList {
+                    if (configuredDir != null) {
+                        add(File(project, configuredDir))
+                    }
+                    add(File(project, "src/main"))
+                    add(File(project, "src"))
+                    add(File(project, "python"))
+                    if (projectName != null) {
+                        add(File(project, "$projectName/python"))
+                    }
+                    add(File(project, "${project.name}/python"))
+                    add(project)
+                }.distinctBy { it.canonicalPath }
+
+            return candidates.firstOrNull { candidate ->
+                pythonPackageDirs(candidate).isNotEmpty()
+            }
+        }
+
         internal fun resolveMesonExecutable(
             binPath: String?,
             isMesonInstalled: Boolean,

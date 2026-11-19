@@ -805,6 +805,21 @@ class ResourceBundlerTest {
     }
 
     @Test
+    fun bundle_discoversPackagesUnderPythonAndNestedPythonRoots() {
+        val pythonPkg = packageDir(name = "plain-python-root")
+        write(pythonPkg, "python/core/__init__.py", "FROM = 'python'\n")
+
+        val pythonResult = bundler().bundle(BundleRequest(packageDir = pythonPkg, target = "macos")).getOrThrow()
+        assertEquals("FROM = 'python'\n", File(pythonResult.outputDir, "python/core/__init__.py").readText())
+
+        val nestedPkg = packageDir(name = "torchnative")
+        write(nestedPkg, "torchnative/python/torch/__init__.py", "FROM = 'nested'\n")
+
+        val nestedResult = bundler().bundle(BundleRequest(packageDir = nestedPkg, target = "macos")).getOrThrow()
+        assertEquals("FROM = 'nested'\n", File(nestedResult.outputDir, "python/torch/__init__.py").readText())
+    }
+
+    @Test
     fun bundle_honoursExplicitOutputDirectory() {
         val pkg = packageDir()
         write(pkg, "src/main/core/__init__.py", "")
