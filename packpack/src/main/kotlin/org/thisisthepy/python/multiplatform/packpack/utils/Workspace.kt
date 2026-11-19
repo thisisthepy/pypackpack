@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.utils
 
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
+import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
 
 private const val PYPROJECT_FILE = "pyproject.toml"
@@ -42,7 +43,9 @@ internal fun findVenvInterpreter(startDir: File): File? {
 /**
  * Finds the workspace root by looking for a pyproject.toml with a [readWorkspaceMembers] section.
  * Starts searching from the given directory and moves up the directory tree until found.
- * @throws IllegalStateException if no workspace root is found.
+ * Falls back to the nearest [findProjectRoot] for single-package repositories without
+ * `[tool.uv.workspace]`.
+ * @throws IllegalStateException if no workspace or project root is found.
  */
 internal fun findWorkspaceRoot(startDir: File = File(System.getProperty("user.dir"))): File {
     var current: File? = startDir.canonicalFile
@@ -53,7 +56,14 @@ internal fun findWorkspaceRoot(startDir: File = File(System.getProperty("user.di
         current = current.parentFile
     }
 
-    throw IllegalStateException("Workspace root not found. Run the command inside a workspace.")
+    return findProjectRoot(startDir)?.canonicalFile
+        ?: throw IllegalStateException("Workspace root not found. Run the command inside a workspace.")
+}
+
+internal fun readProjectName(projectDir: File): String? {
+    val pyproject = File(projectDir, PYPROJECT_FILE)
+    if (!pyproject.isFile) return null
+    return (TomlEditor(pyproject.readText()).getValue("project", "name") as? TomlValue.String)?.value
 }
 
 internal fun readWorkspaceMembers(workspaceRoot: File): List<String> {
@@ -66,16 +76,32 @@ internal fun readWorkspaceMembers(workspaceRoot: File): List<String> {
 }
 
 /**
- * The directory of the workspace member [packageName] (its path or its last path segment), which must stay
- * inside [workspaceRoot] and hold a `pyproject.toml`.
+ * The directory of the workspace member [packageName] (its path, its last path segment, or its
+ * `[project].name`), which must stay inside [workspaceRoot] and hold a `pyproject.toml`.
+ * In a single-package repository without `[tool.uv.workspace]`, resolves to [workspaceRoot] when
+ * [packageName] is `.`, the root directory name, or `[project].name`.
  */
 internal fun resolveWorkspacePackageDir(
     workspaceRoot: File,
     packageName: String,
 ): File {
     val members = readWorkspaceMembers(workspaceRoot)
+    if (members.isEmpty()) {
+        val rootDir = workspaceRoot.canonicalFile
+        require(File(rootDir, PYPROJECT_FILE).isFile) {
+            "pyproject.toml not found for workspace package '$packageName'"
+        }
+        val projectName = readProjectName(rootDir)
+        if (packageName == "." || packageName == rootDir.name || (projectName != null && packageName == projectName)) {
+            return rootDir
+        }
+        throw IllegalArgumentException("Package '$packageName' is not a workspace member")
+    }
+
     val member =
-        members.firstOrNull { it == packageName || File(it).name == packageName }
+        members.firstOrNull {
+            it == packageName || File(it).name == packageName || readProjectName(File(workspaceRoot, it)) == packageName
+        }
             ?: throw IllegalArgumentException("Package '$packageName' is not a workspace member")
 
     val rootPath = workspaceRoot.canonicalFile.toPath()
