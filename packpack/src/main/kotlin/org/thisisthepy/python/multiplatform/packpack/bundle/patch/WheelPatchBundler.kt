@@ -77,12 +77,12 @@ import java.util.zip.ZipOutputStream
  * [BundleResult.fileCount] counts added+modified files only (the payload actually shipped in the
  * archive), not removed paths (those are absence, not content) and not the manifest itself.
  *
- * Determinism, `instant`-only build level, and target/minSdk validation mirror `SingleWheelBundler`
- * for the same reasons documented there.
+ * Determinism, supported build levels (`instant`, `bytecode`, `mixed`, `native`), and target/minSdk
+ * validation mirror `SingleWheelBundler` for the same reasons documented there.
  */
 class WheelPatchBundler : BundlerInterface {
     private companion object {
-        const val SUPPORTED_BUILD_LEVEL = "instant"
+        val SUPPORTED_BUILD_LEVELS = setOf("instant", "bytecode", "mixed", "native")
         const val SITE_PACKAGES_DIR_NAME = "site-packages"
         const val PATCH_MANIFEST_FILE_NAME = "PATCH-MANIFEST"
         const val PATCH_FORMAT_VERSION = "1.0"
@@ -104,9 +104,10 @@ class WheelPatchBundler : BundlerInterface {
             val pyproject = File(packageDir, "pyproject.toml")
             require(pyproject.isFile) { "pyproject.toml not found in ${packageDir.absolutePath}" }
 
-            require(request.buildLevel == SUPPORTED_BUILD_LEVEL) {
-                "Build level '${request.buildLevel}' is not implemented for bundle type " +
-                    "'${BundleType.PATCH.id}'. Only '$SUPPORTED_BUILD_LEVEL' is available today."
+            require(request.buildLevel in SUPPORTED_BUILD_LEVELS) {
+                "Unsupported build level '${request.buildLevel}' for bundle type " +
+                    "'${BundleType.PATCH.id}'. Supported build levels: " +
+                    "${SUPPORTED_BUILD_LEVELS.joinToString(", ") { "'$it'" }}."
             }
             require(request.buildType.isNotBlank()) { "Build type cannot be blank" }
 
@@ -122,6 +123,7 @@ class WheelPatchBundler : BundlerInterface {
             val editor = TomlEditor(pyproject.readText())
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val newVersion = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
+            val requiresPython = (editor.getValue("project", "requires-python") as? TomlValue.String)?.value
             val escapedName = packageName.wheelEscaped()
 
             val baselineWheel = locateBaselineSingleWheel(packageDir, request, packageName)
@@ -149,7 +151,7 @@ class WheelPatchBundler : BundlerInterface {
             val changedPaths = (added + modified).sorted()
 
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
-            val tags = PythonTags.of(request.pythonVersion)
+            val tags = PythonTags.forPayload(request.pythonVersion, currentPayload.keys, requiresPython)
             val distInfoDir = "$escapedName-$newVersion.dist-info"
             val artifactFileName =
                 "$escapedName-${baseVersion}_to_$newVersion-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl.patch"

@@ -41,4 +41,59 @@ class TomlEditorTest {
 
         assertEquals(listOf("windows", "linux"), entries)
     }
+
+    @Test
+    fun getValueParsesInlineTableAndGetInlineTableArrayParsesAuthors() {
+        val content =
+            """
+            [project]
+            name = "core"
+            readme = { file = "README.md", content-type = "text/markdown" }
+            license = { text = "MIT" }
+            authors = [
+                { name = "thisisthepy", email = "dev@thisisthepy.org" },
+                { name = "Alice" },
+            ]
+            dependencies = ["pkg[extra]>=1.0", "openvino; (sys_platform == 'win32')"]
+            """.trimIndent()
+
+        val editor = TomlEditor(content)
+        val readme = editor.getValue("project", "readme") as TomlValue.InlineTable
+        assertEquals(TomlValue.String("README.md"), readme.pairs["file"])
+        assertEquals(TomlValue.String("text/markdown"), readme.pairs["content-type"])
+
+        val license = editor.getValue("project", "license") as TomlValue.InlineTable
+        assertEquals(TomlValue.String("MIT"), license.pairs["text"])
+
+        assertEquals(
+            listOf(
+                mapOf("name" to "thisisthepy", "email" to "dev@thisisthepy.org"),
+                mapOf("name" to "Alice"),
+            ),
+            editor.getInlineTableArray("project", "authors"),
+        )
+        assertEquals(
+            listOf("pkg[extra]>=1.0", "openvino; (sys_platform == 'win32')"),
+            editor.getArray("project", "dependencies"),
+        )
+    }
+
+    @Test
+    fun getTableKeysPreservesDeclarationOrderWithMultiLineArrays() {
+        val content =
+            """
+            [project.optional-dependencies]
+            cpu = []
+            npu = [
+                "openvino; sys_platform == 'linux'",
+            ]
+            dev = ["pytest>=8.0"]
+            """.trimIndent()
+
+        val editor = TomlEditor(content)
+        assertEquals(listOf("cpu", "npu", "dev"), editor.getTableKeys("project.optional-dependencies"))
+        assertEquals(emptyList(), editor.getArray("project.optional-dependencies", "cpu"))
+        assertEquals(listOf("openvino; sys_platform == 'linux'"), editor.getArray("project.optional-dependencies", "npu"))
+        assertEquals(listOf("pytest>=8.0"), editor.getArray("project.optional-dependencies", "dev"))
+    }
 }

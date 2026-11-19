@@ -322,15 +322,29 @@ class SingleWheelBundlerTest {
     }
 
     @Test
-    fun bundle_rejectsBuildLevelsThatAreNotImplementedYet() {
-        val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
+    fun bundle_acceptsAllBuildLevelsAndRejectsUnknownLevel() {
+        listOf("instant", "bytecode", "mixed", "native").forEach { level ->
+            val pkg = packageDir(name = "core-$level")
+            writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin", level = level)
 
-        listOf("bytecode", "native", "mixed").forEach { level ->
-            val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level))
-            assertTrue(result.isFailure, "build level '$level' should not silently succeed")
-            assertTrue(result.exceptionOrNull()?.message.orEmpty().contains(level))
+            val result =
+                bundler()
+                    .bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level))
+                    .also { assertTrue(it.isSuccess, "level=$level: ${it.exceptionOrNull()?.stackTraceToString()}") }
+                    .getOrThrow()
+
+            assertEquals(
+                File(pkg, "build/packpack/single/debug/$level").canonicalFile,
+                result.outputDir.canonicalFile,
+            )
+            assertTrue(result.artifactFile!!.isFile)
         }
+
+        val pkg = packageDir(name = "core-unknown")
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
+        val rejected = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = "unknown"))
+        assertTrue(rejected.isFailure)
+        assertTrue(rejected.exceptionOrNull()?.message.orEmpty().contains("unknown"))
     }
 
     @Test
@@ -509,5 +523,95 @@ class SingleWheelBundlerTest {
         val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", pythonVersion = "latest"))
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("latest"))
+    }
+
+    @Test
+    fun bundle_rendersFullPep621MetadataAndCopiesLicenseFiles() {
+        val pkg = packageDir(name = "core", version = "0.1.0")
+        File(pkg, "README.md").writeText("# Core\n\nFull description.\n")
+        File(pkg, "LICENSE").writeText("Apache License 2.0\n")
+        File(pkg, "pyproject.toml").writeText(
+            """
+            [project]
+            name = "core"
+            version = "0.1.0"
+            description = "Core runtime package"
+            readme = { file = "README.md", content-type = "text/markdown" }
+            license = "Apache-2.0"
+            license-files = ["LICENSE"]
+            requires-python = ">=3.13"
+            dependencies = ["numpy>=2.0"]
+            authors = [{ name = "thisisthepy" }]
+            keywords = ["ml", "python"]
+            classifiers = ["License :: OSI Approved :: Apache Software License"]
+
+            [project.urls]
+            Homepage = "https://example.com"
+
+            [project.optional-dependencies]
+            cpu = []
+            npu = ["openvino; sys_platform == 'linux'"]
+            """.trimIndent(),
+        )
+        writeDestdir(pkg, "core/__init__.py", target = "aarch64-apple-darwin")
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        val wheelFile = result.artifactFile!!
+        val metadata = zipEntryText(wheelFile, "core-0.1.0.dist-info/METADATA")
+        val entries = zipEntryNames(wheelFile)
+        val record = zipEntryText(wheelFile, "core-0.1.0.dist-info/RECORD")
+
+        assertTrue(metadata.contains("Metadata-Version: 2.4"), metadata)
+        assertTrue(metadata.contains("Summary: Core runtime package"), metadata)
+        assertTrue(metadata.contains("Keywords: ml,python"), metadata)
+        assertTrue(metadata.contains("Author: thisisthepy"), metadata)
+        assertTrue(metadata.contains("License-Expression: Apache-2.0"), metadata)
+        assertTrue(metadata.contains("License-File: LICENSE"), metadata)
+        assertTrue(metadata.contains("Classifier: License :: OSI Approved :: Apache Software License"), metadata)
+        assertTrue(metadata.contains("Requires-Python: >=3.13"), metadata)
+        assertTrue(metadata.contains("Project-URL: Homepage, https://example.com"), metadata)
+        assertTrue(metadata.contains("Requires-Dist: numpy>=2.0"), metadata)
+        assertTrue(metadata.contains("Provides-Extra: cpu"), metadata)
+        assertTrue(metadata.contains("Provides-Extra: npu"), metadata)
+        assertTrue(metadata.contains("Requires-Dist: openvino; (sys_platform == 'linux') and extra == 'npu'"), metadata)
+        assertTrue(metadata.contains("Description-Content-Type: text/markdown"), metadata)
+        assertTrue(metadata.contains("\n\n# Core\n\nFull description.\n"), metadata)
+
+        assertTrue(entries.contains("core-0.1.0.dist-info/licenses/LICENSE"), entries.toString())
+        assertEquals("Apache License 2.0\n", zipEntryText(wheelFile, "core-0.1.0.dist-info/licenses/LICENSE"))
+        assertTrue(record.lines().any { it.startsWith("core-0.1.0.dist-info/licenses/LICENSE,sha256=") }, record)
+    }
+
+    @Test
+    fun bundle_derivesAbi3AndAbi3tWheelTagsFromPayloadExtensions() {
+        val abi3Pkg = packageDir(name = "torch", version = "2.5.0")
+        File(abi3Pkg, "pyproject.toml").writeText(
+            """
+            [project]
+            name = "torch"
+            version = "2.5.0"
+            requires-python = ">=3.13"
+            """.trimIndent(),
+        )
+        writeDestdir(abi3Pkg, "torch/__init__.py", target = "aarch64-apple-darwin")
+        writeDestdir(abi3Pkg, "torch/_C.abi3.so", target = "aarch64-apple-darwin")
+
+        val abi3Result = bundler().bundle(BundleRequest(packageDir = abi3Pkg, target = "macos")).getOrThrow()
+        assertEquals("torch-2.5.0-cp313-abi3-macosx_11_0_arm64.whl", abi3Result.artifactFile!!.name)
+        assertTrue(
+            zipEntryText(abi3Result.artifactFile!!, "torch-2.5.0.dist-info/WHEEL")
+                .contains("Tag: cp313-abi3-macosx_11_0_arm64"),
+        )
+
+        val abi3tPkg = packageDir(name = "core", version = "0.1.0")
+        writeDestdir(abi3tPkg, "core/__init__.py", target = "aarch64-apple-darwin")
+        writeDestdir(abi3tPkg, "core/_fast.abi3t.so", target = "aarch64-apple-darwin")
+
+        val abi3tResult = bundler().bundle(BundleRequest(packageDir = abi3tPkg, target = "macos")).getOrThrow()
+        assertEquals("core-0.1.0-cp315-abi3.abi3t-macosx_11_0_arm64.whl", abi3tResult.artifactFile!!.name)
+        assertTrue(
+            zipEntryText(abi3tResult.artifactFile!!, "core-0.1.0.dist-info/WHEEL")
+                .contains("Tag: cp315-abi3.abi3t-macosx_11_0_arm64"),
+        )
     }
 }

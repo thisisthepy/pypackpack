@@ -7,6 +7,8 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.PythonTags
+import org.thisisthepy.python.multiplatform.packpack.bundle.RenderedWheelMetadata
+import org.thisisthepy.python.multiplatform.packpack.bundle.WheelMetadata
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
@@ -57,14 +59,11 @@ import java.util.zip.ZipOutputStream
  *
  * Once the payload (own package files plus each vendored sibling's files, merged by relative path)
  * is assembled, this class is deliberately identical to [SingleWheelBundler][org.thisisthepy.python.multiplatform.packpack.bundle.single.SingleWheelBundler]:
- * same destdir-lookup algorithm (per package), same tag derivation from the target interpreter (`PythonTags`), same per-family
- * platform tag scheme (PEP 425/600/656/730/738), same METADATA/WHEEL/RECORD shape, same determinism
- * (sorted entries, fixed 1980-01-01 zip timestamp), same `instant`-only build level restriction (for
- * the same reason: the compile stage does not yet select build levels). That logic is duplicated
- * here rather than shared, following this codebase's existing precedent of every bundler owning its
- * own archive-writing code (`ResourceBundler` and `SingleWheelBundler` already duplicate rather than
- * share their own SHA-256/exclusion/determinism logic) -- sharing it would mean carving out a new
- * internal API surface as a side effect of this task, which is out of scope here.
+ * same destdir-lookup algorithm (per package), same tag derivation from payload extensions and target
+ * interpreter (`PythonTags`), same per-family platform tag scheme (PEP 425/600/656/730/738), same
+ * PEP 621 `METADATA` / `WHEEL` / `RECORD` shape via `WheelMetadata`, same determinism (sorted
+ * entries, fixed 1980-01-01 zip timestamp), and the same `instant`/`bytecode`/`mixed`/`native` build
+ * levels.
  *
  * A vendored sibling package contributes its `dist/site-packages` contents directly (same exclusions
  * as the primary package: `__pycache__/`, `*.pyc`/`*.pyo`, dot-entries) with **no dist-info of its
@@ -76,9 +75,8 @@ import java.util.zip.ZipOutputStream
  */
 class FatWheelBundler : BundlerInterface {
     private companion object {
-        const val SUPPORTED_BUILD_LEVEL = "instant"
+        val SUPPORTED_BUILD_LEVELS = setOf("instant", "bytecode", "mixed", "native")
         const val SITE_PACKAGES_DIR_NAME = "site-packages"
-        const val METADATA_VERSION = "2.1"
         const val WHEEL_VERSION = "1.0"
         const val GENERATOR = "pypackpack 0.1.0"
         const val ANDROID_MIN_SDK_FLOOR = 21
@@ -97,9 +95,10 @@ class FatWheelBundler : BundlerInterface {
             val pyproject = File(packageDir, "pyproject.toml")
             require(pyproject.isFile) { "pyproject.toml not found in ${packageDir.absolutePath}" }
 
-            require(request.buildLevel == SUPPORTED_BUILD_LEVEL) {
-                "Build level '${request.buildLevel}' is not implemented for bundle type " +
-                    "'${BundleType.FAT.id}'. Only '$SUPPORTED_BUILD_LEVEL' is available today."
+            require(request.buildLevel in SUPPORTED_BUILD_LEVELS) {
+                "Unsupported build level '${request.buildLevel}' for bundle type " +
+                    "'${BundleType.FAT.id}'. Supported build levels: " +
+                    "${SUPPORTED_BUILD_LEVELS.joinToString(", ") { "'$it'" }}."
             }
             require(request.buildType.isNotBlank()) { "Build type cannot be blank" }
 
@@ -116,6 +115,7 @@ class FatWheelBundler : BundlerInterface {
             val editor = TomlEditor(pyproject.readText())
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val version = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
+            val requiresPython = (editor.getValue("project", "requires-python") as? TomlValue.String)?.value
 
             val ownPayload = collectPayload(locateSitePackages(packageDir, packageName, canonicalTarget, request.buildType, request.buildLevel))
             val dependencyPayload = collectDependencyPayload(packageDir, editor, packageName, canonicalTarget, request.buildType, request.buildLevel)
@@ -127,10 +127,11 @@ class FatWheelBundler : BundlerInterface {
 
             val escapedName = packageName.wheelEscaped()
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
-            val tags = PythonTags.of(request.pythonVersion)
+            val tags = PythonTags.forPayload(request.pythonVersion, payload.keys, requiresPython)
             val distInfoDir = "$escapedName-$version.dist-info"
             val wheelFileName = "$escapedName-$version-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl"
             val rootIsPurelib = payload.keys.none { it.substringAfterLast('.', "") in NATIVE_EXTENSION_EXTENSIONS }
+            val renderedMetadata = WheelMetadata.render(packageDir, editor, packageName, version, distInfoDir)
 
             val outputDir = resolveOutputDir(request, packageDir)
             prepareOutputDir(outputDir, request.overwrite)
@@ -140,8 +141,7 @@ class FatWheelBundler : BundlerInterface {
                 artifactFile = artifactFile,
                 payload = payload,
                 distInfoDir = distInfoDir,
-                packageName = packageName,
-                version = version,
+                renderedMetadata = renderedMetadata,
                 platformTag = platformTag,
                 tags = tags,
                 rootIsPurelib = rootIsPurelib,
@@ -515,13 +515,11 @@ class FatWheelBundler : BundlerInterface {
         artifactFile: File,
         payload: Map<String, File>,
         distInfoDir: String,
-        packageName: String,
-        version: String,
+        renderedMetadata: RenderedWheelMetadata,
         platformTag: String,
         tags: PythonTags,
         rootIsPurelib: Boolean,
     ) {
-        val metadata = renderMetadata(packageName, version)
         val wheelFile = renderWheelFile(platformTag, tags, rootIsPurelib)
 
         val recordRows = mutableListOf<Triple<String, String, Long>>()
@@ -533,7 +531,13 @@ class FatWheelBundler : BundlerInterface {
                 recordRows += Triple(relativePath, sha256UrlSafe(bytes), bytes.size.toLong())
             }
 
-            val metadataBytes = metadata.toByteArray(Charsets.UTF_8)
+            renderedMetadata.licenseFiles.toSortedMap().forEach { (entryPath, source) ->
+                val bytes = source.readBytes()
+                writeDeterministicEntry(zip, entryPath, bytes)
+                recordRows += Triple(entryPath, sha256UrlSafe(bytes), bytes.size.toLong())
+            }
+
+            val metadataBytes = renderedMetadata.metadataText.toByteArray(Charsets.UTF_8)
             writeDeterministicEntry(zip, "$distInfoDir/METADATA", metadataBytes)
             recordRows += Triple("$distInfoDir/METADATA", sha256UrlSafe(metadataBytes), metadataBytes.size.toLong())
 
@@ -544,7 +548,7 @@ class FatWheelBundler : BundlerInterface {
             val record = renderRecord(recordRows.sortedBy { it.first }, "$distInfoDir/RECORD")
             val recordBytes = record.toByteArray(Charsets.UTF_8)
             writeDeterministicEntry(zip, "$distInfoDir/RECORD", recordBytes)
-            
+
             val manifestFile = File(artifactFile.parentFile, "$distInfoDir/RECORD")
             manifestFile.parentFile.mkdirs()
             manifestFile.writeBytes(recordBytes)
@@ -568,16 +572,6 @@ class FatWheelBundler : BundlerInterface {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
         return "sha256=" + Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
-
-    private fun renderMetadata(
-        packageName: String,
-        version: String,
-    ): String =
-        buildString {
-            appendLine("Metadata-Version: $METADATA_VERSION")
-            appendLine("Name: $packageName")
-            appendLine("Version: $version")
-        }
 
     private fun renderWheelFile(
         platformTag: String,

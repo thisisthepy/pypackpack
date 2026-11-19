@@ -485,17 +485,26 @@ Limitation
 ##### Wheel tags
 
 Status: implemented. `packpack/.../bundle/PythonTagsTest.kt` (the mapping), and the `single`, `fat` and
-`patch` bundler tests (`bundle_tagsFollowTheTargetInterpreterVersionAndBuild` and its siblings).
+`patch` bundler tests (`bundle_tagsFollowTheTargetInterpreterVersionAndBuild`,
+`bundle_derivesAbi3AndAbi3tWheelTagsFromPayloadExtensions`, and their siblings).
 
 - `BundleRequest.pythonVersion` names the target interpreter: `X.Y` or `X.Y.Z`, with a trailing `t` for
   the free-threaded build (`3.15`, `3.15.0`, `3.15t`, `3.15.0t`). Anything else fails the bundle.
-- The `single`, `fat` and `patch` bundlers write `cpXY`/`cpXY` for a GIL build and `cpXYt`/`cpXYt` for a
-  free-threaded one (`3.15t` gives `cp315-cp315t`) in the wheel file name, the `WHEEL` file's `Tag:`
-  line and the patch archive name. No version means the ecosystem interpreter, free-threaded 3.15
-  (`cp315t`). The old fixed `cp313` tag is gone.
-- The tags are the interpreter's own, not `abi3`/`abi3t`. Meson builds `abi3t` extensions by default, but a
-  package may opt out (`-Dpython.allow_limited_api=false`) and the compile slot does not target `abi3t` yet
-  (#19, #60), so a stable-ABI tag could be a false promise. `cp315t` loads both kinds.
+- When the payload contains native extension filenames (`.so` / `.pyd`), `PythonTags.forPayload` derives
+  the python and ABI tags from the extension suffixes:
+  - A PEP 803 free-threaded stable-ABI extension (`*.abi3t.so`, `*.abi3t-*.so`, `*.abi3t.pyd`) uses
+    `abi3.abi3t` as the ABI tag, with the python tag from `BundleRequest.pythonVersion` or `[project] requires-python`'s
+    `>=X.Y`/`==X.Y` floor (defaulting to `cp315`).
+  - A PEP 384 stable-ABI extension (`*.abi3.so`, `*.abi3-*.so`, `*.abi3.pyd`) uses `abi3` as the ABI tag,
+    with the python tag from `BundleRequest.pythonVersion` or `[project] requires-python`'s `>=X.Y`/`==X.Y`
+    floor (defaulting to `cp315`).
+  - A free-threaded version-specific extension (`*.cpython-<XY>t*.so`, `*.cp<XY>t-*.pyd`) derives
+    `cp<XY>-cp<XY>t` when `BundleRequest.pythonVersion` is omitted (and uses `BundleRequest.pythonVersion`
+    when explicitly given).
+- Otherwise (pure Python or non-`abi3`/`abi3t` non-free-threaded extensions), the `single`, `fat` and `patch`
+  bundlers write `cpXY`/`cpXY` for a GIL build and `cpXYt`/`cpXYt` for a free-threaded one (`3.15t` gives
+  `cp315-cp315t`) in the wheel file name, the `WHEEL` file's `Tag:` line and the patch archive name. No
+  version means the ecosystem interpreter, free-threaded 3.15 (`cp315t`). The old fixed `cp313` tag is gone.
 
 ##### Digest verification and placement
 
@@ -966,13 +975,14 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `packpack/.../bundle/single/SingleWheelBundlerTest.kt`, `packpack/.../bundle/fat/FatWheelBundlerTest.kt`,
     `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`).
 - `bytecode`: Converts the Python source to `.pyc` and bundles it.
-  - Status: partial. Implemented for bundle type `resource` only
-    (`packpack/.../bundle/resource/ResourceBundlerTest.kt`: `bundle_bytecodeLevelKeepsBothPyAndPycForDebugBuildType`,
+  - Status: partial. For `resource` (`packpack/.../bundle/resource/ResourceBundlerTest.kt`:
+    `bundle_bytecodeLevelKeepsBothPyAndPycForDebugBuildType`,
     `bundle_bytecodeLevelKeepsOnlyPycForReleaseBuildType`, `bundle_bytecodeLevelProducesARealLoadablePycFile`,
-    `bundle_bytecodeLevelFailsClearlyWithoutAVenvInterpreter`). Every `.py` in the payload is compiled
+    `bundle_bytecodeLevelFailsClearlyWithoutAVenvInterpreter`), every `.py` in the payload is compiled
     with `compileall -b` (sibling `foo.pyc`, not `__pycache__/`) by the interpreter in the nearest
     `<project>/.venv`; `debug` keeps the `.py` beside the `.pyc`, `release` keeps only the `.pyc`.
-    `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
+    `single`, `fat` and `patch` accept `bytecode` and package the compiled output under
+    `dist/<canonical target>/<build type>/bytecode`.
 - `native`: native code where it exists. The developer's modules become CPython extensions built
   from the C TypedPython generated for them (the compile slot, `docs/design/compile-slot.md`, #19, #20, #60).
   A developer module without C is allowed as an exception: it ships as bytecode, and the build
@@ -985,13 +995,14 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     (`packpack/.../compile/extension/ExtensionCompilerTest.kt`,
     `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Windows, iOS, wasm, Linux cross-arch and
     `x86_64-linux-android` are refused by `ExtensionCompilerInterface.checkSupport` with
-    `NoCompileBackendException`. `single`, `fat` and `patch` reject `native`
-    (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
+    `NoCompileBackendException`. `single`, `fat` and `patch` accept `native` and package the compiled
+    output under `dist/<canonical target>/<build type>/native`.
 - `mixed`: bytecode for the developer's code, native code for libraries. The developer's modules ship
   as bytecode and TypedPython's C is not applied; libraries ship their prebuilt native wheels.
   - Status: partial. Implemented for bundle type `resource`
     (`packpack/.../bundle/resource/ResourceBundlerTest.kt`: `bundle_mixedLevelCompilesDeveloperModulesToBytecodeAndKeepsLibraryExtensions`).
-    `single`, `fat` and `patch` reject it (`bundle_rejectsBuildLevelsThatAreNotImplementedYet` in each).
+    `single`, `fat` and `patch` accept `mixed` and package the compiled output under
+    `dist/<canonical target>/<build type>/mixed`.
 
 The two levels' meaning is the user's (2026-10-03), reading `toolchain`'s user-authored
 `(플러그인예시)build.gradle.kts`, which is specification (`AGENTS.md` rule 6):
@@ -1015,18 +1026,20 @@ There is no `pypackpack bundle` command.
   - Reads the package's own compiled output from `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`).
   - Vendors workspace-local dependencies by name (matched against `tool.uv.workspace.members` entries) from their own `dist/<canonical target>/<build type>/<build level>`.
   - Vendors third-party dependencies, declared or transitive, from `<package>/build/crossenv/<canonical target>`, where `pypackpack <package> sync --target <target>` installs them via `uv pip install --target --python-platform`. That `sync` must have been run first.
-  - Only the `instant` build level is currently supported.
+  - Renders full PEP 621 `[project]` metadata into `<dist-info>/METADATA` (`Metadata-Version: 2.4`) and copies declared `license-files` into `<dist-info>/licenses/`.
+  - Supports the `instant`, `bytecode`, `mixed` and `native` build levels.
 - `single`: Produces a wheel-like archive that includes only the current package.
   - Status: implemented. `packpack/.../bundle/single/SingleWheelBundlerTest.kt`.
   - Reads `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`) and keeps native extension modules.
   - The Android platform tag uses the declared `minSdk`, falling back to API 24, the level every Android extension is linked for (#118), and rejects a `minSdk` below PEP 738's floor (21). The iOS tag is `ios_13_0_*`, except the arm64 simulator, `ios_14_0_arm64_iphonesimulator`: Rust's `aarch64-apple-ios-sim` cannot target lower (#118). The WASM tag is `emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_wasm32` (PEP 783/CPython sysconfig spelling, `emscripten_4_0_19_wasm32`, #82). The same rules hold in the `fat` and `patch` bundlers.
-  - Only the `instant` build level is currently supported.
+  - Renders full PEP 621 `[project]` metadata into `<dist-info>/METADATA` (`Metadata-Version: 2.4`) and copies declared `license-files` into `<dist-info>/licenses/`.
+  - Supports the `instant`, `bytecode`, `mixed` and `native` build levels.
 - `patch`: Produces a patch archive containing only the changes relative to the existing primary bundle.
   - Status: implemented. `packpack/.../bundle/patch/WheelPatchBundlerTest.kt`.
   - Reads the baseline wheel from `<package>/build/packpack/single/<buildType>/<buildLevel>`.
   - Compares current package files (from `<package>/dist/<canonical target>/<build type>/<build level>`) against baseline entries by path and SHA-256.
   - Records added and modified files in full; removed files in a text manifest (`PATCH-MANIFEST`).
-  - Only the `instant` build level is currently supported.
+  - Supports the `instant`, `bytecode`, `mixed` and `native` build levels.
   - Patch *version tracking* (base version, patch number) is planned.
 - `resource`: Produces a resource layout consumable by python-multiplatform/toolchain.
   - Status: implemented. `packpack/.../bundle/resource/ResourceBundlerTest.kt`.

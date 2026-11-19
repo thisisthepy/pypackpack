@@ -250,17 +250,32 @@ class WheelPatchBundlerTest {
     }
 
     @Test
-    fun bundle_rejectsBuildLevelsThatAreNotImplementedYet() {
-        val pkg = packageDir()
-        writeDestdir(pkg, "core/__init__.py")
-        writeBaselineSingleBundle(pkg)
-        pkg.resolve("dist").deleteRecursively()
-        writeDestdir(pkg, "core/__init__.py")
+    fun bundle_acceptsAllBuildLevelsAndRejectsUnknownLevel() {
+        listOf("instant", "bytecode", "mixed", "native").forEach { level ->
+            val pkg = packageDir(name = "core-$level")
+            writeDestdir(pkg, "core/__init__.py", "v1\n".toByteArray(), level = level)
+            SingleWheelBundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level)).getOrThrow()
+            pkg.resolve("dist").deleteRecursively()
+            writeDestdir(pkg, "core/__init__.py", "v2\n".toByteArray(), level = level)
 
-        listOf("bytecode", "native", "mixed").forEach { level ->
-            val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level))
-            assertTrue(result.isFailure, "build level '$level' should not silently succeed")
+            val result =
+                bundler()
+                    .bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = level))
+                    .also { assertTrue(it.isSuccess, "level=$level: ${it.exceptionOrNull()?.stackTraceToString()}") }
+                    .getOrThrow()
+
+            assertEquals(
+                File(pkg, "build/packpack/patch/debug/$level").canonicalFile,
+                result.outputDir.canonicalFile,
+            )
+            assertTrue(result.artifactFile!!.isFile)
         }
+
+        val pkg = packageDir(name = "core-unknown")
+        writeDestdir(pkg, "core/__init__.py")
+        val rejected = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = "unknown"))
+        assertTrue(rejected.isFailure)
+        assertTrue(rejected.exceptionOrNull()?.message.orEmpty().contains("unknown"))
     }
 
     @Test
@@ -290,5 +305,19 @@ class WheelPatchBundlerTest {
 
         val ft = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos", overwrite = true)).getOrThrow()
         assertTrue(ft.artifactFile!!.name.contains("-cp315-cp315t-"), ft.artifactFile!!.name)
+    }
+
+    @Test
+    fun bundle_derivesAbi3tTagInPatchArchiveName() {
+        val pkg = packageDir()
+        writeDestdir(pkg, "core/__init__.py", "v1\n".toByteArray())
+        writeDestdir(pkg, "core/_fast.abi3t.so", "so1\n".toByteArray())
+        writeBaselineSingleBundle(pkg)
+        pkg.resolve("dist").deleteRecursively()
+        writeDestdir(pkg, "core/__init__.py", "v2\n".toByteArray())
+        writeDestdir(pkg, "core/_fast.abi3t.so", "so2\n".toByteArray())
+
+        val result = bundler().bundle(BundleRequest(packageDir = pkg, target = "macos")).getOrThrow()
+        assertTrue(result.artifactFile!!.name.contains("-cp315-abi3.abi3t-"), result.artifactFile!!.name)
     }
 }

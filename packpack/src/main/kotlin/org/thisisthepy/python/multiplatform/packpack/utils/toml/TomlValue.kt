@@ -98,8 +98,6 @@ sealed class TomlValue {
      * Inline table value in TOML.
      *
      * Example: `metadata = { key = "value", count = 42 }`
-     *
-     * Note: This is a placeholder for future extension. Not fully implemented yet.
      */
     data class InlineTable(
         val pairs: Map<kotlin.String, TomlValue>,

@@ -7,6 +7,8 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.PythonTags
+import org.thisisthepy.python.multiplatform.packpack.bundle.RenderedWheelMetadata
+import org.thisisthepy.python.multiplatform.packpack.bundle.WheelMetadata
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
@@ -112,12 +114,11 @@ import java.util.zip.ZipOutputStream
  * `Root-Is-Purelib` follows `setuptools`' own heuristic: `false` when the payload contains any
  * `.so`/`.pyd`/`.dylib`, `true` otherwise.
  *
- * `RECORD`/`WHEEL`/`METADATA` follow the Python Packaging Authority's "Binary distribution format" and
- * "Recording installed packages" specifications: `RECORD` rows are
+ * `RECORD`/`WHEEL`/`METADATA` follow the Python Packaging Authority's "Binary distribution format",
+ * "Recording installed packages", and PEP 621 / Core Metadata 2.4 specifications: `RECORD` rows are
  * `path,sha256=<urlsafe-base64-nopad-digest>,<size>`, the `RECORD` file's own row has empty hash/size
- * fields, and `METADATA` states `Metadata-Version: 2.1` with the minimum `Name`/`Version` fields (no
- * `Summary`, license, or dependency metadata -- `SPEC.md` documents dependencies for `single` as
- * excluded by definition, and nothing today feeds richer project metadata into `bundle`).
+ * fields, `METADATA` states `Metadata-Version: 2.4` with all declared PEP 621 `[project]` metadata,
+ * and declared `license-files` are copied under `<dist-info>/licenses/`.
  *
  * ### 4. Determinism
  *
@@ -126,16 +127,13 @@ import java.util.zip.ZipOutputStream
  * `SOURCE_DATE_EPOCH` is not otherwise pinned), mirroring `ResourceBundler`'s determinism goal so two
  * runs over identical input produce byte-identical archives.
  *
- * Only build level `instant` is implemented, for the same reason `ResourceBundler` restricts it: the
- * compile stage does not yet select between build levels (`docs/SPEC.md` -> "Build Level"), so `native`/
- * `bytecode`/`mixed` would either silently fall back to whatever Meson happened to produce or fail --
- * this class fails loudly instead.
+ * Build levels `instant`, `bytecode`, `mixed`, and `native` are supported, reading compiled output
+ * from `dist/<canonicalTarget>/<buildType>/<buildLevel>`.
  */
 class SingleWheelBundler : BundlerInterface {
     private companion object {
-        const val SUPPORTED_BUILD_LEVEL = "instant"
+        val SUPPORTED_BUILD_LEVELS = setOf("instant", "bytecode", "mixed", "native")
         const val SITE_PACKAGES_DIR_NAME = "site-packages"
-        const val METADATA_VERSION = "2.1"
         const val WHEEL_VERSION = "1.0"
         const val GENERATOR = "pypackpack 0.1.0"
 
@@ -160,9 +158,10 @@ class SingleWheelBundler : BundlerInterface {
             val pyproject = File(packageDir, "pyproject.toml")
             require(pyproject.isFile) { "pyproject.toml not found in ${packageDir.absolutePath}" }
 
-            require(request.buildLevel == SUPPORTED_BUILD_LEVEL) {
-                "Build level '${request.buildLevel}' is not implemented for bundle type " +
-                    "'${BundleType.SINGLE.id}'. Only '$SUPPORTED_BUILD_LEVEL' is available today."
+            require(request.buildLevel in SUPPORTED_BUILD_LEVELS) {
+                "Unsupported build level '${request.buildLevel}' for bundle type " +
+                    "'${BundleType.SINGLE.id}'. Supported build levels: " +
+                    "${SUPPORTED_BUILD_LEVELS.joinToString(", ") { "'$it'" }}."
             }
             require(request.buildType.isNotBlank()) { "Build type cannot be blank" }
 
@@ -179,6 +178,7 @@ class SingleWheelBundler : BundlerInterface {
             val editor = TomlEditor(pyproject.readText())
             val packageName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: packageDir.name
             val version = (editor.getValue("project", "version") as? TomlValue.String)?.value ?: "0.0.0"
+            val requiresPython = (editor.getValue("project", "requires-python") as? TomlValue.String)?.value
 
             val destdir = File(packageDir, "dist/${canonicalTarget}/${request.buildType}/${request.buildLevel}")
             require(destdir.isDirectory) {
@@ -193,10 +193,11 @@ class SingleWheelBundler : BundlerInterface {
 
             val escapedName = packageName.wheelEscaped()
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
-            val tags = PythonTags.of(request.pythonVersion)
+            val tags = PythonTags.forPayload(request.pythonVersion, payload.keys, requiresPython)
             val distInfoDir = "$escapedName-$version.dist-info"
             val wheelFileName = "$escapedName-$version-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl"
             val rootIsPurelib = payload.keys.none { it.substringAfterLast('.', "") in NATIVE_EXTENSION_EXTENSIONS }
+            val renderedMetadata = WheelMetadata.render(packageDir, editor, packageName, version, distInfoDir)
 
             val outputDir = resolveOutputDir(request, packageDir)
             prepareOutputDir(outputDir, request.overwrite)
@@ -206,8 +207,7 @@ class SingleWheelBundler : BundlerInterface {
                 artifactFile = artifactFile,
                 payload = payload,
                 distInfoDir = distInfoDir,
-                packageName = packageName,
-                version = version,
+                renderedMetadata = renderedMetadata,
                 platformTag = platformTag,
                 tags = tags,
                 rootIsPurelib = rootIsPurelib,
@@ -379,13 +379,11 @@ class SingleWheelBundler : BundlerInterface {
         artifactFile: File,
         payload: Map<String, File>,
         distInfoDir: String,
-        packageName: String,
-        version: String,
+        renderedMetadata: RenderedWheelMetadata,
         platformTag: String,
         tags: PythonTags,
         rootIsPurelib: Boolean,
     ) {
-        val metadata = renderMetadata(packageName, version)
         val wheelFile = renderWheelFile(platformTag, tags, rootIsPurelib)
 
         val recordRows = mutableListOf<Triple<String, String, Long>>()
@@ -397,7 +395,13 @@ class SingleWheelBundler : BundlerInterface {
                 recordRows += Triple(relativePath, sha256UrlSafe(bytes), bytes.size.toLong())
             }
 
-            val metadataBytes = metadata.toByteArray(Charsets.UTF_8)
+            renderedMetadata.licenseFiles.toSortedMap().forEach { (entryPath, source) ->
+                val bytes = source.readBytes()
+                writeDeterministicEntry(zip, entryPath, bytes)
+                recordRows += Triple(entryPath, sha256UrlSafe(bytes), bytes.size.toLong())
+            }
+
+            val metadataBytes = renderedMetadata.metadataText.toByteArray(Charsets.UTF_8)
             writeDeterministicEntry(zip, "$distInfoDir/METADATA", metadataBytes)
             recordRows += Triple("$distInfoDir/METADATA", sha256UrlSafe(metadataBytes), metadataBytes.size.toLong())
 
@@ -408,7 +412,7 @@ class SingleWheelBundler : BundlerInterface {
             val record = renderRecord(recordRows.sortedBy { it.first }, "$distInfoDir/RECORD")
             val recordBytes = record.toByteArray(Charsets.UTF_8)
             writeDeterministicEntry(zip, "$distInfoDir/RECORD", recordBytes)
-            
+
             val manifestFile = File(artifactFile.parentFile, "$distInfoDir/RECORD")
             manifestFile.parentFile.mkdirs()
             manifestFile.writeBytes(recordBytes)
@@ -432,16 +436,6 @@ class SingleWheelBundler : BundlerInterface {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
         return "sha256=" + Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
-
-    private fun renderMetadata(
-        packageName: String,
-        version: String,
-    ): String =
-        buildString {
-            appendLine("Metadata-Version: $METADATA_VERSION")
-            appendLine("Name: $packageName")
-            appendLine("Version: $version")
-        }
 
     private fun renderWheelFile(
         platformTag: String,
