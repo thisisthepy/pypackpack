@@ -28,7 +28,7 @@
 
 <section>
 <h2 id="layout"><span data-lang="en">Layout</span><span data-lang="ko">구조</span></h2>
-<p data-lang="en">A project is a uv workspace. Each package is a workspace member and, under toolchain, one Gradle module.</p><p data-lang="ko">프로젝트는 uv 워크스페이스입니다. 패키지마다 워크스페이스 멤버이며, toolchain 에서는 Gradle 모듈 하나입니다.</p>
+<p data-lang="en"><code>ppp</code> works in both multi-package uv workspaces (<code>[tool.uv.workspace]</code>, where each package is a workspace member and, under toolchain, one Gradle module) and single-package repositories without <code>[tool.uv.workspace]</code>. In a single-package repository, the root <code>pyproject.toml</code> defines <code>[project]</code> directly, and commands that take <code>&lt;package&gt;</code> match <code>[project].name</code>, the root directory name, or <code>.</code>.</p><p data-lang="ko"><code>ppp</code> 는 여러 패키지를 묶은 uv 워크스페이스(<code>[tool.uv.workspace]</code>, 패키지마다 워크스페이스 멤버이자 toolchain 의 Gradle 모듈 하나)와 <code>[tool.uv.workspace]</code> 가 없는 단일 패키지 저장소 모두에서 동작합니다. 단일 패키지 저장소에서는 루트 <code>pyproject.toml</code> 이 <code>[project]</code> 를 직접 정의하며, <code>&lt;package&gt;</code> 를 받는 명령은 <code>[project].name</code>, 루트 디렉터리 이름, 또는 <code>.</code> 을 받아들입니다.</p>
 <pre><code class="language-text">&lt;project&gt;/
 ├── .venv/                 # dev environment for building the project
 ├── pyproject.toml, uv.lock
