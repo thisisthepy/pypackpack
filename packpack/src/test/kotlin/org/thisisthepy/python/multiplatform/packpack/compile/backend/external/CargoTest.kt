@@ -129,7 +129,16 @@ class CargoTest {
     private fun available(
         cargo: Boolean = true,
         uv: Boolean = true,
-        rustTargets: Set<String> = setOf("aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"),
+        rustTargets: Set<String> =
+            setOf(
+                "aarch64-linux-android",
+                "x86_64-linux-android",
+                "aarch64-apple-ios",
+                "aarch64-apple-ios-sim",
+                "x86_64-apple-ios",
+                "x86_64-unknown-linux-gnu",
+                "aarch64-unknown-linux-gnu",
+            ),
         ndk: File? = null,
         xcode: Boolean = true,
     ) = CargoEnvironment(cargo = cargo, uv = uv, rustTargets = rustTargets, ndk = ndk, xcode = xcode)
@@ -245,7 +254,7 @@ class CargoTest {
         val noUv = Cargo(run = maturin, environment = available(uv = false)).build(pkg, null, "debug", destdir).exceptionOrNull()?.message.orEmpty()
         assertTrue("uv" in noUv, noUv)
 
-        val windows = if (host == "x86_64-pc-windows-msvc") "aarch64-unknown-linux-gnu" else "x86_64-pc-windows-msvc"
+        val windows = if (host == "x86_64-pc-windows-msvc") "aarch64-pc-windows-msvc" else "x86_64-pc-windows-msvc"
         val other = Cargo(run = maturin, environment = available()).build(pkg, windows, "debug", destdir).exceptionOrNull()?.message.orEmpty()
         assertTrue(windows in other && "not yet" in other, other)
 
@@ -647,5 +656,90 @@ class CargoTest {
         val iosCpConfig = File(iosCpEnvs.single().getValue("PYO3_CONFIG_FILE")).readText().lines()
         assertTrue("version=3.15" in iosCpConfig, "$iosCpConfig")
         assertFalse(iosCpConfig.any { it.startsWith("target_abi=") }, "$iosCpConfig")
+    }
+
+    // Linux cross-build via maturin --zig and ziglang (#138)
+
+    @Test
+    fun `linux cross-build uses maturin --zig with ziglang and manylinux_2_17 compatibility`() {
+        pyproject()
+        write("src/main/core/__init__.py")
+        crate("src/main/core/_fast")
+        sitePackages.mkdirs()
+
+        val target = if (host == "aarch64-unknown-linux-gnu") "x86_64-manylinux_2_17" else "aarch64-unknown-linux-gnu"
+        val rustTriple = if (host == "aarch64-unknown-linux-gnu") "x86_64-unknown-linux-gnu" else "aarch64-unknown-linux-gnu"
+        val installDirName = if (host == "aarch64-unknown-linux-gnu") "linux_x86_64" else "linux_arm64"
+        val lib = File(pkg, "$installDirName/lib").apply { mkdirs() }
+        val calls = mutableListOf<List<String>>()
+        val envs = mutableListOf<Map<String, String>>()
+
+        val placed = Cargo(run = fakeMaturin("_fast/_fast.abi3t.so", calls = calls, envs = envs), environment = available())
+            .build(pkg, target, "release", destdir).getOrThrow()
+
+        val cmd = calls.single()
+        assertEquals(listOf("--with", "ziglang"), cmd.subList(cmd.indexOf("--with"), cmd.indexOf("--with") + 2))
+        assertTrue("--zig" in cmd, "$cmd")
+        assertEquals(
+            listOf("--compatibility", "manylinux_2_17"),
+            cmd.subList(cmd.indexOf("--compatibility"), cmd.indexOf("--compatibility") + 2),
+        )
+        assertEquals(
+            listOf("--target", rustTriple),
+            cmd.subList(cmd.indexOf("--target"), cmd.indexOf("--target") + 2),
+        )
+        assertFalse("--interpreter" in cmd, "$cmd")
+        val env = envs.single()
+        assertEquals(lib.path, env["PYO3_CROSS_LIB_DIR"])
+        assertEquals("3.15", env["PYO3_CROSS_PYTHON_VERSION"])
+        assertEquals(listOf(File(sitePackages, "core/_fast.abi3t.so")), placed)
+
+        // abi3-py313 with manylinux_2_28 maps PYO3_CROSS_PYTHON_VERSION to 3.13 and compatibility to manylinux_2_28.
+        pyproject("\n[tool.ppp.rust]\nabi = \"abi3-py313\"\n")
+        val x86Lib = File(pkg, "linux_x86_64/lib").apply { mkdirs() }
+        val abi3Calls = mutableListOf<List<String>>()
+        val abi3Envs = mutableListOf<Map<String, String>>()
+        val abi3Placed = Cargo(run = fakeMaturin("_fast/_fast.abi3.so", calls = abi3Calls, envs = abi3Envs), environment = available())
+            .build(pkg, "x86_64-manylinux_2_28", "debug", destdir).getOrThrow()
+
+        val abi3Cmd = abi3Calls.single()
+        assertEquals(
+            listOf("--compatibility", "manylinux_2_28"),
+            abi3Cmd.subList(abi3Cmd.indexOf("--compatibility"), abi3Cmd.indexOf("--compatibility") + 2),
+        )
+        assertEquals(
+            listOf("--target", "x86_64-unknown-linux-gnu"),
+            abi3Cmd.subList(abi3Cmd.indexOf("--target"), abi3Cmd.indexOf("--target") + 2),
+        )
+        assertEquals(x86Lib.path, abi3Envs.single()["PYO3_CROSS_LIB_DIR"])
+        assertEquals("3.13", abi3Envs.single()["PYO3_CROSS_PYTHON_VERSION"])
+        assertEquals(listOf(File(sitePackages, "core/_fast.abi3.so")), abi3Placed)
+    }
+
+    @Test
+    fun `linux cross-build without its Rust target or target Python is refused before maturin runs`() {
+        pyproject()
+        write("src/main/core/__init__.py")
+        crate("src/main/core/_fast")
+        sitePackages.mkdirs()
+
+        val target = if (host == "aarch64-unknown-linux-gnu") "x86_64-manylinux_2_17" else "aarch64-unknown-linux-gnu"
+        val rustTriple = if (host == "aarch64-unknown-linux-gnu") "x86_64-unknown-linux-gnu" else "aarch64-unknown-linux-gnu"
+        val installDirName = if (host == "aarch64-unknown-linux-gnu") "linux_x86_64" else "linux_arm64"
+        File(pkg, "$installDirName/lib").mkdirs()
+
+        val calls = mutableListOf<List<String>>()
+        val maturin = fakeMaturin("_fast/_fast.abi3t.so", calls = calls)
+
+        val noTarget = Cargo(run = maturin, environment = available(rustTargets = emptySet()))
+            .build(pkg, target, "debug", destdir).exceptionOrNull()?.message.orEmpty()
+        assertTrue("rustup target add $rustTriple" in noTarget, noTarget)
+
+        File(pkg, installDirName).deleteRecursively()
+        val noPython = Cargo(run = maturin, environment = available())
+            .build(pkg, target, "debug", destdir).exceptionOrNull()?.message.orEmpty()
+        assertTrue(installDirName in noPython && "python install 3.15t $rustTriple" in noPython, noPython)
+
+        assertTrue(calls.isEmpty(), "$calls")
     }
 }
