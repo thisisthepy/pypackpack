@@ -6,6 +6,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendI
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.readProjectName
 import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
@@ -289,7 +290,7 @@ class CrossEnv {
             val normalizedTargets = Platforms.normalizeTargetsOrThrow(targets)
             addTargetsToPackage(packagePyproject, normalizedTargets)
             val workspaceMembers = readWorkspaceMembers(packageDir)
-            if (workspaceMembers.isEmpty() && packageDir != workspaceRoot) {
+            if (workspaceMembers.isEmpty() && (packageDir.canonicalFile != workspaceRoot.canonicalFile || readWorkspaceMembers(workspaceRoot).isEmpty())) {
                 createTargetSourceFolders(packageDir, normalizedTargets)
             }
             workspaceMembers.forEach { member ->
@@ -405,11 +406,34 @@ class CrossEnv {
 
         val relativePath =
             if (matchWorkspaceMembers && '/' !in normalizedInput) {
+                val members = readWorkspaceMembers(resolvedWorkspaceRoot)
+                if (members.isEmpty()) {
+                    val rootDir = resolvedWorkspaceRoot.canonicalFile
+                    val rootProjectName = readProjectName(rootDir)
+                    if (
+                        normalizedInput == "." ||
+                        normalizedInput == rootDir.name ||
+                        (rootProjectName != null && normalizedInput == rootProjectName)
+                    ) {
+                        val canonicalName = rootProjectName?.takeIf { it.isNotBlank() } ?: rootDir.name
+                        require(canonicalName.isNotBlank()) { "Package name cannot be blank" }
+                        return PackageSpec(
+                            input = trimmed,
+                            name = canonicalName,
+                            relativePath = ".",
+                            directory = rootDir,
+                            workspaceRoot = resolvedWorkspaceRoot,
+                        )
+                    }
+                }
+
                 val memberMatch =
-                    readWorkspaceMembers(resolvedWorkspaceRoot)
+                    members
                         .filter { member ->
                             val normalizedMember = member.replace('\\', '/').trimStart('/')
-                            normalizedMember == normalizedInput || File(normalizedMember).name == normalizedInput
+                            normalizedMember == normalizedInput ||
+                                File(normalizedMember).name == normalizedInput ||
+                                readProjectName(File(resolvedWorkspaceRoot, normalizedMember)) == normalizedInput
                         }.distinct()
 
                 when {

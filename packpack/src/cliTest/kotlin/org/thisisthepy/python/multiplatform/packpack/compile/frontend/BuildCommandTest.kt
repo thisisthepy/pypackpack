@@ -145,4 +145,41 @@ class BuildCommandTest {
         assertEquals(0, result.statusCode, result.output)
         assertTrue("source" in result.output && "resource" in result.output, result.output)
     }
+
+    @Test
+    fun `single-package project without uv workspace resolves by project name`() {
+        val singleDir = Files.createTempDirectory("ppp-single-build-").toFile().canonicalFile
+        try {
+            File(singleDir, "pyproject.toml").writeText("[project]\nname = \"torchnative\"\nversion = \"0.1.0\"\n")
+            File(singleDir, "src/main/torchnative").mkdirs()
+            File(singleDir, "src/main/torchnative/__init__.py").writeText("VALUE = 1\n")
+
+            val singleCommand = BuildCommand(
+                compile = { name, args ->
+                    compiled += name to args
+                    true
+                },
+                bundlerFor = { type ->
+                    object : BundlerInterface {
+                        override fun bundle(request: BundleRequest): Result<BundleResult> {
+                            bundled += type to request
+                            val artifact = File(request.packageDir, "build/fake.whl")
+                            return Result.success(BundleResult(type, artifact.parentFile, artifact, 1, artifactFile = artifact))
+                        }
+                    }
+                },
+                workspaceDir = singleDir,
+            )
+
+            val result = singleCommand.test("torchnative source single --target macos")
+
+            assertEquals(0, result.statusCode, result.output)
+            assertEquals("torchnative", compiled.single().first)
+            val (type, request) = bundled.single()
+            assertEquals(BundleType.SINGLE, type)
+            assertEquals(singleDir, request.packageDir.canonicalFile)
+        } finally {
+            singleDir.deleteRecursively()
+        }
+    }
 }

@@ -698,7 +698,7 @@ pypackpack mypackage add numpy --target windows linux
 
 - The dynamic package command `pypackpack <package> add/remove/sync/tree` is supported.
 - `pypackpack package sync <name> [--target ...]` and `pypackpack package tree <name> [--target ...]` invoke the same logic as an explicit alternative to the dynamic `sync`/`tree` forms.
-- The target package is resolved among workspace members by name or relative path.
+- The target package is resolved among workspace members by name (member directory name or `[project].name`) or relative path. In a single-package repository without `[tool.uv.workspace]`, `<package name>` resolves to the root project when given its `[project].name`, its root directory name, or `.`.
 - `add` computes a marker for each target (`platform_system == '<system>' and platform_machine == '<machine>'`) and repeatedly calls `uv add --package <name> --marker <marker>`.
 - `<machine>` is the value uv evaluates for that target under `--python-platform`: `arm64` on macOS and iOS, `AMD64`, `ARM64` and `x86` on Windows, the triple's own `aarch64`/`x86_64`/`riscv64` on Linux and Android, `wasm32` for Emscripten. Status: implemented. `packpack/.../dependency/middleware/MarkerPolicyUvTest.kt` resolves each canonical target's marker with `uv pip compile` against a local wheel and requires it to select exactly its own target.
 - Minimum uv version for `x86_64-pc-windows-msvc` target resolution is `0.13.6` (astral-sh/uv#22935 changed `--python-platform x86_64-pc-windows-msvc` from `platform_machine == 'x86_64'` to `'AMD64'`; #107, #109). When `add`, `sync`, or `tree` includes `x86_64-pc-windows-msvc` and the detected uv version is older than `0.13.6`, the command fails before running uv (`MarkerPolicy.requireUvForTargets`), rather than silently skipping `AMD64`-marked dependencies (`MarkerPolicyTest`, `CrossEnvTest.syncDependenciesRefusesUvOlderThan0136ForX8664Windows`).
@@ -790,6 +790,7 @@ pypackpack build <package name> [--type <build type>] [--level <build level>] [-
 The first two are the maintainer's spec sheet's (`spec.md`, 686b1ad): `build` takes the bundle as an
 argument, and there is no `bundle` command (#81). The third, with no bundle kind, only compiles.
 
+- `<package name>` is resolved among workspace members by path, directory name, or `[project].name`. In a single-package repository without `[tool.uv.workspace]`, `<package name>` resolves to the root project when given its `[project].name`, its root directory name, or `.`.
 - `source [<bundle type>]` compiles the package (below) for the canonical target triple, then bundles it
   with `BundlerInterface.create(<bundle type>)`: `binary` (the default; it refuses, see *Bundle Type*),
   `fat`, `single` or `patch`. A failed compile stops before the bundle.
