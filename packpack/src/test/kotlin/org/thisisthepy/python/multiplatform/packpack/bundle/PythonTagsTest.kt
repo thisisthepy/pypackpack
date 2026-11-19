@@ -96,4 +96,20 @@ class PythonTagsTest {
             ),
         )
     }
+
+    @Test
+    fun untaggedWindowsPydUsesConfiguredRustAbi() {
+        assertEquals(
+            PythonTags("cp313", "abi3"),
+            PythonTags.forPayload(null, listOf("torch/__init__.py", "torch/_C.pyd"), ">=3.13", "abi3-py313"),
+        )
+        assertEquals(
+            PythonTags("cp315", "abi3.abi3t"),
+            PythonTags.forPayload(null, listOf("core/_fast.pyd"), null, "abi3t-py315"),
+        )
+        assertEquals(
+            PythonTags("cp315", "cp315t"),
+            PythonTags.forPayload(null, listOf("torch/_C.pyd"), ">=3.13", null),
+        )
+    }
 }

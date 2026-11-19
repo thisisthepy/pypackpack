@@ -20,6 +20,8 @@ data class PythonTags(
         private val ABI3_EXT = Regex("""\.abi3(?:-[^.]+)?\.(?:so|pyd)$""")
         private val FREE_THREADED_EXT = Regex("""\.(?:cpython-|cp)(\d+)t(?:-[^.]+)?\.(?:so|pyd)$""")
         private val REQUIRES_PYTHON_FLOOR = Regex("""(?:>=|==)\s*(\d+)\.(\d+)""")
+        private val RUST_ABI3T = Regex("""^abi3t(?:-py3(\d+))?$""")
+        private val RUST_ABI3 = Regex("""^abi3-py3(\d+)$""")
 
         /**
          * [pythonVersion] is `X.Y`, `X.Y.Z`, optionally followed by `t` for the free-threaded build
@@ -42,11 +44,15 @@ data class PythonTags(
          * Derives wheel python and ABI tags from the payload's native extension filenames when
          * present, falling back to [of] when no stable-ABI (`abi3`/`abi3t`) or free-threaded
          * versioned extension (`cpython-<XY>t` / `cp<XY>t`) is found.
+         *
+         * On Windows, stable-ABI extensions are named `<name>.pyd` with no `.abi3` infix, so
+         * [configuredRustAbi] (from `[tool.ppp.rust]`) disambiguates them (#147).
          */
         fun forPayload(
             pythonVersion: String?,
             payloadPaths: Iterable<String>,
             requiresPython: String? = null,
+            configuredRustAbi: String? = null,
         ): PythonTags {
             val extensionNames =
                 payloadPaths
@@ -80,6 +86,29 @@ data class PythonTags(
                 return PythonTags(pyTag, "abi3")
             }
 
+            // Windows abi3/abi3t extensions are named `<name>.pyd` without an `.abi3` infix (#147).
+            if (extensionNames.any { it.endsWith(".pyd") } && !configuredRustAbi.isNullOrBlank()) {
+                val abiText = configuredRustAbi.trim()
+                RUST_ABI3T.matchEntire(abiText)?.let { m ->
+                    val pyTag =
+                        if (pythonVersion != null) {
+                            of(pythonVersion).pythonTag
+                        } else {
+                            "cp3${m.groupValues[1].ifEmpty { "15" }}"
+                        }
+                    return PythonTags(pyTag, "abi3.abi3t")
+                }
+                RUST_ABI3.matchEntire(abiText)?.let { m ->
+                    val pyTag =
+                        if (pythonVersion != null) {
+                            of(pythonVersion).pythonTag
+                        } else {
+                            "cp3${m.groupValues[1]}"
+                        }
+                    return PythonTags(pyTag, "abi3")
+                }
+            }
+
             return of(pythonVersion)
         }
 
@@ -89,5 +118,18 @@ data class PythonTags(
             val (major, minor) = match.destructured
             return "cp$major$minor"
         }
+
+        /** Reads the configured `[tool.ppp.rust]` `abi` (package-level or first crate inline table), if any. */
+        internal fun configuredRustAbi(editor: org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor): String? =
+            (editor.getValue("tool.ppp.rust", "abi") as? org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue.String)?.value
+                ?: editor.getTableKeys("tool.ppp.rust")
+                    .asSequence()
+                    .mapNotNull { key ->
+                        (editor.getValue("tool.ppp.rust", key) as? org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue.InlineTable)
+                            ?.pairs
+                            ?.get("abi")
+                            ?.let { it as? org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue.String }
+                            ?.value
+                    }.firstOrNull()
     }
 }

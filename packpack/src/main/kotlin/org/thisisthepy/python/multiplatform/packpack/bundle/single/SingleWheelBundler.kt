@@ -193,7 +193,7 @@ class SingleWheelBundler : BundlerInterface {
 
             val escapedName = packageName.wheelEscaped()
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
-            val tags = PythonTags.forPayload(request.pythonVersion, payload.keys, requiresPython)
+            val tags = PythonTags.forPayload(request.pythonVersion, payload.keys, requiresPython, PythonTags.configuredRustAbi(editor))
             val distInfoDir = "$escapedName-$version.dist-info"
             val wheelFileName = "$escapedName-$version-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl"
             val rootIsPurelib = payload.keys.none { it.substringAfterLast('.', "") in NATIVE_EXTENSION_EXTENSIONS }
