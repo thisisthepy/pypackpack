@@ -337,7 +337,7 @@ find nothing. §10 Q3.
 | Situation | Reason |
 |---|---|
 | iOS (`arm64-apple-ios*`, `x86_64-apple-ios-simulator`) | the Xcode backend is a placeholder |
-| `wasm32-pyodide2024` | no Emscripten backend |
+| `wasm32-emscripten` | no Emscripten backend |
 | Windows | out of scope for 2026-11; planned later through `clang-cl` and `python315t.lib` |
 | Android before the NDK backend lands, or `x86_64-linux-android` | no NDK backend / only arm64 is in scope |
 | Android (or, later, Windows) with `libDir` or `libraryName` missing, or the named library absent from `libDir` | "target '…' links libpython: pass libDir and libraryName from python-multiplatform's libDir(target) provider" |

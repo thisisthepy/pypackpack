@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -116,6 +117,65 @@ class UVBackendTest {
                 "windows",
                 "--python-version",
                 "3.13",
+            ),
+            backend.lastCommand,
+        )
+    }
+
+    @Test
+    fun installDependenciesToTarget_wasmEmscriptenTargetMapsToUvPythonPlatform() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installDependenciesToTarget(
+                    targetDir = "build/crossenv/wasm32-emscripten",
+                    pythonPlatform = "wasm32-emscripten",
+                    workingDir = File("/tmp/project/core"),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf(
+                "pip",
+                "install",
+                "-r",
+                "pyproject.toml",
+                "--target",
+                "build/crossenv/wasm32-emscripten",
+                "--python-platform",
+                Platforms.uvPythonPlatform("wasm32-emscripten"),
+            ),
+            backend.lastCommand,
+        )
+        assertEquals("wasm32-pyodide2024", Platforms.uvPythonPlatform("wasm32-emscripten"))
+    }
+
+    @Test
+    fun installDependenciesToTarget_wasmEmscriptenInExtraArgsMapsToUvPythonPlatform() {
+        val backend = RecordingUVBackend()
+
+        val result =
+            runBlocking {
+                backend.installDependenciesToTarget(
+                    targetDir = "build/crossenv/wasm32-emscripten",
+                    pythonPlatform = "wasm32-emscripten",
+                    extraArgs = mapOf("python-platform" to "wasm32-emscripten"),
+                )
+            }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            listOf(
+                "pip",
+                "install",
+                "-r",
+                "pyproject.toml",
+                "--target",
+                "build/crossenv/wasm32-emscripten",
+                "--python-platform",
+                "wasm32-pyodide2024",
             ),
             backend.lastCommand,
         )

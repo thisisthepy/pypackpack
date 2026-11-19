@@ -82,6 +82,25 @@ class CargoTest {
     }
 
     @Test
+    fun `convention crates under python and nested package python roots are discovered`() {
+        pyproject()
+        write("python/core/__init__.py")
+        crate("python/core/_fast")
+
+        assertEquals(listOf("core._fast" to File(pkg, "python/core/_fast")), RustCrates.discover(pkg).map { it.module to it.dir })
+
+        File(pkg, "python").deleteRecursively()
+        pyproject()
+        write("core/python/core/__init__.py")
+        crate("core/python/core/_fast")
+
+        assertEquals(
+            listOf("core._fast" to File(pkg, "core/python/core/_fast")),
+            RustCrates.discover(pkg).map { it.module to it.dir },
+        )
+    }
+
+    @Test
     fun `a table entry that is not a crate, leaves the package, or repeats a convention module is refused`() {
         pyproject("\n[tool.ppp.rust]\n\"x._y\" = \"rust/missing\"\n")
         assertTrue("rust/missing" in runCatching { RustCrates.discover(pkg) }.exceptionOrNull()?.message.orEmpty())

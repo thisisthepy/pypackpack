@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.external.UV
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 
 /** UV implementation of backend interface */
@@ -167,7 +168,7 @@ open class UVBackend(
             }
             if (options["python-platform"].isNullOrBlank()) {
                 command.add("--python-platform")
-                command.add(pythonPlatform)
+                command.add(Platforms.uvPythonPlatform(pythonPlatform))
             }
             appendOptions(command, options)
 
@@ -285,7 +286,8 @@ open class UVBackend(
         for ((key, value) in options) {
             command.add("--$key")
             if (value.isNotEmpty()) {
-                command.add(value)
+                val resolvedValue = if (key == "python-platform") Platforms.uvPythonPlatform(value) else value
+                command.add(resolvedValue)
             }
         }
     }

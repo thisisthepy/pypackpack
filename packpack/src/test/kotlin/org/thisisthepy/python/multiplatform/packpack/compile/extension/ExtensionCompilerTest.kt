@@ -124,7 +124,7 @@ class ExtensionCompilerTest {
         assertTrue(compiler.checkSupport("x86_64-apple-darwin", abi315, headers).isSuccess)
 
         // Windows, iOS, wasm, x86_64 Android are refused with NoCompileBackendException
-        for (unsupported in listOf("x86_64-pc-windows-msvc", "arm64-apple-ios", "wasm32-pyodide2024", "x86_64-linux-android")) {
+        for (unsupported in listOf("x86_64-pc-windows-msvc", "arm64-apple-ios", "wasm32-emscripten", "x86_64-linux-android")) {
             val ex = compiler.checkSupport(unsupported, abi315, headers).exceptionOrNull() as? NoCompileBackendException
             assertNotNull(ex, "expected NoCompileBackendException for $unsupported")
             assertEquals(unsupported, ex.target)

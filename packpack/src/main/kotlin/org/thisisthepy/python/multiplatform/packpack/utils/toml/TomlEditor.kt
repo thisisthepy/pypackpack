@@ -115,6 +115,51 @@ class TomlEditor(
     }
 
     /**
+     * Returns the keys defined directly inside [tablePath], in declaration order.
+     * Returns an empty list if the table does not exist.
+     */
+    fun getTableKeys(tablePath: String): List<String> {
+        val tableInfo = findTable(tablePath) ?: return emptyList()
+        val keyPattern = Regex("""^(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))\s*=(.*)$""")
+        val keys = mutableListOf<String>()
+        var i = tableInfo.startLine + 1
+        while (i <= tableInfo.endLine) {
+            val withoutComment = stripInlineComment(lines[i]).trim()
+            val match = keyPattern.find(withoutComment)
+            if (match != null) {
+                val g = match.groupValues
+                val key = g[1].ifEmpty { g[2].ifEmpty { g[3] } }
+                keys += key
+                if (g[4].trimStart().startsWith("[")) {
+                    i = findArrayEndLine(i, tableInfo.endLine) ?: i
+                }
+            }
+            i++
+        }
+        return keys
+    }
+
+    /**
+     * Returns an array of inline tables (such as `authors = [{ name = "...", email = "..." }]`)
+     * as a list of string-valued maps, preserving entry and key order.
+     */
+    fun getInlineTableArray(
+        tablePath: String,
+        key: String,
+    ): List<Map<String, String>> =
+        getArray(tablePath, key).mapNotNull { item ->
+            val trimmed = item.trim()
+            if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return@mapNotNull null
+            val table = parseInlineTable(trimmed)
+            table.pairs.mapValues { (_, v) ->
+                when (v) {
+                    is TomlValue.String -> v.value
+                    else -> v.toString()
+                }
+            }
+        }
+
+    /**
      * Set a value in a table.
      *
      * @param tablePath Dotted table path (e.g., "database.config", "server.settings")
@@ -364,11 +409,12 @@ class TomlEditor(
         tableInfo: TableInfo,
         key: String,
     ): KeyInfo? {
-        val keyRegex = """^(\s*)${Regex.escape(key)}\s*=""".toRegex()
+        val keyRegex = """^(\s*)(?:"${Regex.escape(key)}"|'${Regex.escape(key)}'|${Regex.escape(key)})\s*=""".toRegex()
+        val anyKeyPattern = Regex("""^(?:"[^"]+"|'[^']+'|[A-Za-z0-9_.-]+)\s*=(.*)$""")
 
-        var keyComments = mutableListOf<String>()
-
-        for (i in (tableInfo.startLine + 1)..tableInfo.endLine) {
+        val keyComments = mutableListOf<String>()
+        var i = tableInfo.startLine + 1
+        while (i <= tableInfo.endLine) {
             val line = lines[i]
             val trimmed = line.trim()
 
@@ -379,10 +425,11 @@ class TomlEditor(
             // Check if this is our key
             else if (keyRegex.find(line) != null) {
                 val inlineComment = extractInlineComment(line)
+                val rhs = stripInlineComment(line).substringAfter('=', "").trimStart()
 
                 // Determine endLine based on value type
                 val endLine =
-                    if (line.contains("= [")) {
+                    if (rhs.startsWith("[")) {
                         // Potential array - find closing bracket
                         findArrayEndLine(i, tableInfo.endLine) ?: i
                     } else {
@@ -397,9 +444,14 @@ class TomlEditor(
                     inlineComment = inlineComment,
                 )
             }
-            // Reset comment collection if we hit another key
+            // Reset comment collection if we hit another key (and skip past any multi-line array)
             else if (trimmed.contains("=")) {
                 keyComments.clear()
+                val withoutComment = stripInlineComment(line).trim()
+                val otherMatch = anyKeyPattern.find(withoutComment)
+                if (otherMatch != null && otherMatch.groupValues[1].trimStart().startsWith("[")) {
+                    i = findArrayEndLine(i, tableInfo.endLine) ?: i
+                }
             }
             // Keep collecting comments if it's a blank line
             else if (trimmed.isEmpty()) {
@@ -409,6 +461,7 @@ class TomlEditor(
             else {
                 keyComments.clear()
             }
+            i++
         }
 
         return null
@@ -422,8 +475,8 @@ class TomlEditor(
         startLine: Int,
         endLine: Int,
     ): TomlValue? {
-        val firstLine = lines[startLine]
-        val keyRegex = """${Regex.escape(key)}\s*=\s*(.+?)(?:\s*#.*)?$""".toRegex()
+        val firstLine = stripInlineComment(lines[startLine])
+        val keyRegex = """^\s*(?:"${Regex.escape(key)}"|'${Regex.escape(key)}'|${Regex.escape(key)})\s*=\s*(.+)$""".toRegex()
         val match = keyRegex.find(firstLine) ?: return null
         val valueStr = match.groupValues[1].trim()
 
@@ -435,22 +488,35 @@ class TomlEditor(
                 TomlValue.Array(items, format)
             }
 
-            // String: "value"
-            valueStr.startsWith("\"") && valueStr.endsWith("\"") -> {
-                TomlValue.String(valueStr.trim('\"'))
+            // Inline table: { k = "v", ... }
+            valueStr.startsWith("{") && valueStr.endsWith("}") -> {
+                parseInlineTable(valueStr)
             }
 
-            // Boolean: true/false
+            else -> {
+                parseScalarValue(valueStr)
+            }
+        }
+    }
+
+    private fun parseScalarValue(valueStr: String): TomlValue? =
+        when {
+            valueStr.length >= 2 && valueStr.startsWith("\"") && valueStr.endsWith("\"") -> {
+                TomlValue.String(valueStr.substring(1, valueStr.length - 1))
+            }
+
+            valueStr.length >= 2 && valueStr.startsWith("'") && valueStr.endsWith("'") -> {
+                TomlValue.String(valueStr.substring(1, valueStr.length - 1))
+            }
+
             valueStr == "true" || valueStr == "false" -> {
                 TomlValue.Boolean(valueStr.toBoolean())
             }
 
-            // Integer
             valueStr.toLongOrNull() != null -> {
                 TomlValue.Integer(valueStr.toLong())
             }
 
-            // Float
             valueStr.toDoubleOrNull() != null -> {
                 TomlValue.Float(valueStr.toDouble())
             }
@@ -459,11 +525,50 @@ class TomlEditor(
                 null
             }
         }
+
+    private fun parseInlineTable(text: String): TomlValue.InlineTable {
+        val trimmed = text.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}") || trimmed.length < 2) {
+            return TomlValue.InlineTable(emptyMap())
+        }
+        val inner = trimmed.substring(1, trimmed.length - 1).trim()
+        if (inner.isEmpty()) return TomlValue.InlineTable(emptyMap())
+
+        val pairs = linkedMapOf<String, TomlValue>()
+        for (entry in splitTopLevel(inner, ',')) {
+            val segment = entry.trim()
+            if (segment.isEmpty()) continue
+            val eqIdx = indexOfTopLevel(segment, '=')
+            if (eqIdx == -1) continue
+            val rawKey = segment.substring(0, eqIdx).trim().unwrapOuterQuotes()
+            val rawVal = segment.substring(eqIdx + 1).trim()
+            val parsedVal = parseInlineValue(rawVal) ?: continue
+            pairs[rawKey] = parsedVal
+        }
+        return TomlValue.InlineTable(pairs)
     }
+
+    private fun parseInlineValue(rawVal: String): TomlValue? =
+        when {
+            rawVal.startsWith("{") && rawVal.endsWith("}") -> parseInlineTable(rawVal)
+            rawVal.startsWith("[") && rawVal.endsWith("]") -> {
+                val inner = rawVal.substring(1, rawVal.length - 1).trim()
+                val items =
+                    if (inner.isEmpty()) {
+                        emptyList()
+                    } else {
+                        splitTopLevel(inner, ',')
+                            .map { it.trim().unwrapOuterQuotes() }
+                            .filter { it.isNotEmpty() }
+                    }
+                TomlValue.Array(items, ArrayFormat.SingleLine)
+            }
+            else -> parseScalarValue(rawVal)
+        }
 
     /**
      * Parse an array value from line range.
-     * Supports multi-line arrays with comments and trailing commas.
+     * Supports multi-line arrays with comments, trailing commas, inline tables, and brackets inside strings.
      */
     private fun parseArrayValue(
         startLine: Int,
@@ -478,22 +583,104 @@ class TomlEditor(
         }
 
         val fullContent = contentBuilder.toString()
+        val openIdx = fullContent.indexOf('[')
+        if (openIdx == -1) return emptyList()
+        val closeIdx = findMatchingCloseBracket(fullContent, openIdx) ?: return emptyList()
 
-        // Extract content between [ and ]
-        val arrayRegex = """\[(.*?)\]""".toRegex(RegexOption.DOT_MATCHES_ALL)
-        val match = arrayRegex.find(fullContent) ?: return emptyList()
-
-        val content = match.groupValues[1]
+        val content = fullContent.substring(openIdx + 1, closeIdx)
         if (content.isBlank()) return emptyList()
 
-        // Split by comma and remove the outer wrapping quotes (exactly one leading + one matching
-        // trailing quote char, not every quote char at the edges -- `String.trim(vararg)` strips a
-        // whole run, which corrupts a value like `"... sys_platform == 'win32'"` by also eating the
-        // `'` that closes `'win32'`; PEP 508 dependency marker strings have exactly this shape).
-        return content
-            .split(',')
+        // Split only on top-level commas (outside quotes, brackets, and braces), and remove outer
+        // wrapping quotes (exactly one leading + one matching trailing quote char, preserving inner quotes).
+        return splitTopLevel(content, ',')
             .map { it.trim().unwrapOuterQuotes() }
             .filter { it.isNotEmpty() }
+    }
+
+    private fun findMatchingCloseBracket(
+        text: String,
+        openIdx: Int,
+    ): Int? {
+        var depth = 0
+        var inDouble = false
+        var inSingle = false
+        var escapeNext = false
+
+        for (i in openIdx until text.length) {
+            val c = text[i]
+            when {
+                escapeNext -> escapeNext = false
+                inDouble && c == '\\' -> escapeNext = true
+                !inSingle && c == '"' -> inDouble = !inDouble
+                !inDouble && c == '\'' -> inSingle = !inSingle
+                !inDouble && !inSingle && c == '[' -> depth++
+                !inDouble && !inSingle && c == ']' -> {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+        }
+        return null
+    }
+
+    private fun splitTopLevel(
+        content: String,
+        delimiter: Char,
+    ): List<String> {
+        val result = mutableListOf<String>()
+        var bracketDepth = 0
+        var braceDepth = 0
+        var inDouble = false
+        var inSingle = false
+        var escapeNext = false
+        var tokenStart = 0
+
+        for (i in content.indices) {
+            val c = content[i]
+            when {
+                escapeNext -> escapeNext = false
+                inDouble && c == '\\' -> escapeNext = true
+                !inSingle && c == '"' -> inDouble = !inDouble
+                !inDouble && c == '\'' -> inSingle = !inSingle
+                !inDouble && !inSingle && c == '[' -> bracketDepth++
+                !inDouble && !inSingle && c == ']' -> if (bracketDepth > 0) bracketDepth--
+                !inDouble && !inSingle && c == '{' -> braceDepth++
+                !inDouble && !inSingle && c == '}' -> if (braceDepth > 0) braceDepth--
+                !inDouble && !inSingle && bracketDepth == 0 && braceDepth == 0 && c == delimiter -> {
+                    result += content.substring(tokenStart, i)
+                    tokenStart = i + 1
+                }
+            }
+        }
+        result += content.substring(tokenStart)
+        return result
+    }
+
+    private fun indexOfTopLevel(
+        content: String,
+        target: Char,
+    ): Int {
+        var bracketDepth = 0
+        var braceDepth = 0
+        var inDouble = false
+        var inSingle = false
+        var escapeNext = false
+
+        for (i in content.indices) {
+            val c = content[i]
+            when {
+                escapeNext -> escapeNext = false
+                inDouble && c == '\\' -> escapeNext = true
+                !inSingle && c == '"' -> inDouble = !inDouble
+                !inDouble && c == '\'' -> inSingle = !inSingle
+                !inDouble && !inSingle && c == '[' -> bracketDepth++
+                !inDouble && !inSingle && c == ']' -> if (bracketDepth > 0) bracketDepth--
+                !inDouble && !inSingle && c == '{' -> braceDepth++
+                !inDouble && !inSingle && c == '}' -> if (braceDepth > 0) braceDepth--
+                !inDouble && !inSingle && bracketDepth == 0 && braceDepth == 0 && c == target -> return i
+            }
+        }
+        return -1
     }
 
     private fun String.unwrapOuterQuotes(): String =
@@ -607,7 +794,8 @@ class TomlEditor(
      */
     private fun extractInlineComment(line: String): String? {
         // Find # that's not inside a string
-        var inString = false
+        var inDouble = false
+        var inSingle = false
         var escapeNext = false
 
         line.forEachIndexed { index, char ->
@@ -616,15 +804,19 @@ class TomlEditor(
                     escapeNext = false
                 }
 
-                char == '\\' -> {
+                inDouble && char == '\\' -> {
                     escapeNext = true
                 }
 
-                char == '"' -> {
-                    inString = !inString
+                !inSingle && char == '"' -> {
+                    inDouble = !inDouble
                 }
 
-                char == '#' && !inString -> {
+                !inDouble && char == '\'' -> {
+                    inSingle = !inSingle
+                }
+
+                char == '#' && !inDouble && !inSingle -> {
                     return line.substring(index)
                 }
             }
@@ -679,7 +871,7 @@ class TomlEditor(
         startLine: Int,
         tableEndLine: Int,
     ): Int? {
-        val firstLine = lines[startLine]
+        val firstLine = stripInlineComment(lines[startLine])
 
         // Check if array closes on same line
         val valueStart = firstLine.indexOf('=')
@@ -691,7 +883,8 @@ class TomlEditor(
 
         // Track bracket depth for nested arrays
         var depth = 0
-        var inString = false
+        var inDouble = false
+        var inSingle = false
         var escapeNext = false
 
         // Process from opening [ to end of line
@@ -699,10 +892,11 @@ class TomlEditor(
         for (char in startContent) {
             when {
                 escapeNext -> escapeNext = false
-                char == '\\' -> escapeNext = true
-                char == '"' -> inString = !inString
-                !inString && char == '[' -> depth++
-                !inString && char == ']' -> {
+                inDouble && char == '\\' -> escapeNext = true
+                !inSingle && char == '"' -> inDouble = !inDouble
+                !inDouble && char == '\'' -> inSingle = !inSingle
+                !inDouble && !inSingle && char == '[' -> depth++
+                !inDouble && !inSingle && char == ']' -> {
                     depth--
                     if (depth == 0) return startLine // Closed on same line
                 }
@@ -711,15 +905,16 @@ class TomlEditor(
 
         // Scan subsequent lines for closing bracket
         for (lineIndex in (startLine + 1)..tableEndLine) {
-            val line = lines[lineIndex]
+            val line = stripInlineComment(lines[lineIndex])
 
             for (char in line) {
                 when {
                     escapeNext -> escapeNext = false
-                    char == '\\' -> escapeNext = true
-                    char == '"' -> inString = !inString
-                    !inString && char == '[' -> depth++
-                    !inString && char == ']' -> {
+                    inDouble && char == '\\' -> escapeNext = true
+                    !inSingle && char == '"' -> inDouble = !inDouble
+                    !inDouble && char == '\'' -> inSingle = !inSingle
+                    !inDouble && !inSingle && char == '[' -> depth++
+                    !inDouble && !inSingle && char == ']' -> {
                         depth--
                         if (depth == 0) return lineIndex
                     }
@@ -727,7 +922,7 @@ class TomlEditor(
             }
 
             // If we hit another table header, array is malformed
-            if (line.trim().startsWith("[") && !inString) {
+            if (line.trim().startsWith("[") && !inDouble && !inSingle) {
                 return null
             }
         }

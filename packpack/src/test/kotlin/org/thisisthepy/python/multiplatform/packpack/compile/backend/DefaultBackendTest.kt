@@ -181,9 +181,49 @@ class DefaultBackendTest {
         }
     }
 
+    @Test
+    fun compile_resolvesSingleProjectWithoutUvWorkspaceByProjectNameOrDot() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "torchnative"
+                version = "0.1.0"
+                """.trimIndent(),
+            )
+            File(this, "__init__.py").writeText("")
+
+            val recordingMeson = RecordingMeson()
+            val backend = DefaultBackend(recordingMeson)
+
+            val previousDir = System.getProperty("user.dir")
+            try {
+                System.setProperty("user.dir", this.absolutePath)
+
+                val byName = runBlocking { backend.compile("torchnative", emptyMap()) }
+                assertTrue(byName.isSuccess, byName.exceptionOrNull()?.message)
+                assertEquals(this.canonicalFile, recordingMeson.lastSetupWorkingDir?.canonicalFile)
+
+                val byDot = runBlocking { backend.compile(".", emptyMap()) }
+                assertTrue(byDot.isSuccess, byDot.exceptionOrNull()?.message)
+                assertEquals(this.canonicalFile, recordingMeson.lastSetupWorkingDir?.canonicalFile)
+
+                val unknown = runBlocking { backend.compile("other-pkg", emptyMap()) }
+                assertTrue(unknown.isFailure)
+                assertTrue(
+                    "not a workspace member" in unknown.exceptionOrNull()?.message.orEmpty(),
+                    unknown.exceptionOrNull()?.message,
+                )
+            } finally {
+                System.setProperty("user.dir", previousDir)
+            }
+        }
+    }
+
     private class RecordingMeson : Meson() {
         var lastSetupBuildDir: String? = null
         var lastSetupOptions: List<String>? = null
+        var lastSetupWorkingDir: File? = null
         var lastInstallDestdir: String? = null
 
         override suspend fun isMesonInstalled(): Boolean = true
@@ -196,6 +236,7 @@ class DefaultBackendTest {
         ): Result<String> {
             lastSetupBuildDir = buildDir
             lastSetupOptions = options
+            lastSetupWorkingDir = workingDir
             return Result.success("ok")
         }
 

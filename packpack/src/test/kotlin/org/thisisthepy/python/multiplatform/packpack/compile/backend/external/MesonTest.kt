@@ -272,6 +272,145 @@ class MesonTest {
         }
     }
 
+    @Test
+    fun makeMesonBuild_discoversPackagesUnderPythonAndNestedPythonRoots() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            File(this, "python/core/__init__.py").apply { parentFile.mkdirs(); writeText("") }
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+            assertTrue(content.contains("'python/core/__init__.py'"), content)
+            assertTrue(content.contains("subdir: 'core'"), content)
+        }
+
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"torchnative\"\nversion = \"0.1.0\"\n")
+            File(this, "torchnative/python/torch/__init__.py").apply { parentFile.mkdirs(); writeText("") }
+            File(this, "torchnative/python/torchnative/__init__.py").apply { parentFile.mkdirs(); writeText("") }
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+            assertTrue(content.contains("'torchnative/python/torch/__init__.py'"), content)
+            assertTrue(content.contains("subdir: 'torch'"), content)
+            assertTrue(content.contains("'torchnative/python/torchnative/__init__.py'"), content)
+            assertTrue(content.contains("subdir: 'torchnative'"), content)
+        }
+
+        withWorkspace {
+            File(this, "pyproject.toml").writeText(
+                """
+                [project]
+                name = "custom"
+                version = "0.1.0"
+
+                [tool.ppp]
+                python-dir = "custom/python"
+                """.trimIndent(),
+            )
+            File(this, "custom/python/mypkg/__init__.py").apply { parentFile.mkdirs(); writeText("") }
+            File(this, "src/main/ignored/__init__.py").apply { parentFile.mkdirs(); writeText("") }
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+            assertTrue(content.contains("'custom/python/mypkg/__init__.py'"), content)
+            assertTrue(content.contains("subdir: 'mypkg'"), content)
+            assertFalse(content.contains("ignored"), content)
+        }
+    }
+
+    @Test
+    fun makeMesonBuild_preservesPackageDataFilesAndExcludesPycAndDotfiles() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "data/config.json").apply { parentFile.mkdirs(); writeText("{}\n") }
+            File(packageDir, "include/header.h").apply { parentFile.mkdirs(); writeText("#pragma once\n") }
+            File(packageDir, "lib/libfoo.dylib").apply { parentFile.mkdirs(); writeText("dylib") }
+            File(packageDir, "__pycache__/mod.cpython-315.pyc").apply { parentFile.mkdirs(); writeText("pyc") }
+            File(packageDir, "stale.pyc").writeText("pyc")
+            File(packageDir, "stale.pyo").writeText("pyo")
+            File(packageDir, ".DS_Store").writeText("ds")
+            File(packageDir, ".hidden/secret.txt").apply { parentFile.mkdirs(); writeText("hidden") }
+            File(packageDir, "Thumbs.db").writeText("thumbs")
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+
+            assertTrue(content.contains("'src/main/core/__init__.py'"), content)
+            assertTrue(content.contains("'src/main/core/data/config.json'"), content)
+            assertTrue(content.contains("subdir: 'core/data'"), content)
+            assertTrue(content.contains("'src/main/core/include/header.h'"), content)
+            assertTrue(content.contains("subdir: 'core/include'"), content)
+            assertTrue(content.contains("'src/main/core/lib/libfoo.dylib'"), content)
+            assertTrue(content.contains("subdir: 'core/lib'"), content)
+            assertFalse(content.contains("__pycache__"), content)
+            assertFalse(content.contains(".pyc"), content)
+            assertFalse(content.contains(".pyo"), content)
+            assertFalse(content.contains(".DS_Store"), content)
+            assertFalse(content.contains(".hidden"), content)
+            assertFalse(content.contains("Thumbs.db"), content)
+        }
+    }
+
+    @Test
+    fun makeMesonBuild_installsDataCAndCppFilesAsSourcesInsteadOfExtensions() {
+        // Pure data/template C/C++ files without CPython entry points or underscore prefix must not
+        // add 'c'/'cpp' project languages or produce py.extension_module() targets.
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"torchnative\"\nversion = \"0.1.0\"\n")
+            val packageDir = File(this, "torchnative/python/torch")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "templates/Functions.cpp").apply {
+                parentFile.mkdirs()
+                writeText("// template code\nvoid f() {}\n")
+            }
+            File(packageDir, "export/nnapi_runner.c").apply {
+                parentFile.mkdirs()
+                writeText("/* helper runtime */\nint run(void) { return 0; }\n")
+            }
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+
+            assertFalse(content.contains("  'c',"), content)
+            assertFalse(content.contains("  'cpp',"), content)
+            assertFalse(content.contains("py.extension_module("), content)
+            assertTrue(content.contains("'torchnative/python/torch/templates/Functions.cpp'"), content)
+            assertTrue(content.contains("subdir: 'torch/templates'"), content)
+            assertTrue(content.contains("'torchnative/python/torch/export/nnapi_runner.c'"), content)
+            assertTrue(content.contains("subdir: 'torch/export'"), content)
+        }
+
+        // Underscore-prefixed or CPython-API C/C++ files become py.extension_module() targets and
+        // are excluded from py.install_sources().
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val packageDir = File(this, "src/main/core")
+            packageDir.mkdirs()
+            File(packageDir, "__init__.py").writeText("")
+            File(packageDir, "_ext.c").writeText("/* underscore extension */\n")
+            File(packageDir, "initmod.c").writeText("void PyInit_initmod(void) {}\n")
+            File(packageDir, "slotmod.cpp").writeText("void PyModExport_slotmod(void) {}\n")
+            File(packageDir, "hdr_mod.cpp").writeText("#include <Python.h>\n")
+            File(packageDir, "template.cpp").writeText("// non-extension data file\n")
+
+            val content = Meson().makeMesonBuild(absolutePath).getOrThrow()
+
+            assertTrue(content.contains("  'c',"), content)
+            assertTrue(content.contains("  'cpp',"), content)
+            assertEquals(4, Regex("py\\.extension_module\\(").findAll(content).count(), content)
+            assertTrue(content.contains("  '_ext',"), content)
+            assertTrue(content.contains("  'initmod',"), content)
+            assertTrue(content.contains("  'slotmod',"), content)
+            assertTrue(content.contains("  'hdr_mod',"), content)
+            assertTrue(content.contains("    'src/main/core/template.cpp',"), content)
+            val installSection = content.substring(content.indexOf("py.install_sources("))
+            assertFalse(installSection.contains("_ext.c"), installSection)
+            assertFalse(installSection.contains("initmod.c"), installSection)
+            assertFalse(installSection.contains("slotmod.cpp"), installSection)
+            assertFalse(installSection.contains("hdr_mod.cpp"), installSection)
+        }
+    }
+
     private class RecordingMeson(
         private val mesonInstalled: Boolean,
     ) : Meson() {

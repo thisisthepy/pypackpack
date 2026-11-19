@@ -348,6 +348,34 @@ class CrossEnvTest {
     }
 
     @Test
+    fun syncDependenciesResolvesSingleProjectWithoutUvWorkspace() {
+        withWorkspace(
+            """
+            [project]
+            name = "torchnative"
+            version = "0.1.0"
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            crossEnv.syncDependencies("torchnative", listOf("macos"), null).getOrThrow()
+
+            assertEquals(mapOf("package" to "torchnative"), backend.syncArgs.single())
+            assertEquals("torchnative", backend.treeArgs.single()["package"])
+            assertEquals(1, backend.targetInstallCalls.size)
+            val call = backend.targetInstallCalls.single()
+            assertEquals(
+                File(workspaceRoot, "build/crossenv/aarch64-apple-darwin").canonicalPath,
+                File(call.targetDir).canonicalPath,
+            )
+            assertEquals("aarch64-apple-darwin", call.pythonPlatform)
+            assertEquals(workspaceRoot.canonicalPath, call.workingDir?.canonicalPath)
+        }
+    }
+
+    @Test
     fun removeTargetsUsesPackageNameInsteadOfPackagePath() {
         withWorkspace(
             """

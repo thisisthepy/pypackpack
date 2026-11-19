@@ -5,6 +5,7 @@ import org.thisisthepy.python.multiplatform.packpack.bundle.BundleResult
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundleType
 import org.thisisthepy.python.multiplatform.packpack.bundle.BundlerInterface
 import org.thisisthepy.python.multiplatform.packpack.bundle.GilCheck
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
 import org.thisisthepy.python.multiplatform.packpack.compile.extension.CompiledExtension
 import org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompileRequest
 import org.thisisthepy.python.multiplatform.packpack.compile.extension.ExtensionCompileResult
@@ -107,8 +108,8 @@ class ResourceBundler(
 
             val payload = collectPayload(packageDir, descriptor.family, request.metaDirs, request.libDirs)
             require(payload.isNotEmpty()) {
-                "No bundleable source found for package '$packageName' under " +
-                    "${packageDir.absolutePath}/src/main, /src, or the package root."
+                "No bundleable source found for package '$packageName' under [tool.ppp].python-dir, " +
+                    "${packageDir.absolutePath}/src/main, /src, /python, /$packageName/python, or the package root."
             }
 
             val compiler: ExtensionCompilerInterface?
@@ -327,12 +328,7 @@ class ResourceBundler(
         return payload
     }
 
-    private fun resolveCommonSourceRoot(packageDir: File): File? =
-        listOf(
-            File(packageDir, "src/main"),
-            File(packageDir, "src"),
-            packageDir,
-        ).firstOrNull { root -> root.isDirectory && findPythonPackages(root).isNotEmpty() }
+    private fun resolveCommonSourceRoot(packageDir: File): File? = Meson.resolvePythonSourceRoot(packageDir)
 
     private fun findPythonPackages(root: File): List<File> =
         root

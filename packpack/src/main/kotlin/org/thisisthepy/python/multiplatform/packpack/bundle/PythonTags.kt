@@ -16,6 +16,10 @@ data class PythonTags(
         const val DEFAULT_PYTHON_VERSION = "3.15t"
 
         private val VERSION = Regex("""(\d+)\.(\d+)(?:\.\d+)?(t?)""")
+        private val ABI3T_EXT = Regex("""\.abi3t(?:-[^.]+)?\.(?:so|pyd)$""")
+        private val ABI3_EXT = Regex("""\.abi3(?:-[^.]+)?\.(?:so|pyd)$""")
+        private val FREE_THREADED_EXT = Regex("""\.(?:cpython-|cp)(\d+)t(?:-[^.]+)?\.(?:so|pyd)$""")
+        private val REQUIRES_PYTHON_FLOOR = Regex("""(?:>=|==)\s*(\d+)\.(\d+)""")
 
         /**
          * [pythonVersion] is `X.Y`, `X.Y.Z`, optionally followed by `t` for the free-threaded build
@@ -32,6 +36,58 @@ data class PythonTags(
             val (major, minor, freeThreaded) = match.destructured
             val pythonTag = "cp$major$minor"
             return PythonTags(pythonTag, pythonTag + freeThreaded)
+        }
+
+        /**
+         * Derives wheel python and ABI tags from the payload's native extension filenames when
+         * present, falling back to [of] when no stable-ABI (`abi3`/`abi3t`) or free-threaded
+         * versioned extension (`cpython-<XY>t` / `cp<XY>t`) is found.
+         */
+        fun forPayload(
+            pythonVersion: String?,
+            payloadPaths: Iterable<String>,
+            requiresPython: String? = null,
+        ): PythonTags {
+            val extensionNames =
+                payloadPaths
+                    .map { it.substringAfterLast('/') }
+                    .filter { it.endsWith(".so") || it.endsWith(".pyd") }
+
+            val freeThreadedMatch = extensionNames.firstNotNullOfOrNull { FREE_THREADED_EXT.find(it) }
+            if (freeThreadedMatch != null) {
+                if (pythonVersion != null) return of(pythonVersion)
+                val xy = freeThreadedMatch.groupValues[1]
+                return PythonTags("cp$xy", "cp${xy}t")
+            }
+
+            if (extensionNames.any { ABI3T_EXT.containsMatchIn(it) }) {
+                val pyTag =
+                    if (pythonVersion != null) {
+                        of(pythonVersion).pythonTag
+                    } else {
+                        pythonTagFromRequiresPython(requiresPython) ?: of(null).pythonTag
+                    }
+                return PythonTags(pyTag, "abi3.abi3t")
+            }
+
+            if (extensionNames.any { ABI3_EXT.containsMatchIn(it) }) {
+                val pyTag =
+                    if (pythonVersion != null) {
+                        of(pythonVersion).pythonTag
+                    } else {
+                        pythonTagFromRequiresPython(requiresPython) ?: of(null).pythonTag
+                    }
+                return PythonTags(pyTag, "abi3")
+            }
+
+            return of(pythonVersion)
+        }
+
+        private fun pythonTagFromRequiresPython(requiresPython: String?): String? {
+            if (requiresPython.isNullOrBlank()) return null
+            val match = REQUIRES_PYTHON_FLOOR.find(requiresPython) ?: return null
+            val (major, minor) = match.destructured
+            return "cp$major$minor"
         }
     }
 }
