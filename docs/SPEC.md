@@ -844,7 +844,7 @@ Not yet implemented (target). Status: planned
 
 #### Rust extension modules (Cargo backend)
 
-Status: implemented for the host (stage 1, #92), Android and iOS (stage 2, #94), and ABI / feature configuration (#135): `compile/backend/external/Cargo.kt`;
+Status: implemented for the host (stage 1, #92), Linux cross-build (`manylinux_2_17`, #138), Android and iOS (stage 2, #94), and ABI / feature configuration (#135): `compile/backend/external/Cargo.kt`;
 `packpack/.../compile/backend/external/CargoTest.kt` (discovery both ways and its refusals, `[tool.ppp.rust]` ABI and feature options, torchnative's
 layout, the maturin and cargo commands and environments per target, the placement, every refusal) and
 `CargoRealBuildTest.kt` (real builds, run with `PPP_CARGO_REAL_BUILD=1`: the host crate imported on 3.15t
@@ -921,6 +921,20 @@ naming that command, before anything builds.
   Rust's `aarch64-apple-ios-sim` allows), each linking `@rpath/Python.framework/Python` like CPython's own
   iOS extensions. Not run on a device or simulator; turning the extension into a framework for the app is the
   Xcode phase's work, as for any binary module.
+
+##### Linux cross-build (`manylinux_2_17`) (implemented, #138)
+
+- Linux cross targets (`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-manylinux2014`,
+  `x86_64-manylinux_2_17`, `x86_64-manylinux_2_28`, `aarch64-manylinux_2_17`, `aarch64-manylinux_2_28`) build
+  through `uv tool run --from maturin==1.15.0 --with ziglang maturin build --zig --compatibility
+  <manylinux_2_17|manylinux_2_28> --target <rust-triple>` with no `--interpreter`, reading the target Python from
+  `<project>/linux_x86_64/lib` or `<project>/linux_arm64/lib` (`PYO3_CROSS_LIB_DIR`,
+  `PYO3_CROSS_PYTHON_VERSION`). When the canonical target matches the host (`x86_64-unknown-linux-gnu` or
+  `aarch64-unknown-linux-gnu` on the same Linux host, or `target = null`), the host `.venv` maturin build is
+  kept. Missing `rustup target add <rust-triple>` or missing target Python directory is refused before maturin
+  runs.
+- Owner decision (2026-11-19): Windows builds stay host-only on Windows runners (no `cargo-xwin` or `llvm`
+  cross-toolchain), and WASM (`wasm32-emscripten`) waits for `python-multiplatform#175`.
 
 Limitation
 

@@ -320,7 +320,7 @@ const val IOS_DEPLOYMENT_TARGET = "13.0"
 
 /**
  * Builds a package's Rust crates into CPython extension modules: for the host desktop target (stage 1),
- * Android and iOS (stage 2, #94).
+ * Linux cross-targets (`manylinux_2_17` / `manylinux_2_28` via `maturin --zig`, #138), Android and iOS (stage 2, #94).
  *
  * Each crate is built by maturin ([MATURIN_VERSION], through `uv tool run`, so nothing is installed or
  * linked) with PyO3's abi3t, into
@@ -372,15 +372,16 @@ open class Cargo(
             val canonical = target?.let { Platforms.normalizeTarget(it) ?: throw IllegalArgumentException(Platforms.unsupportedTargetMessage(it)) } ?: host
             val android = ANDROID_DIRS[canonical]
             val ios = IOS_TARGETS[canonical]
-            require(canonical == host || android != null || ios != null) {
-                "Rust crates build for the host ($host), Android and iOS; $canonical is not yet supported by the Cargo backend."
+            val linuxCross = LINUX_CROSS_TARGETS[canonical]?.takeIf { canonical != host }
+            require(canonical == host || android != null || ios != null || linuxCross != null) {
+                "Rust crates build for the host ($host), Linux (manylinux), Android and iOS; $canonical is not yet supported by the Cargo backend."
             }
             check(environment.cargo) { "cargo is not on PATH. Install Rust with rustup (https://rustup.rs), then build again." }
             check(environment.uv) { "uv is not on PATH; the Cargo backend runs maturin with `uv tool run`." }
 
             val singleAbi = crates.map { it.abi }.distinct().size <= 1
             val interpreter =
-                if (ios == null && android == null) {
+                if (ios == null && android == null && linuxCross == null) {
                     findVenvInterpreter(pkg) ?: throw IllegalStateException(
                         "No Python interpreter under a '.venv' above $pkg to build the Rust crates against. " +
                             "Run `pypackpack python install 3.15t` first.",
@@ -396,6 +397,9 @@ open class Cargo(
                     android != null -> crates.associateWith {
                         androidEnvironment(pkg, canonical, android, it.abi)
                     }
+                    linuxCross != null -> crates.associateWith {
+                        linuxCrossEnvironment(pkg, canonical, linuxCross, it.abi)
+                    }
                     else -> crates.associateWith { emptyMap() }
                 }
 
@@ -410,8 +414,14 @@ open class Cargo(
                 val out = File(pkg, "build/packpack/cargo/$canonical/${crate.module}")
                 out.deleteWithoutFollowingLinks()
                 val command = maturinCommand(
-                    crate, interpreter, out, File(pkg, "build/packpack/cargo/target"), buildType == "release",
-                    rustTarget = canonical.takeIf { android != null },
+                    crate,
+                    interpreter,
+                    out,
+                    File(pkg, "build/packpack/cargo/target"),
+                    buildType == "release",
+                    rustTarget = linuxCross?.rustTriple ?: canonical.takeIf { android != null },
+                    zig = linuxCross != null,
+                    compatibility = linuxCross?.compatibility,
                 )
                 run(command, crate.dir, env).getOrElse {
                     throw IllegalStateException("Building Rust module ${crate.module} (${crate.dir}) failed: ${it.message}", it)
@@ -542,6 +552,26 @@ open class Cargo(
         )
     }
 
+    /** The cross-compile environment for a Linux [canonical] target: its Rust target and target Python's `lib` directory. */
+    private fun linuxCrossEnvironment(
+        pkg: File,
+        canonical: String,
+        linux: LinuxCrossTarget,
+        abi: PyO3Abi = PyO3Abi.DEFAULT,
+    ): Map<String, String> {
+        check(linux.rustTriple in environment.rustTargets) {
+            "The Rust target ${linux.rustTriple} is not installed. Run `rustup target add ${linux.rustTriple}`, then build again."
+        }
+        val lib = findTargetDir(pkg, "${linux.installDirName}/lib") ?: throw IllegalStateException(
+            "No Python for $canonical under a '${linux.installDirName}' directory above $pkg. " +
+                "Run `pypackpack python install 3.15t ${linux.rustTriple}` first.",
+        )
+        return linkedMapOf(
+            "PYO3_CROSS_LIB_DIR" to lib.path,
+            "PYO3_CROSS_PYTHON_VERSION" to abi.crossPythonVersion,
+        )
+    }
+
     fun maturinCommand(
         crate: RustCrate,
         interpreter: File?,
@@ -549,10 +579,16 @@ open class Cargo(
         targetDir: File,
         release: Boolean,
         rustTarget: String? = null,
+        zig: Boolean = false,
+        compatibility: String? = null,
     ): List<String> =
         buildList {
-            addAll(listOf("uv", "tool", "run", "--from", "maturin==$MATURIN_VERSION", "maturin", "build"))
+            addAll(listOf("uv", "tool", "run", "--from", "maturin==$MATURIN_VERSION"))
+            if (zig) addAll(listOf("--with", "ziglang"))
+            addAll(listOf("maturin", "build"))
             addAll(listOf("--manifest-path", File(crate.dir, "Cargo.toml").path))
+            if (zig) add("--zig")
+            compatibility?.let { addAll(listOf("--compatibility", it)) }
             rustTarget?.let { addAll(listOf("--target", it)) }
             interpreter?.let { addAll(listOf("--interpreter", it.path)) }
             addAll(listOf("--out", out.path))
@@ -608,6 +644,23 @@ private val IOS_TARGETS = mapOf(
     "arm64-apple-ios" to IosTarget("aarch64-apple-ios", "ios_arm64", "ios-arm64", "lib-arm64"),
     "arm64-apple-ios-simulator" to IosTarget("aarch64-apple-ios-sim", "ios_simulator_arm64", "ios-arm64_x86_64-simulator", "lib-arm64"),
     "x86_64-apple-ios-simulator" to IosTarget("x86_64-apple-ios", "ios_simulator_x86_64", "ios-arm64_x86_64-simulator", "lib-x86_64"),
+)
+
+/** A Linux cross-compile target: its Rust triple, `installPython`'s directory, and maturin `--compatibility` tag. */
+private data class LinuxCrossTarget(
+    val rustTriple: String,
+    val installDirName: String,
+    val compatibility: String,
+)
+
+private val LINUX_CROSS_TARGETS = mapOf(
+    "x86_64-unknown-linux-gnu" to LinuxCrossTarget("x86_64-unknown-linux-gnu", "linux_x86_64", "manylinux_2_17"),
+    "aarch64-unknown-linux-gnu" to LinuxCrossTarget("aarch64-unknown-linux-gnu", "linux_arm64", "manylinux_2_17"),
+    "x86_64-manylinux2014" to LinuxCrossTarget("x86_64-unknown-linux-gnu", "linux_x86_64", "manylinux_2_17"),
+    "x86_64-manylinux_2_17" to LinuxCrossTarget("x86_64-unknown-linux-gnu", "linux_x86_64", "manylinux_2_17"),
+    "x86_64-manylinux_2_28" to LinuxCrossTarget("x86_64-unknown-linux-gnu", "linux_x86_64", "manylinux_2_28"),
+    "aarch64-manylinux_2_17" to LinuxCrossTarget("aarch64-unknown-linux-gnu", "linux_arm64", "manylinux_2_17"),
+    "aarch64-manylinux_2_28" to LinuxCrossTarget("aarch64-unknown-linux-gnu", "linux_arm64", "manylinux_2_28"),
 )
 
 /** Carries the iOS slice from [Cargo]'s environment to its command; not passed to the process. */
