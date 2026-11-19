@@ -4,6 +4,7 @@ import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowin
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findVenvInterpreter
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
+import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
@@ -14,29 +15,132 @@ const val MATURIN_VERSION = "1.15.0"
 /** PyO3's stable ABI for free-threaded CPython 3.15+ (PEP 803), the default (`docs/SPEC.md` Scope decisions). */
 const val PYO3_ABI3T_FEATURE = "pyo3/abi3t-py315"
 
+/**
+ * The PyO3 ABI mode a Rust crate is built for (`docs/SPEC.md` *Rust extension modules (Cargo backend)*, #135):
+ * - [Abi3t]: PEP 803 free-threaded stable ABI (`abi3t-py315`, shorthand `abi3t`), the default.
+ * - [Abi3]: PEP 384 stable ABI (`abi3-py3<minor>`, for example `abi3-py313`).
+ * - [VersionSpecific]: version-pinned CPython ABI (`cp315t`, `cp3<minor>t`, `cp3<minor>`, `version`, or `cpython`),
+ *   with no `pyo3/abi3*` feature flag.
+ */
+sealed class PyO3Abi {
+    abstract val id: String
+    abstract val pyo3Feature: String?
+    abstract val crossPythonVersion: String
+    abstract val iosTargetAbi: String?
+    abstract val iosDefaultSuffix: String
+
+    data class Abi3t(val minor: Int = 15) : PyO3Abi() {
+        override val id: String = "abi3t-py3$minor"
+        override val pyo3Feature: String = "pyo3/abi3t-py3$minor"
+        override val crossPythonVersion: String = "3.$minor"
+        override val iosTargetAbi: String = "CPython-abi3t-3.$minor"
+        override val iosDefaultSuffix: String = ".abi3t.so"
+    }
+
+    data class Abi3(val minor: Int = 13) : PyO3Abi() {
+        override val id: String = "abi3-py3$minor"
+        override val pyo3Feature: String = "pyo3/abi3-py3$minor"
+        override val crossPythonVersion: String = "3.$minor"
+        override val iosTargetAbi: String = "CPython-abi3-3.$minor"
+        override val iosDefaultSuffix: String = ".abi3.so"
+    }
+
+    data class VersionSpecific(val minor: Int = 15, val freeThreaded: Boolean = true) : PyO3Abi() {
+        override val id: String = "cp3$minor${if (freeThreaded) "t" else ""}"
+        override val pyo3Feature: String? = null
+        override val crossPythonVersion: String = "3.$minor"
+        override val iosTargetAbi: String? = null
+        override val iosDefaultSuffix: String = ".cpython-3$minor${if (freeThreaded) "t" else ""}-darwin.so"
+    }
+
+    companion object {
+        val DEFAULT: PyO3Abi = Abi3t(15)
+        private val ABI3T_REGEX = Regex("""^abi3t(?:-py3(\d+))?$""")
+        private val ABI3_REGEX = Regex("""^abi3-py3(\d+)$""")
+        private val CP_REGEX = Regex("""^cp3(\d+)(t?)$""")
+
+        fun parse(raw: String): PyO3Abi {
+            val text = raw.trim()
+            ABI3T_REGEX.matchEntire(text)?.let { m ->
+                val minor = m.groupValues[1].ifEmpty { "15" }.toInt()
+                require(minor >= 15) { "[tool.ppp.rust]: abi3t requires Python 3.15 or later, got '$raw'." }
+                return Abi3t(minor)
+            }
+            ABI3_REGEX.matchEntire(text)?.let { m ->
+                val minor = m.groupValues[1].toInt()
+                require(minor >= 7) { "[tool.ppp.rust]: invalid abi3 floor in '$raw'." }
+                return Abi3(minor)
+            }
+            CP_REGEX.matchEntire(text)?.let { m ->
+                val minor = m.groupValues[1].toInt()
+                val ft = m.groupValues[2] == "t"
+                return VersionSpecific(minor, ft)
+            }
+            if (text == "version" || text == "cpython") {
+                return VersionSpecific(15, true)
+            }
+            throw IllegalArgumentException(
+                "[tool.ppp.rust]: unsupported abi '$raw'. Expected 'abi3t-py315' (or 'abi3t'), 'abi3-py3<minor>' (for example 'abi3-py313'), or 'cp3<minor>[t]' (for example 'cp315t').",
+            )
+        }
+    }
+}
+
 /** A Rust crate that builds the CPython extension module [module]. */
 data class RustCrate(
     val module: String,
     val dir: File,
-)
+    val abi: PyO3Abi = PyO3Abi.DEFAULT,
+    val features: List<String> = emptyList(),
+    val noDefaultFeatures: Boolean = false,
+) {
+    /**
+     * The combined `--features` list passed to maturin or cargo: the ABI's PyO3 feature (when any)
+     * followed by [features], deduplicated in order.
+     */
+    val cargoFeatures: List<String>
+        get() = buildList {
+            abi.pyo3Feature?.let(::add)
+            features.forEach { if (it.isNotBlank() && it !in this) add(it) }
+        }
+}
 
 /**
- * Which crates a package builds (`docs/SPEC.md` *Rust extension modules (Cargo backend)*, #92):
+ * Which crates a package builds (`docs/SPEC.md` *Rust extension modules (Cargo backend)*, #92, #135):
  * - by convention, a directory holding a `Cargo.toml` inside a Python package is that package's module
  *   (`src/main/core/_fast` is `core._fast`), under the first of `[tool.ppp].python-dir`, `src/main`,
  *   `src`, `python`, `<package>/python` and the package root that holds a Python package (Meson's rule);
  * - `[tool.ppp.rust]` in the package's `pyproject.toml` maps a module to a crate directory relative to the
- *   package, for crates outside the Python packages (torchnative's `"torch._C" = "rust/torch_c"`).
+ *   package (string path or inline table `{ path = ..., abi = ..., features = [...], default-features = false }`),
+ *   for crates outside the Python packages (torchnative's `"torch._C" = "rust/torch_c"`), and may also set
+ *   package-level defaults (`abi`, `features`, `default-features`, `no-default-features`).
  * A crate in neither place is not built. One module named both ways is an error.
  */
 object RustCrates {
     private val MODULE = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*")
     private val SKIPPED = setOf("__pycache__", "build", "dist", "target", "node_modules")
+    private val OPTION_KEYS = setOf("abi", "features", "default-features", "no-default-features")
+    private val ENTRY_OPTION_KEYS = setOf("path", "abi", "features", "default-features", "no-default-features")
 
     fun discover(packageDir: File): List<RustCrate> {
         val pkg = packageDir.canonicalFile
-        val convention = conventionCrates(pkg)
-        val table = tableCrates(pkg)
+        val editor = File(pkg, "pyproject.toml").takeIf { it.isFile }?.let { TomlEditor(it.readText()) }
+        val defaultAbi = editor?.getValue("tool.ppp.rust", "abi")?.let { value ->
+            (value as? TomlValue.String)?.value?.let(PyO3Abi::parse)
+                ?: throw IllegalArgumentException("[tool.ppp.rust]: 'abi' must be a string.")
+        } ?: PyO3Abi.DEFAULT
+        val defaultFeatures = editor?.getValue("tool.ppp.rust", "features")?.let { value ->
+            (value as? TomlValue.Array)?.items
+                ?: throw IllegalArgumentException("[tool.ppp.rust]: 'features' must be an array of strings.")
+        } ?: emptyList()
+        val defaultNoDefaultFeatures = resolveNoDefaultFeatures(
+            defaultFeaturesVal = editor?.getValue("tool.ppp.rust", "default-features"),
+            noDefaultFeaturesVal = editor?.getValue("tool.ppp.rust", "no-default-features"),
+            context = "",
+        )
+
+        val convention = conventionCrates(pkg, defaultAbi, defaultFeatures, defaultNoDefaultFeatures)
+        val table = tableCrates(pkg, editor, defaultAbi, defaultFeatures, defaultNoDefaultFeatures)
         val both = convention.map { it.module }.intersect(table.map { it.module }.toSet())
         require(both.isEmpty()) {
             "Rust module ${both.joinToString()} is declared both by a Cargo.toml inside its package and in " +
@@ -45,7 +149,34 @@ object RustCrates {
         return (convention + table).sortedBy { it.module }
     }
 
-    private fun conventionCrates(pkg: File): List<RustCrate> {
+    private fun resolveNoDefaultFeatures(
+        defaultFeaturesVal: TomlValue?,
+        noDefaultFeaturesVal: TomlValue?,
+        context: String,
+        fallback: Boolean = false,
+    ): Boolean {
+        val defaultFeatures = defaultFeaturesVal?.let {
+            (it as? TomlValue.Boolean)?.value
+                ?: throw IllegalArgumentException("[tool.ppp.rust]: 'default-features'$context must be a boolean.")
+        }
+        val noDefaultFeatures = noDefaultFeaturesVal?.let {
+            (it as? TomlValue.Boolean)?.value
+                ?: throw IllegalArgumentException("[tool.ppp.rust]: 'no-default-features'$context must be a boolean.")
+        }
+        if (defaultFeatures != null && noDefaultFeatures != null && defaultFeatures == noDefaultFeatures) {
+            throw IllegalArgumentException(
+                "[tool.ppp.rust]: conflicting 'default-features' and 'no-default-features'$context.",
+            )
+        }
+        return noDefaultFeatures ?: defaultFeatures?.let { !it } ?: fallback
+    }
+
+    private fun conventionCrates(
+        pkg: File,
+        defaultAbi: PyO3Abi,
+        defaultFeatures: List<String>,
+        defaultNoDefaultFeatures: Boolean,
+    ): List<RustCrate> {
         val root = Meson.resolvePythonSourceRoot(pkg) ?: return emptyList()
         val found = mutableListOf<RustCrate>()
         fun visit(dir: File) {
@@ -54,7 +185,13 @@ object RustCrates {
                 .forEach { child ->
                     when {
                         File(child, "Cargo.toml").isFile ->
-                            found += RustCrate(child.relativeTo(root).invariantSeparatorsPath.replace('/', '.'), child)
+                            found += RustCrate(
+                                module = child.relativeTo(root).invariantSeparatorsPath.replace('/', '.'),
+                                dir = child,
+                                abi = defaultAbi,
+                                features = defaultFeatures,
+                                noDefaultFeatures = defaultNoDefaultFeatures,
+                            )
                         File(child, "__init__.py").isFile -> visit(child)
                     }
                 }
@@ -63,15 +200,59 @@ object RustCrates {
         return found
     }
 
-    private fun tableCrates(pkg: File): List<RustCrate> {
-        val pyproject = File(pkg, "pyproject.toml").takeIf { it.isFile } ?: return emptyList()
-        return TomlEditor(pyproject.readText()).getStringEntries("tool.ppp.rust").map { (module, path) ->
-            require(MODULE.matches(module)) { "[tool.ppp.rust]: '$module' is not a Python module name." }
-            val dir = File(pkg, path).canonicalFile
-            require(dir.toPath().startsWith(pkg.toPath())) { "[tool.ppp.rust]: '$path' for $module is outside the package." }
-            require(File(dir, "Cargo.toml").isFile) { "[tool.ppp.rust]: '$path' for $module is not a crate (no Cargo.toml)." }
-            RustCrate(module, dir)
-        }
+    private fun tableCrates(
+        pkg: File,
+        editor: TomlEditor?,
+        defaultAbi: PyO3Abi,
+        defaultFeatures: List<String>,
+        defaultNoDefaultFeatures: Boolean,
+    ): List<RustCrate> {
+        if (editor == null) return emptyList()
+        return editor.getTableKeys("tool.ppp.rust")
+            .filterNot { it in OPTION_KEYS }
+            .map { module ->
+                require(MODULE.matches(module)) { "[tool.ppp.rust]: '$module' is not a Python module name." }
+                val value = editor.getValue("tool.ppp.rust", module)
+                val path: String
+                val abi: PyO3Abi
+                val features: List<String>
+                val noDefaultFeatures: Boolean
+                when (value) {
+                    is TomlValue.String -> {
+                        path = value.value
+                        abi = defaultAbi
+                        features = defaultFeatures
+                        noDefaultFeatures = defaultNoDefaultFeatures
+                    }
+                    is TomlValue.InlineTable -> {
+                        val unknown = value.pairs.keys.firstOrNull { it !in ENTRY_OPTION_KEYS }
+                        require(unknown == null) { "[tool.ppp.rust]: unknown option '$unknown' for $module." }
+                        path = (value.pairs["path"] as? TomlValue.String)?.value
+                            ?: throw IllegalArgumentException("[tool.ppp.rust]: '$module' table entry must specify a string 'path'.")
+                        abi = value.pairs["abi"]?.let {
+                            (it as? TomlValue.String)?.value?.let(PyO3Abi::parse)
+                                ?: throw IllegalArgumentException("[tool.ppp.rust]: 'abi' for $module must be a string.")
+                        } ?: defaultAbi
+                        features = value.pairs["features"]?.let {
+                            (it as? TomlValue.Array)?.items
+                                ?: throw IllegalArgumentException("[tool.ppp.rust]: 'features' for $module must be an array of strings.")
+                        } ?: defaultFeatures
+                        noDefaultFeatures = resolveNoDefaultFeatures(
+                            defaultFeaturesVal = value.pairs["default-features"],
+                            noDefaultFeaturesVal = value.pairs["no-default-features"],
+                            context = " for $module",
+                            fallback = defaultNoDefaultFeatures,
+                        )
+                    }
+                    else -> throw IllegalArgumentException(
+                        "[tool.ppp.rust]: '$module' must be a crate path string or an inline table { path = ... }.",
+                    )
+                }
+                val dir = File(pkg, path).canonicalFile
+                require(dir.toPath().startsWith(pkg.toPath())) { "[tool.ppp.rust]: '$path' for $module is outside the package." }
+                require(File(dir, "Cargo.toml").isFile) { "[tool.ppp.rust]: '$path' for $module is not a crate (no Cargo.toml)." }
+                RustCrate(module, dir, abi, features, noDefaultFeatures)
+            }
     }
 }
 
@@ -197,17 +378,25 @@ open class Cargo(
             check(environment.cargo) { "cargo is not on PATH. Install Rust with rustup (https://rustup.rs), then build again." }
             check(environment.uv) { "uv is not on PATH; the Cargo backend runs maturin with `uv tool run`." }
 
-            val (interpreter, env) =
-                if (ios != null) {
-                    null to iosEnvironment(pkg, canonical, ios)
-                } else if (android == null) {
-                    val venv = findVenvInterpreter(pkg) ?: throw IllegalStateException(
+            val singleAbi = crates.map { it.abi }.distinct().size <= 1
+            val interpreter =
+                if (ios == null && android == null) {
+                    findVenvInterpreter(pkg) ?: throw IllegalStateException(
                         "No Python interpreter under a '.venv' above $pkg to build the Rust crates against. " +
                             "Run `pypackpack python install 3.15t` first.",
                     )
-                    venv to emptyMap()
                 } else {
-                    null to androidEnvironment(pkg, canonical, android)
+                    null
+                }
+            val crateEnvs: Map<RustCrate, Map<String, String>> =
+                when {
+                    ios != null -> crates.associateWith {
+                        iosEnvironment(pkg, canonical, ios, it.abi, if (singleAbi) null else it.module)
+                    }
+                    android != null -> crates.associateWith {
+                        androidEnvironment(pkg, canonical, android, it.abi)
+                    }
+                    else -> crates.associateWith { emptyMap() }
                 }
 
             val sitePackages = destdir.walkTopDown().filter { it.isDirectory && it.name == "site-packages" }.toList()
@@ -216,6 +405,7 @@ open class Cargo(
                 )
 
             crates.map { crate ->
+                val env = crateEnvs.getValue(crate)
                 if (ios != null) return@map buildIos(crate, ios, env, File(pkg, "build/packpack/cargo/target"), buildType == "release", sitePackages)
                 val out = File(pkg, "build/packpack/cargo/$canonical/${crate.module}")
                 out.deleteWithoutFollowingLinks()
@@ -237,6 +427,8 @@ open class Cargo(
         pkg: File,
         canonical: String,
         ios: IosTarget,
+        abi: PyO3Abi = PyO3Abi.DEFAULT,
+        moduleSubdir: String? = null,
     ): Map<String, String> {
         check(environment.xcode) { "No iOS SDK found (`xcrun --sdk iphoneos`). Install Xcode to build for $canonical." }
         check(ios.rustTriple in environment.rustTargets) {
@@ -247,18 +439,22 @@ open class Cargo(
                 "Run `pypackpack python install 3.15t $canonical` first.",
         )
         val freeThreaded = readSysconfigValue(File(slice, ios.libDir), "Py_GIL_DISABLED") == "1"
-        val config = File(pkg, "build/packpack/cargo/$canonical/pyo3-config.txt")
+        val config =
+            if (moduleSubdir == null) {
+                File(pkg, "build/packpack/cargo/$canonical/pyo3-config.txt")
+            } else {
+                File(pkg, "build/packpack/cargo/$canonical/$moduleSubdir/pyo3-config.txt")
+            }
         config.parentFile.mkdirs()
-        config.writeText(
-            listOf(
-                "implementation=CPython",
-                "version=3.15",
-                "target_abi=CPython-abi3t-3.15",
-                "shared=true",
-                "build_flags=${if (freeThreaded) "Py_GIL_DISABLED" else ""}",
-                "suppress_build_script_link_lines=true",
-            ).joinToString("\n", postfix = "\n"),
-        )
+        val configLines = buildList {
+            add("implementation=CPython")
+            add("version=${abi.crossPythonVersion}")
+            abi.iosTargetAbi?.let { add("target_abi=$it") }
+            add("shared=true")
+            add("build_flags=${if (freeThreaded) "Py_GIL_DISABLED" else ""}")
+            add("suppress_build_script_link_lines=true")
+        }
+        config.writeText(configLines.joinToString("\n", postfix = "\n"))
         return linkedMapOf(
             "PYO3_CONFIG_FILE" to config.path,
             "IPHONEOS_DEPLOYMENT_TARGET" to IOS_DEPLOYMENT_TARGET,
@@ -266,7 +462,7 @@ open class Cargo(
         )
     }
 
-    /** `cargo rustc` for one crate and one iOS target; the dylib is placed as `<last>.abi3t.so`. */
+    /** `cargo rustc` for one crate and one iOS target; the dylib is placed with the ABI's extension suffix. */
     private fun buildIos(
         crate: RustCrate,
         ios: IosTarget,
@@ -276,12 +472,23 @@ open class Cargo(
         sitePackages: File,
     ): File {
         val last = crate.module.substringAfterLast('.')
-        val fileName = "$last.abi3t.so"
+        val slice = File(env.getValue(SLICE_KEY))
+        val suffix =
+            if (crate.abi is PyO3Abi.VersionSpecific) {
+                readSysconfigValue(File(slice, ios.libDir), "EXT_SUFFIX")?.takeIf { it.isNotBlank() }
+                    ?: crate.abi.iosDefaultSuffix
+            } else {
+                crate.abi.iosDefaultSuffix
+            }
+        val fileName = "$last$suffix"
         val command = buildList {
             addAll(listOf("cargo", "rustc", "--manifest-path", File(crate.dir, "Cargo.toml").path, "--lib"))
-            addAll(listOf("--target", ios.rustTriple, "--target-dir", targetDir.path, "--features", PYO3_ABI3T_FEATURE))
+            addAll(listOf("--target", ios.rustTriple, "--target-dir", targetDir.path))
+            if (crate.noDefaultFeatures) add("--no-default-features")
+            val features = crate.cargoFeatures
+            if (features.isNotEmpty()) addAll(listOf("--features", features.joinToString(",")))
             if (release) add("--release")
-            addAll(listOf("--", "-C", "link-arg=-F${env.getValue(SLICE_KEY)}", "-C", "link-arg=-framework", "-C", "link-arg=Python"))
+            addAll(listOf("--", "-C", "link-arg=-F${slice.path}", "-C", "link-arg=-framework", "-C", "link-arg=Python"))
             addAll(listOf("-C", "link-arg=-Wl,-install_name,@rpath/$fileName"))
         }
         run(command, crate.dir, env - SLICE_KEY).getOrElse {
@@ -306,6 +513,7 @@ open class Cargo(
         pkg: File,
         triple: String,
         installDirName: String,
+        abi: PyO3Abi = PyO3Abi.DEFAULT,
     ): Map<String, String> {
         check(triple in environment.rustTargets) {
             "The Rust target $triple is not installed. Run `rustup target add $triple`, then build again."
@@ -325,7 +533,7 @@ open class Cargo(
         val key = triple.replace('-', '_')
         return linkedMapOf(
             "PYO3_CROSS_LIB_DIR" to lib.path,
-            "PYO3_CROSS_PYTHON_VERSION" to "3.15",
+            "PYO3_CROSS_PYTHON_VERSION" to abi.crossPythonVersion,
             "CARGO_TARGET_${key.uppercase()}_LINKER" to clang,
             "CC_$key" to clang,
             "AR_$key" to File(bin, "llvm-ar").path,
@@ -349,7 +557,9 @@ open class Cargo(
             interpreter?.let { addAll(listOf("--interpreter", it.path)) }
             addAll(listOf("--out", out.path))
             addAll(listOf("--target-dir", targetDir.path))
-            addAll(listOf("--features", PYO3_ABI3T_FEATURE))
+            if (crate.noDefaultFeatures) add("--no-default-features")
+            val features = crate.cargoFeatures
+            if (features.isNotEmpty()) addAll(listOf("--features", features.joinToString(",")))
             if (release) add("--release")
         }
 

@@ -844,8 +844,8 @@ Not yet implemented (target). Status: planned
 
 #### Rust extension modules (Cargo backend)
 
-Status: implemented for the host (stage 1, #92), Android and iOS (stage 2, #94): `compile/backend/external/Cargo.kt`;
-`packpack/.../compile/backend/external/CargoTest.kt` (discovery both ways and its refusals, torchnative's
+Status: implemented for the host (stage 1, #92), Android and iOS (stage 2, #94), and ABI / feature configuration (#135): `compile/backend/external/Cargo.kt`;
+`packpack/.../compile/backend/external/CargoTest.kt` (discovery both ways and its refusals, `[tool.ppp.rust]` ABI and feature options, torchnative's
 layout, the maturin and cargo commands and environments per target, the placement, every refusal) and
 `CargoRealBuildTest.kt` (real builds, run with `PPP_CARGO_REAL_BUILD=1`: the host crate imported on 3.15t
 without the GIL; with `PPP_ANDROID_PYTHON` and an NDK, an Android cross build; with `PPP_IOS_PYTHON` and
@@ -859,9 +859,12 @@ is torchnative (thisisthepy/torchnative#53).
   With no crate nothing runs. A target other than the host is refused as stage 2.
 - Each crate: `uv tool run --from maturin==1.15.0 maturin build --manifest-path <crate>/Cargo.toml
   --interpreter <.venv python> --out build/packpack/cargo/<triple>/<module> --target-dir
-  build/packpack/cargo/target --features pyo3/abi3t-py315 [--release]` (`--release` for build type `release`).
-  `uv tool run` installs and links nothing; Cargo's build directory stays out of the source tree. The wheel
-  is tagged `cp315-abi3.abi3t-<platform>` (PEP 803).
+  build/packpack/cargo/target [--no-default-features] [--features <features>] [--release]` (`--release` for
+  build type `release`). By default `--features pyo3/abi3t-py315` is passed; configured `abi`, `features`, and
+  `default-features = false` / `no-default-features = true` in `[tool.ppp.rust]` adjust the flags, and
+  version-pinned ABIs (`cp3<minor>[t]`) omit any `pyo3/abi3*` feature.
+  `uv tool run` installs and links nothing; Cargo's build directory stays out of the source tree. With the
+  default `abi3t-py315`, the wheel is tagged `cp315-abi3.abi3t-<platform>` (PEP 803).
 - The wheel's one extension file is placed at the module's path in the `site-packages` Meson installed the
   package into, under `dist/<target>/<build type>/<build level>` (`core/_fast.abi3t.so`). The crate's module
   is the package's own, like a Meson C extension, so `single` and `fat` carry it the same way (checked end to
@@ -892,7 +895,8 @@ naming that command, before anything builds.
 
 - **Android** (`aarch64-linux-android`, `x86_64-linux-android`): maturin with `--target <triple>` and no
   interpreter. The target Python comes through `PYO3_CROSS_LIB_DIR=<prefix>/lib` and
-  `PYO3_CROSS_PYTHON_VERSION=3.15`; the NDK's `<triple>24-clang` (API 24, PEP 738's floor) is the linker
+  `PYO3_CROSS_PYTHON_VERSION=<abi version>` (`3.15` for `abi3t-py315` and `cp315t`, `3.13` for `abi3-py313`);
+  the NDK's `<triple>24-clang` (API 24, PEP 738's floor) is the linker
   and C compiler and `llvm-ar` the archiver. The NDK is `ANDROID_NDK_HOME`, else the newest
   `ndk/<version>` under `ANDROID_HOME` (or `ANDROID_SDK_ROOT`); none is refused, naming both. The extension
   links the target's `LDLIBRARY` (`libpython3.15t.so`) through `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`, as
@@ -901,22 +905,25 @@ naming that command, before anything builds.
   unresolved. Checked with NDK r29: the wheel is `...-cp315-abi3.abi3t-android_24_arm64_v8a.whl`, and its
   AArch64 extension needs `libpython3.15t.so` and exports `PyModExport__fast`. Not run on a device.
 - **iOS** (`arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator`): `cargo rustc --lib
-  --target <aarch64-apple-ios | aarch64-apple-ios-sim | x86_64-apple-ios>`, not maturin, which builds iOS only
+  --target <aarch64-apple-ios | aarch64-apple-ios-sim | x86_64-apple-ios>` (with `--no-default-features` and
+  `--features` per the crate's configuration), not maturin, which builds iOS only
   inside a cross virtual environment that python.org's XCframework does not provide (this is the fallback the
   plan below names). pypackpack writes the PyO3 config (`build/packpack/cargo/<triple>/pyo3-config.txt`:
-  CPython 3.15, `target_abi=CPython-abi3t-3.15`, shared, `Py_GIL_DISABLED` when the target is free-threaded,
-  link lines suppressed) and links the XCframework slice's `Python.framework` (`-F<slice> -framework Python`)
-  with `-install_name @rpath/<last>.abi3t.so`, for iOS 13.0 (`IPHONEOS_DEPLOYMENT_TARGET`). `lib<last>.dylib`
-  is placed as `<last>.abi3t.so`; another lib name is refused, naming the `[lib] name` to set. No Xcode
-  (`xcrun --sdk iphoneos`) is refused. Checked: the device build is an iOS binary (minimum 13.0) and the
-  arm64 simulator build an iOS-simulator binary (minimum 14.0, the lowest Rust's `aarch64-apple-ios-sim`
-  allows), each linking `@rpath/Python.framework/Python` like CPython's own iOS extensions. Not run on a device
-  or simulator; turning the extension into a framework for the app is the Xcode phase's work, as for any
-  binary module.
+  CPython `<abi version>`, `target_abi=CPython-abi3t-3.<minor>` for `abi3t` or `CPython-abi3-3.<minor>` for
+  `abi3`, omitted for version-pinned `cp3<minor>[t]`, shared, `Py_GIL_DISABLED` when the target is
+  free-threaded, link lines suppressed) and links the XCframework slice's `Python.framework`
+  (`-F<slice> -framework Python`) with `-install_name @rpath/<file>`, for iOS 13.0
+  (`IPHONEOS_DEPLOYMENT_TARGET`). `lib<last>.dylib` is placed as `<last>.abi3t.so` (`abi3t`),
+  `<last>.abi3.so` (`abi3`), or `<last><EXT_SUFFIX>` (version-pinned, reading `EXT_SUFFIX` from the slice's
+  `_sysconfigdata` or falling back to `.cpython-3<minor>[t]-darwin.so`); another lib name is refused, naming
+  the `[lib] name` to set. No Xcode (`xcrun --sdk iphoneos`) is refused. Checked: the device build is an iOS
+  binary (minimum 13.0) and the arm64 simulator build an iOS-simulator binary (minimum 14.0, the lowest
+  Rust's `aarch64-apple-ios-sim` allows), each linking `@rpath/Python.framework/Python` like CPython's own
+  iOS extensions. Not run on a device or simulator; turning the extension into a framework for the app is the
+  Xcode phase's work, as for any binary module.
 
 Limitation
 
-- No opt-out from abi3t yet: a crate that needs the full C API cannot be built.
 - Cargo writes `Cargo.lock` beside the crate's `Cargo.toml`, as it always does.
 
 ##### The plan and the decisions
@@ -939,10 +946,16 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
   - Fallback, if a mobile target turns out not to build through maturin: pypackpack calls `cargo build`
     for that target directly and writes the wheel itself, with its own tag rule (*Wheel tags*,
     `bundle/PythonTags.kt`) and the PEP 730 / PEP 738 platform tags `SingleWheelBundler` already writes.
-- **ABI: abi3t.** PyO3's `abi3t` feature and `gil_used = false` by default (Scope decisions): one extension
-  serves every free-threaded 3.15+ runtime. PyO3 0.30 supports `abi3t`
-  (<https://github.com/PyO3/pyo3/blob/main/guide/src/features.md>), and maturin 1.15 checks abi3t's
-  `PyModExport` entry point (PyO3/maturin#3246).
+- **ABI and Cargo features (#135).** Three ABI modes are supported via `abi` (in `[tool.ppp.rust]` at
+  package level or per crate entry):
+  - `abi3t-py315` (shorthand `abi3t`, the default): PEP 803 free-threaded stable ABI, passing
+    `pyo3/abi3t-py315` (`pyo3/abi3t-py3<minor>` for `minor >= 15`).
+  - `abi3-py3<minor>` (for example `abi3-py313`): PEP 384 stable ABI, passing `pyo3/abi3-py3<minor>` (`minor >= 7`).
+  - `cp3<minor>[t]` (for example `cp315t`, `cp315`, or aliases `version` / `cpython` defaulting to `cp315t`):
+    version-pinned CPython ABI with no `pyo3/abi3*` feature flag.
+  Extra Cargo features (`features = [...]`) and disabling Cargo's default features (`default-features = false`
+  or `no-default-features = true`) can be set at package level (inherited by both convention crates and
+  `[tool.ppp.rust]` entries) or per crate in an inline table.
 - **Targets, in order:** the host desktop target, then `aarch64-linux-android`, then iOS (`aarch64-apple-ios`,
   `aarch64-apple-ios-sim`, `x86_64-apple-ios`), the order the compile slot (#60) uses. Then the remaining
   Rust triples: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`,
@@ -958,13 +971,19 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
   `core._fast` (scanning `[tool.ppp].python-dir`, `src/main`, `src`, `python`, `<package>/python`, and the
   package root in order). This is the rule Meson's scan uses, and it needs no `toolchain` DSL. For a crate outside
   the Python packages, a `[tool.ppp.rust]` table in the package's `pyproject.toml` maps a module name to a
-  crate directory, relative to the package:
+  crate directory, relative to the package, either as a path string or as an inline table specifying `path`
+  and optional `abi`, `features`, and `default-features` / `no-default-features` overrides:
 
   ```toml
   [tool.ppp.rust]
+  abi = "abi3-py313"
+  features = ["shared"]
   "torch._C" = "rust/torch_c"
+  "torch._exec" = { path = "rust/torch_exec", abi = "cp315t", features = ["executorch"], default-features = false }
   ```
 
+  Package-level `abi`, `features`, and `default-features` / `no-default-features` keys in `[tool.ppp.rust]`
+  apply as defaults to both convention crates and `[tool.ppp.rust]` entries.
   The convention comes first; the table is for the exceptions. Crates that are neither inside a Python
   package nor named in the table are not built (torchnative's `rust/vulkan_probe` and `rust/wasm_probe`
   stay out). Naming the same module both ways is an error.
