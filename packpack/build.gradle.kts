@@ -241,6 +241,8 @@ graalvmNative {
                 "--no-fallback",
                 "--enable-preview",
                 "--install-exit-handlers",
+                // Baseline ISA so distributed binaries run on older CPUs and Windows ARM64 x64 emulation (#147).
+                "-march=compatibility",
                 // io.ktor reaches org.slf4j (slf4j-nop: no I/O at init); GraalVM 21 refuses it at run time.
                 "--initialize-at-build-time=kotlin,kotlinx.coroutines,io.ktor,kotlinx.io,org.slf4j",
                 "-H:+ReportExceptionStackTraces",

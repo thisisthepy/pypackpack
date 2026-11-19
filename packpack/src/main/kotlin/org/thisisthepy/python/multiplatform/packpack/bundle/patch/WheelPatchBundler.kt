@@ -151,7 +151,7 @@ class WheelPatchBundler : BundlerInterface {
             val changedPaths = (added + modified).sorted()
 
             val platformTag = platformTag(canonicalTarget, descriptor.family, request.minSdk)
-            val tags = PythonTags.forPayload(request.pythonVersion, currentPayload.keys, requiresPython)
+            val tags = PythonTags.forPayload(request.pythonVersion, currentPayload.keys, requiresPython, PythonTags.configuredRustAbi(editor))
             val distInfoDir = "$escapedName-$newVersion.dist-info"
             val artifactFileName =
                 "$escapedName-${baseVersion}_to_$newVersion-${tags.pythonTag}-${tags.abiTag}-$platformTag.whl.patch"
