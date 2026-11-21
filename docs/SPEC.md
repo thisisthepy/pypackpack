@@ -904,7 +904,8 @@ Package metadata (#159). The sheet: "패키지의 pyproject.toml에 빌드해야
 agent proposal, not confirmed. Status: implemented.
 
 - `[tool.ppp].build-dependencies = ["<distribution>", ...]` names the installed dependencies the build level
-  applies to (names compared PEP 503-normalized). Absent, every dependency is built at the same level (the
+  applies to in the `resource` bundle, which carries installed dependencies (the wheel bundlers carry
+  workspace packages, not installed ones). Names are compared PEP 503-normalized. Absent, every dependency is built at the same level (the
   sheet's default); `[]` builds none. A dependency outside the list ships as source: its top-level entries
   (from its `*.dist-info/RECORD`) are skipped by `compileall` and keep their `.py` in `release`. A listed
   name that is not installed is a bundle warning. `ResourceBundlerTest`:
