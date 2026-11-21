@@ -409,6 +409,142 @@ class CrossEnvTest {
         }
     }
 
+    // docs/SPEC.md *Per-package target dependency management*: `<package> add` runs `uv add --package
+    // <name> --marker <marker>` once per target, with each target's marker, at the workspace root.
+    @Test
+    fun addDependenciesRunsUvAddOncePerTargetWithThatTargetsMarker() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText(
+                "[project]\nname = \"core\"\n\n[tool.ppp.dependencies]\nplatforms = [\"x86_64-pc-windows-msvc\", \"aarch64-linux-android\"]\n",
+            )
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            // No --target: the package's platforms.
+            crossEnv.addDependencies("core", listOf("numpy"), null, mapOf("index-url" to "https://example.com/simple")).getOrThrow()
+
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc", "aarch64-linux-android").map { target ->
+                    FakeBackend.AddCall(
+                        "core",
+                        listOf("numpy"),
+                        mapOf("index-url" to "https://example.com/simple", "marker" to org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy.markerForTarget(target)),
+                        File(workspaceRoot.absolutePath),
+                    )
+                }.map { it.copy(workingDir = it.workingDir?.canonicalFile) },
+                backend.addCalls.map { it.copy(workingDir = it.workingDir?.canonicalFile) },
+            )
+
+            // An explicit --target replaces the defaults.
+            backend.addCalls.clear()
+            crossEnv.addDependencies("core", listOf("six"), listOf("linux"), null).getOrThrow()
+            assertEquals(
+                listOf(org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy.markerForTarget("x86_64-unknown-linux-gnu")),
+                backend.addCalls.map { it.extraArgs["marker"] },
+            )
+        }
+    }
+
+    @Test
+    fun addDependenciesWithoutTargetsOrPlatformsOrWithAMarkerIsRefusedBeforeUv() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val noTargets = crossEnv.addDependencies("core", listOf("numpy"), null, null).exceptionOrNull()?.message.orEmpty()
+            assertTrue("No targets provided" in noTargets, noTargets)
+            val marker = crossEnv.addDependencies("core", listOf("numpy; sys_platform == 'linux'"), listOf("linux"), null)
+                .exceptionOrNull()?.message.orEmpty()
+            assertTrue("--target" in marker, marker)
+            assertTrue(backend.addCalls.isEmpty())
+        }
+    }
+
+    // docs/SPEC.md *Adding/removing packages*: `package remove` deletes the directory and its workspace member.
+    @Test
+    fun removePackageDeletesItsDirectoryAndWorkspaceMember() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["packages/core", "packages/utils"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "packages/core/src/main").mkdirs()
+            File(workspaceRoot, "packages/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            File(workspaceRoot, "packages/utils").mkdirs()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.removePackage("packages/core", null).getOrThrow()
+
+            assertFalse(File(workspaceRoot, "packages/core").exists())
+            assertTrue(File(workspaceRoot, "packages/utils").exists())
+            assertEquals(
+                listOf("packages/utils"),
+                TomlEditor(File(workspaceRoot, "pyproject.toml").readText()).getArray("tool.uv.workspace", "members"),
+            )
+
+            val missing = crossEnv.removePackage("packages/core", null).exceptionOrNull()?.message.orEmpty()
+            assertTrue("not found" in missing, missing)
+        }
+    }
+
+    // docs/SPEC.md *Per-package target dependency management*, `tree`: one `uv tree --package <name>
+    // --python-platform <target>` per target, outputs in order; the host when no target is given.
+    @Test
+    fun showDependencyTreeRunsUvTreePerTargetAndDefaultsToTheHost() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val output = crossEnv.showDependencyTree("core", listOf("linux", "aarch64-linux-android"), null).getOrThrow()
+            assertEquals("tree:x86_64-unknown-linux-gnu\ntree:aarch64-linux-android", output)
+            assertEquals<List<String?>>(listOf("core", "core"), backend.treePackages)
+
+            backend.treeArgs.clear()
+            crossEnv.showDependencyTree("core", null, null).getOrThrow()
+            assertEquals(
+                listOf(org.thisisthepy.python.multiplatform.packpack.utils.Platforms.detectHostTarget()),
+                backend.treeArgs.map { it["python-platform"] },
+            )
+        }
+    }
+
     private fun readTargets(pyproject: File): List<String> {
         return TomlEditor(pyproject.readText()).getArray("tool.ppp.dependencies", "platforms")
     }
@@ -446,6 +582,15 @@ class CrossEnvTest {
             val extraArgs: Map<String, String> = emptyMap(),
         )
 
+        data class AddCall(
+            val packageName: String?,
+            val dependencies: List<String>,
+            val extraArgs: Map<String, String>,
+            val workingDir: File?,
+        )
+
+        val addCalls = mutableListOf<AddCall>()
+        val treePackages = mutableListOf<String?>()
         val targetInstallCalls = mutableListOf<TargetInstallCall>()
         val syncArgs = mutableListOf<Map<String, String>>()
         val treeArgs = mutableListOf<Map<String, String>>()
@@ -491,7 +636,10 @@ class CrossEnvTest {
             dependencies: List<String>,
             extraArgs: Map<String, String>?,
             workingDir: File?,
-        ): Result<String> = Result.success("ok")
+        ): Result<String> {
+            addCalls += AddCall(packageName, dependencies, extraArgs.orEmpty(), workingDir)
+            return Result.success("ok")
+        }
 
         override suspend fun removeDependencies(
             packageName: String?,
@@ -526,7 +674,8 @@ class CrossEnvTest {
             workingDir: File?,
         ): Result<String> {
             treeArgs += extraArgs.orEmpty()
-            return Result.success("ok")
+            treePackages += packageName
+            return Result.success("tree:${extraArgs?.get("python-platform")}")
         }
 
         override suspend fun lockDependencies(projectRoot: String): Result<String> = Result.success("ok")
