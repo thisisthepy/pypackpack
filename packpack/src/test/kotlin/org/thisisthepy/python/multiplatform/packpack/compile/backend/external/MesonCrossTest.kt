@@ -56,6 +56,28 @@ class MesonCrossTest {
         assertTrue("pypackpack python install 3.15t x86_64-linux-android" in missing, missing)
     }
 
+    /** The runtime layouts toolchain's native level installs into an explicit directory: Windows and a host. */
+    @Test
+    fun targetPythonInReadsWindowsAndHostLayouts() {
+        val win = File(root, "win-runtime/python").apply { mkdirs() }
+        File(win, "python.exe").writeText("MZ")
+        headers(File(win, "include"))
+        File(win, "libs").mkdirs()
+        File(win, "libs/python315t.lib").writeText("lib")
+        val w = targetPythonIn(File(root, "win-runtime"), "aarch64-pc-windows-msvc")
+        assertEquals(File(win, "include").canonicalFile, w.includeDir.canonicalFile)
+        assertEquals(".cp315t-win_arm64.pyd", w.extensionSuffix)
+        assertEquals("python315t.lib", w.libraryName)
+        assertEquals(File(win, "libs").canonicalFile, w.libDir!!.canonicalFile)
+
+        val mac = File(root, "mac-runtime/python")
+        headers(File(mac, "include/python3.15t"))
+        sysconfig(File(mac, "lib"), "EXT_SUFFIX" to ".cpython-315t-darwin.so")
+        val m = targetPythonIn(File(root, "mac-runtime"), "aarch64-apple-darwin")
+        assertEquals(".cpython-315t-darwin.so", m.extensionSuffix)
+        assertNull(m.libDir)
+    }
+
     @Test
     fun crossFilesNameTheSlotsCompilersAndTheHostIsNotCrossBuilt() {
         val pkg = pkg()

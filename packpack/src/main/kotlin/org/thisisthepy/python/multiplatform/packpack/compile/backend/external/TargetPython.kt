@@ -26,18 +26,33 @@ data class TargetPython(
  * prefix`, `linux_arm64`, `ios_arm64/Python.xcframework/<slice>`). Fails naming the install command.
  */
 fun locateTargetPython(packageDir: File, canonicalTarget: String): TargetPython {
-    fun missing(dir: String): Nothing =
-        throw IllegalStateException(
-            "No Python for $canonicalTarget under a '$dir' directory above $packageDir. " +
-                "Run `pypackpack python install 3.15t $canonicalTarget` first.",
-        )
+    val dirName = ANDROID_DIRS[canonicalTarget]
+        ?: IOS_TARGETS[canonicalTarget]?.installDirName
+        ?: LINUX_CROSS_TARGETS[canonicalTarget]?.installDirName
+        ?: throw IllegalStateException("pypackpack installs no CPython for $canonicalTarget, so it cannot cross-build C extensions for it.")
+    val dir = findTargetDir(packageDir, dirName) ?: throw IllegalStateException(
+        "No Python for $canonicalTarget under a '$dirName' directory above $packageDir. " +
+            "Run `pypackpack python install 3.15t $canonicalTarget` first.",
+    )
+    return targetPythonIn(dir, canonicalTarget)
+}
 
-    ANDROID_DIRS[canonicalTarget]?.let { dir ->
-        val prefix = findTargetDir(packageDir, "$dir/prefix") ?: missing(dir)
+/**
+ * [canonicalTarget]'s CPython in [installDir], as `installPython(version, target, installDir)` lays it out:
+ * Android `prefix/{include,lib}`, iOS `Python.xcframework/<slice>`, Windows `include/` and `libs/python3XYt.lib`
+ * (its `EXT_SUFFIX` is `.cp3XYt-win_<arch>.pyd`; the Windows build has no `_sysconfigdata`), and otherwise
+ * (macOS, Linux) `include/python3.Xt` and `lib/python3.Xt/_sysconfigdata*.py`. toolchain's
+ * `compileLevel = "native"` reads its runtime through this too.
+ */
+fun targetPythonIn(installDir: File, canonicalTarget: String): TargetPython {
+    fun missing(what: String): Nothing =
+        throw IllegalStateException("The CPython for $canonicalTarget in $installDir has no $what.")
+
+    if (canonicalTarget in ANDROID_DIRS) {
+        val prefix = File(installDir, "prefix").takeIf { it.isDirectory } ?: installDir
         val lib = File(prefix, "lib")
-        val include = headerDir(File(prefix, "include")) ?: missing(dir)
-        val ldLibrary = readSysconfigValue(lib, "LDLIBRARY")
-            ?: throw IllegalStateException("The Python in $lib has no _sysconfigdata naming its LDLIBRARY.")
+        val include = headerDir(File(prefix, "include")) ?: missing("include/python3.Xt/Python.h")
+        val ldLibrary = readSysconfigValue(lib, "LDLIBRARY") ?: missing("_sysconfigdata naming its LDLIBRARY")
         return TargetPython(
             canonicalTarget,
             include,
@@ -48,16 +63,27 @@ fun locateTargetPython(packageDir: File, canonicalTarget: String): TargetPython 
         )
     }
     IOS_TARGETS[canonicalTarget]?.let { ios ->
-        val slice = findTargetDir(packageDir, "${ios.installDirName}/Python.xcframework/${ios.slice}") ?: missing(ios.installDirName)
-        val headers = File(slice, "Python.framework/Headers").takeIf { File(it, "Python.h").isFile } ?: missing(ios.installDirName)
+        val slice = File(installDir, "Python.xcframework/${ios.slice}").takeIf { it.isDirectory } ?: missing("Python.xcframework/${ios.slice}")
+        val headers = File(slice, "Python.framework/Headers").takeIf { File(it, "Python.h").isFile } ?: missing("Python.framework/Headers/Python.h")
         return TargetPython(canonicalTarget, headers, extSuffix(File(slice, ios.libDir)), listOf("-F${slice.path}", "-framework", "Python"), slice)
     }
-    LINUX_CROSS_TARGETS[canonicalTarget]?.let { linux ->
-        val root = findTargetDir(packageDir, linux.installDirName) ?: missing(linux.installDirName)
-        val include = headerDir(File(root, "include")) ?: missing(linux.installDirName)
-        return TargetPython(canonicalTarget, include, extSuffix(File(root, "lib")), emptyList())
+    if (canonicalTarget.endsWith("-pc-windows-msvc")) {
+        val home = installDir.walkTopDown().maxDepth(2).firstOrNull { it.isFile && it.name.equals("python.exe", ignoreCase = true) }?.parentFile
+            ?: missing("python.exe")
+        val include = File(home, "include").takeIf { File(it, "Python.h").isFile } ?: missing("include/Python.h")
+        val lib = File(home, "libs").listFiles { f -> Regex("""python3\d+t\.lib""").matches(f.name) }?.singleOrNull()
+            ?: missing("libs/python3XYt.lib")
+        val digits = lib.name.removePrefix("python").removeSuffix("t.lib")
+        val arch = when {
+            canonicalTarget.startsWith("aarch64") -> "win_arm64"
+            canonicalTarget.startsWith("i686") -> "win32"
+            else -> "win_amd64"
+        }
+        return TargetPython(canonicalTarget, include, ".cp${digits}t-$arch.pyd", listOf("-L${lib.parentFile.path}", "-l${lib.nameWithoutExtension}"), lib.parentFile, lib.name)
     }
-    throw IllegalStateException("pypackpack installs no CPython for $canonicalTarget, so it cannot cross-build C extensions for it.")
+    val root = listOf(installDir, File(installDir, "python"), File(installDir, "install")).firstOrNull { headerDir(File(it, "include")) != null }
+        ?: missing("include/python3.Xt/Python.h")
+    return TargetPython(canonicalTarget, headerDir(File(root, "include"))!!, extSuffix(File(root, "lib")), emptyList())
 }
 
 /** `include/python3.Xt` (the free-threaded headers) under [include]. */
