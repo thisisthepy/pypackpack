@@ -177,6 +177,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
         - Platforms.kt  # supported targets, aliases, families, markers, min SDK validation
         - Downloader.kt  # external tool downloader (URL downloader, pip downloader); also defines DownloadSpec
         - Archive.kt  # zip/tar.gz/tar.zst archive extraction (with contained symlinks and executable bits)
+        - ArchiveWriter.kt  # deterministic .tar.gz (ustar prefix, PAX past it) and .zip writing (binary bundle)
         - Checksum.kt  # SHA-256 of a file, and verification against a pinned digest
         - FileTree.kt  # deleting a tree without following symbolic links out of it (#96)
         - Workspace.kt  # project/workspace root discovery, workspace member listing
@@ -238,7 +239,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
         - GilCheck.kt  # build warning for extensions that run the app with the GIL
         - PythonTags.kt  # wheel python/ABI tags from the target interpreter
         - binary
-          - BinaryBundler.kt  # placeholder (refuses)
+          - BinaryBundler.kt  # runtime + app + launcher, .tar.gz/.zip (#156)
         - fat
           - FatWheelBundler.kt  # .whl including dependencies
         - single
@@ -855,7 +856,7 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
 
 - `<package name>` is resolved among workspace members by path, directory name, or `[project].name`. In a single-package repository without `[tool.uv.workspace]`, `<package name>` resolves to the root project when given its `[project].name`, its root directory name, or `.`.
 - `source [<bundle type>]` compiles the package (below) for the canonical target triple, then bundles it
-  with `BundlerInterface.create(<bundle type>)`: `binary` (the default; it refuses, see *Bundle Type*),
+  with `BundlerInterface.create(<bundle type>)`: `binary` (the default unless `[tool.ppp].bundle` names another; see *Bundle Type*),
   `fat`, `single` or `patch`. A failed compile stops before the bundle.
 - `resource` bundles the package *source* with the `resource` bundler; nothing is compiled, because that
   bundle reads source (*Bundle Type*).
@@ -1149,9 +1150,27 @@ Bundling is a library API, `BundlerInterface.create(BundleType.<TYPE>).bundle(Bu
 (`bundle/BundlerInterface.kt`), which `pypackpack build <package> source|resource` calls (*Package build*).
 There is no `pypackpack bundle` command.
 
-- `binary`: Produces a target-specific binary layout suitable for execution or embedding in an app.
-  - Status: planned. `BinaryBundler` returns a failed `Result` with `NotImplementedError`
-    (`packpack/.../bundle/BundlerInterfaceTest.kt`, `unimplementedBundler_binaryReturnsFailureWithNotImplementedError`).
+- `binary`: Produces a target-specific binary layout suitable for execution or embedding in an app. The
+  sheet: "binary (.exe, etcs)". The layout below is an agent proposal, not confirmed (#156).
+  - Inputs: the compiled package (`dist/<canonical target>/<build type>/<build level>`'s `site-packages`, as
+    for `single`), the target's installed dependencies from `pypackpack <package> sync`
+    (`<package>/build/crossenv/<canonical target>`, when present), and the target's CPython
+    (`installPython(<pythonVersion, default 3.15t>, <target>, <installDir>)`, installed once into
+    `<package>/build/packpack/runtime/<canonical target>/<version>`).
+  - Output, `<package>/build/packpack/binary/<build type>/<build level>/<canonical target>/<name>/`:
+    `runtime/` (the CPython tree), `app/` (the package, then its dependencies; a path in both is refused),
+    `binary.json` (name, version, target, entry point, interpreter path) and, on desktop targets, a launcher:
+    `bin/<name>` (POSIX `sh`) on macOS and Linux, `<name>.cmd` on Windows. The launcher runs the runtime's
+    interpreter with `-s` and `PYTHONPATH=app`, from any working directory, passing its arguments through.
+    Android, iOS and wasm get no launcher: the layout is for embedding (python-multiplatform loads it).
+  - Entry point: the first `[project.scripts]` entry (`module:function`, called and its return value used as
+    the exit status), else `python -m <[project].name>`.
+  - The archive (`artifactFile`): `<name>-<version>-<canonical target>.tar.gz` (`.zip` for Windows) of that
+    directory, deterministic (sorted entries, fixed timestamps), with the launcher's executable bit kept.
+  - Refused with a message: no compiled output (naming the `build` command, as `single` does), a runtime
+    that cannot be installed for the target, or a runtime without an interpreter.
+  - Status: implemented. `packpack/.../bundle/binary/BinaryBundlerTest.kt` (layout, entry point, archive,
+    refusals, and running the host launcher).
 - `fat`: Produces a wheel-like archive that includes the current package together with its dependencies.
   - Status: implemented. `packpack/.../bundle/fat/FatWheelBundlerTest.kt`.
   - Reads the package's own compiled output from `<package>/dist/<canonical target>/<build type>/<build level>` (its `site-packages`).

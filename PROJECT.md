@@ -54,11 +54,11 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `version`: `pypackpack version` 과 `v`, `--version` / `-v` (첫 줄만) 가 동작. uv 부분은 테스트 없음
 - 루트 `add/remove/sync/tree`, `<package> add/tree`: CLI 전달만 테스트, `uv` 호출은 테스트 없음
 - `build`: Meson 으로 C/C++ 만. `--level` / `--target` 은 디렉터리 이름만 바꾸고 교차 컴파일하지 않음
-- `build` 가 의존성 확인을 하지 않음 (사양서의 오케스트레이션). `build <package> source` 의 기본 `binary` 번들은 미구현이라 거부
+- `build` 는 컴파일 전에 `uv sync --check` 로 의존성을 확인함 (#159)
 - GraalVM 네이티브 이미지: 설정은 있으나 이를 빌드하는 테스트나 CI 가 없음
 
 **계획 (빈 파일이거나 없음)**: 아래 두 가지를 빼고 모두 1.0 범위 (오너, 2026-11-21 21:55, 팀 리드 전달: "전부 1.0에 넣어", 범위 축소 금지 22:05). 항목은 `docs/SPEC.md` *1.0 scope*
-- `binary` 번들, MSVC/XCode/Emscripten 백엔드, Lpython 과 transcompile 인터페이스
+- MSVC/XCode/Emscripten 백엔드, Lpython 과 transcompile 인터페이스 (`binary` 번들은 #156 에서 구현)
 - 컴파일은 TypedPython 이 맡음 (오너 2026-11-21: Nuitka·Cython 은 빌드 백엔드가 아니라 벤치마크 비교로만 남김; 비교는 python-multiplatform `benchmarks/typedpython/`)
 - `deploy`: `code single|fat` 만 PyPI 로 (`uv publish`, `--publish-url`·`--dry-run`, 토큰 저장 없음, #90). `resource`, `weight` 는 서버가 없어 "not implemented" 로 실패 (1.0 범위, 서버가 막고 있음)
 - 패치 버전 추적

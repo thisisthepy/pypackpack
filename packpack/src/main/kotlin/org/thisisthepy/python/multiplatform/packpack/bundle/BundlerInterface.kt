@@ -139,9 +139,8 @@ data class BundleResult(
 /**
  * Factory pattern base interface for bundling.
  *
- * [BundleType.RESOURCE], [BundleType.SINGLE], [BundleType.FAT], and [BundleType.PATCH] are implemented;
- * [BundleType.BINARY] returns a failed [Result] naming itself rather than throwing or silently succeeding,
- * so a caller that asks for it gets an actionable message instead of an empty directory.
+ * Every [BundleType] is implemented ([BundleType.BINARY] since #156). A bundle type added later before its
+ * bundler exists extends [UnimplementedBundler], which fails naming itself (AGENTS.md rule 15).
  */
 interface BundlerInterface {
     fun bundle(request: BundleRequest): Result<BundleResult>
@@ -159,7 +158,7 @@ interface BundlerInterface {
 }
 
 /**
- * Shared base for the bundlers `docs/SPEC.md` lists but nobody has written yet.
+ * Shared base for a bundle type `docs/SPEC.md` lists before its bundler is written (none today).
  *
  * Kept as a failed [Result] rather than a `TODO()` so that a caller which reaches one of these
  * through the factory gets the same error channel as a genuine bundling failure.
@@ -170,7 +169,7 @@ abstract class UnimplementedBundler(
     override fun bundle(request: BundleRequest): Result<BundleResult> =
         Result.failure(
             NotImplementedError(
-                "Bundle type '${type.id}' is not implemented yet. Only 'resource', 'single', 'fat' and 'patch' are available today.",
+                "Bundle type '${type.id}' is not implemented yet. Available: ${BundleType.entries.filter { it != type }.joinToString(", ") { "'${it.id}'" }}.",
             ),
         )
 }

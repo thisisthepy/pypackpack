@@ -121,12 +121,13 @@ class BuildCommandTest {
     }
 
     @Test
-    fun `source without a bundle type is binary, which says it is not implemented`() {
+    fun `source without a bundle type is binary, which needs the compiled output`() {
         val result = command().test("core source --target macos")
 
+        // The fake compile wrote nothing, so the binary bundle names the build command it needs (#156).
         assertEquals(1, result.statusCode, result.output)
         assertEquals(1, compiled.size)
-        assertTrue("binary" in result.output && "not implemented" in result.output.lowercase(), result.output)
+        assertTrue("binary" in result.output && "No compiled output found" in result.output, result.output)
     }
 
     @Test
