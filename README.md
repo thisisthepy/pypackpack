@@ -101,7 +101,7 @@ code goes in `src/android/`, `src/ios/` and so on.
 
 ```kotlin
 repositories { mavenLocal() }    // ./gradlew :packpack:publishToMavenLocal
-dependencies { implementation("org.thisisthepy.python.multiplatform:packpack:0.1.0") }
+dependencies { implementation("org.thisisthepy.python.multiplatform:packpack:1.0.0") }
 ```
 
 ```kotlin

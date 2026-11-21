@@ -3,7 +3,7 @@
 Python 프로젝트를 여러 플랫폼(데스크톱, Android, iOS, WASM)으로 배포하기 위한 빌드 도구.
 Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다. GraalVM 네이티브 CLI
 `pypackpack`(`ppp`) 이면서, `toolchain` 이 호출하는 JVM 라이브러리
-(`org.thisisthepy.python.multiplatform:packpack:0.1.0`) 이기도 하다.
+(`org.thisisthepy.python.multiplatform:packpack:1.0.0`) 이기도 하다.
 
 ## 사양의 출처
 

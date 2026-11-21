@@ -11,7 +11,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pypackpack"
-version = "0.4.1"
+version = "1.0.0"
 description = "PyPackPack (PPP) - A multiplatform solution to distribute python project"
 readme = "README.md"
 license = "Apache-2.0"
@@ -21,7 +21,7 @@ authors = [
 ]
 keywords = ["packaging", "cross-compilation", "android", "ios", "kotlin-multiplatform", "uv"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: MacOS",

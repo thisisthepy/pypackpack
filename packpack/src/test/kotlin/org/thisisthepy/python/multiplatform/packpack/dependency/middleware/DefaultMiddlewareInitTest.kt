@@ -95,8 +95,38 @@ class DefaultMiddlewareInitTest {
         return this
     }
 
+    /**
+     * `pypackpack python use <version>` (docs/SPEC.md *Changing the project's Python version*): the
+     * project root's `.venv` is deleted, recreated with the requested version in the project root, and
+     * synchronized there. Here because it shares this file's recording backend.
+     */
+    @Test
+    fun changePythonVersionRecreatesTheRootVenvWithTheNewVersionAndSyncs() {
+        val tempRoot = Files.createTempDirectory("ppp-python-use-").toFile().canonicalFile
+        val oldUserDir = System.getProperty("user.dir")
+        try {
+            File(tempRoot, "pyproject.toml").writeText("[project]\nname = \"demo\"\n")
+            val stale = File(tempRoot, ".venv/bin/python3").apply { parentFile.mkdirs(); writeText("old") }
+            val nested = File(tempRoot, "src/core").apply { mkdirs() }
+            System.setProperty("user.dir", nested.absolutePath)
+            val backend = FakeBackend()
+
+            assertTrue(DefaultMiddleware().withBackend(backend).changePythonVersion("3.15t"))
+
+            assertFalse(stale.exists(), "the old .venv must be deleted before it is recreated")
+            val venv = File(tempRoot, ".venv").absolutePath
+            assertEquals<List<Triple<String, String?, String?>>>(listOf(Triple(venv, "3.15t", tempRoot.absolutePath)), backend.venvCalls)
+            assertEquals<List<Pair<String, String?>>>(listOf(venv to tempRoot.absolutePath), backend.syncCalls)
+        } finally {
+            System.setProperty("user.dir", oldUserDir)
+            tempRoot.deleteRecursively()
+        }
+    }
+
     private class FakeBackend : BackendInterface {
         var initArgs: Map<String, String>? = null
+        val venvCalls = mutableListOf<Triple<String, String?, String?>>()
+        val syncCalls = mutableListOf<Pair<String, String?>>()
 
         override fun initialize() = Unit
 
@@ -111,7 +141,10 @@ class DefaultMiddlewareInitTest {
             pythonVersion: String?,
             extraArgs: Map<String, String>?,
             workingDir: File?,
-        ): Result<String> = Result.success("ok")
+        ): Result<String> {
+            venvCalls += Triple(path, pythonVersion, workingDir?.absolutePath)
+            return Result.success("ok")
+        }
 
         override suspend fun initProject(
             path: String?,
@@ -143,7 +176,10 @@ class DefaultMiddlewareInitTest {
             venvPath: String,
             extraArgs: Map<String, String>?,
             workingDir: File?,
-        ): Result<String> = Result.success("ok")
+        ): Result<String> {
+            syncCalls += venvPath to workingDir?.absolutePath
+            return Result.success("ok")
+        }
 
         override suspend fun installDependenciesToTarget(
             targetDir: String,
