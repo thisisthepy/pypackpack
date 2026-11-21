@@ -44,14 +44,20 @@ Agreed 2026-11-21 by the team lead for the owner's goal "ship a stable 1.0 of ev
   build (#150). A `partial` item whose only gap was a missing test got the test (2026-11-21: *Changing the
   project's Python version*, *Adding/removing packages*, *Viewing build target platforms*, *Per-package
   target dependency management*).
-- **After 1.0, kept as tested refusals or placeholders:** every `planned` item: build-speed measurement;
-  Nuitka, Cython, Lpython, transcompile and minification; the `binary` bundle; FastTrack, ResourceHub and
-  BrainWave deploy (no servers exist); cleaning subpackage build directories on `python use`.
-- **Still `partial` in 1.0, with their limitations stated where they are:** the GraalVM and tool-acquisition
-  goals, *CLI Version* (the uv line is untested), *Distribution through Maven Central* (waits on the owner's
-  upload), *Project creation*, *Dev environment dependency management* (no test runs uv itself), *Package
-  build* (Meson builds for the host only), and the `bytecode` / `native` / `mixed` build levels (per-platform
-  coverage).
+- **The lead's "after 1.0" list is withdrawn** (owner, 2026-11-21, relayed by the team lead (toolchain report, "Owner decision (2026-11-21 21:55)"): "일을 제대로 하면 될거를 쓸데없이 자꾸
+  미루려고만 하네? ... 전부 1.0에 넣어"; owner rule 2026-11-21 22:05: a scope cut is never proposed). Every
+  `planned` and `partial` item in this file is in 1.0 except the two the owner placed after it:
+  *Code minification* and FastTrack deploy (core item (4)). In 1.0, each with its own issue: build-speed
+  measurement; Lpython and the transcompile interface (core (3)); the `binary` bundle; ResourceHub and
+  BrainWave deploy; cleaning subpackage build directories on `python use`; the *Package build* targets
+  (dependency build scope and bundling mode in `pyproject.toml`, server-side patch version tracking); and
+  closing every `partial`: the GraalVM and tool-acquisition goals, *CLI Version*, *Distribution through Maven
+  Central*, *Project creation*, *Dev environment dependency management*, *Package build* (Meson for every
+  target, not the host only), crossenv (core (2)), and the `bytecode` / `native` / `mixed` levels on every
+  target (iOS, Windows and wasm through the Xcode, MSVC/clang-cl and Emscripten adapters).
+- **Not in this repository's power alone, reported as blockers and worked on:** ResourceHub, BrainWave and
+  the patch-version ledger need servers that do not exist; Maven Central needs the owner's upload; WASM
+  needs python-multiplatform #175's build (below).
 - **WASM is in 1.0** (owner, 2026-11-21, relayed by the team lead: python-multiplatform #175, the
   free-threaded wasm runtime built with a post-build `.wasm` memory-import patch, is back in 1.0, and with it
   the `wasm32-emscripten` target, #82). *Scope decisions* below already put it in the first release (#70).
@@ -94,12 +100,20 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     install of Android and iOS wheels is tested (`packpack/.../dependency/backend/UVBackendRealInstallTest.kt`).
     No cross interpreter environment is created.
 - (3). Support Python code compilation/optimization/minification (nuitka, lpython, etc.)
-  - Status: planned. `Nuitka.kt`, `Cython.kt`, `Lpython.kt`, `transcompile/` and `minification/`
-    are empty placeholders. (The `bytecode` level of the `resource` bundle uses `compileall`, which
-    is not this.)
+  - Compilation is TypedPython's (owner, 2026-11-21, relayed by the team lead (toolchain report, "Owner decision (2026-11-21 21:55)"): "Nuitka and Cython are replaced by
+    TypedPython and stay only as benchmark comparisons (not build backends)"). TypedPython generates the C
+    (python-multiplatform's `typedpython emit-c`) and this repository compiles it through the native slot
+    (`BundleRequest.nativeModules`, the `native` / `mixed` levels of every bundle; see *The native compile
+    slot*). The Cython and Nuitka comparisons live in python-multiplatform's `benchmarks/typedpython/`;
+    `Nuitka.kt`, `Cython.kt`, `NuitkaTransInterface.kt` and `CythonTransInterface.kt` are empty placeholders
+    for build backends that will not exist (their removal is proposed to the lead, not yet done).
+  - Status: partial. The native slot is `implemented` per platform as *The native compile slot* states;
+    `Lpython.kt` and `transcompile/BaseTransInterface.kt` are empty placeholders, in 1.0 (see *1.0 scope*).
+  - Minification is its own section, *Code minification* (planned, built after 1.0 by the owner's decision).
+    (The `bytecode` level of the `resource` bundle uses `compileall`, which is none of this.)
 - (4). Support code update fast track API
-  - Status: planned. `deploy/code/FastTrackAPI.kt` refuses (no FastTrack server exists); see *Package
-    deployment*.
+  - Status: planned, after 1.0 (owner, 2026-11-21, relayed by the team lead (toolchain report, "Owner decision (2026-11-21 21:55)"): "FastTrack deploy must exist, after 1.0").
+    `deploy/code/FastTrackAPI.kt` refuses (no FastTrack server exists); see *Package deployment*.
 
 ### PyPackPack Companion (tools designed to be used together)
 
@@ -194,17 +208,17 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - Gradle.kt
         - middleware
           - external
-            - Nuitka.kt  # placeholder (c++ converter)
-            - Cython.kt  # placeholder (c converter)
+            - Nuitka.kt  # placeholder; not a build backend (owner 2026-11-21: TypedPython replaces it), removal proposed
+            - Cython.kt  # placeholder; not a build backend (owner 2026-11-21: TypedPython replaces it), removal proposed
             - Lpython.kt  # placeholder (llvm converter)
           - MiddlewareInterface.kt  # factory pattern
           - DefaultMiddleware.kt  # decorator pattern
           - transcompile
             - BaseTransInterface.kt  # placeholder
-            - NuitkaTransInterface.kt  # placeholder
-            - CythonTransInterface.kt  # placeholder
+            - NuitkaTransInterface.kt  # placeholder; not a build backend (owner 2026-11-21), removal proposed
+            - CythonTransInterface.kt  # placeholder; not a build backend (owner 2026-11-21), removal proposed
           - minification
-            - BaseMinifyInterface.kt  # placeholder
+            - BaseMinifyInterface.kt  # placeholder (*Code minification*, after 1.0)
         - backend
           - external
             - Clang.kt  # desktop C compiler adapter (macOS xcrun clang -arch, Linux host clang/cc) for the compile slot (#20)
@@ -1163,6 +1177,21 @@ Limitation
 - Untagged `name.so` files are neither probed nor warned about.
 - `single`, `fat` and `patch` do not run either check yet.
 
+#### Code minification
+
+Status: planned, built after 1.0 (owner, 2026-11-21, relayed by the team lead (toolchain report, "Owner decision (2026-11-21 21:55)"): "the minifier becomes its own independent spec
+section (to be built later; keep it as planned with its own criterion)"). `compile/middleware/minification/
+BaseMinifyInterface.kt` is an empty placeholder.
+
+What it is (agent proposal, not confirmed): a step that rewrites a package's own `.py` modules to a smaller
+equivalent (comments, docstrings unless kept, blank lines and redundant whitespace removed; local names
+shortened; public names, `__all__` and anything reached through `getattr`/strings kept), selectable per
+bundle like the build levels and applied before `bytecode`/`mixed` compile it.
+
+Done when (agent proposal, not confirmed): for a fixture package, the minified modules are smaller than the
+originals, a test runs the fixture's own tests against both and gets the same results, and a module that
+uses a dynamic attribute name is left with that name intact.
+
 #### Package deployment
 
 ```bash
@@ -1194,10 +1223,10 @@ Status: implemented (#90). `packpack/.../deploy/code/PyPIPublishAPITest.kt`, `cl
 Status: planned. Each refuses with a "not implemented" message and exit code 1
 (`packpack/.../deploy/DeployInterfaceTest.kt`, `PyPIPublishAPITest`, `cli/.../DeployCommandTest.kt`).
 
-- `code binary|patch` → FastTrack (`FastTrackAPI`), for apps: no FastTrack server exists. Who builds and
-  runs it is the maintainer's decision.
+- `code binary|patch` → FastTrack (`FastTrackAPI`), for apps: no FastTrack server exists. After 1.0 (owner,
+  2026-11-21, relayed by the team lead: "FastTrack deploy must exist, after 1.0").
 - `resource` → ResourceHub (`ResourceAPI`, `ResourceHubAPI`) and `weight` → BrainWave (`WeightAPI`,
-  `BrainWaveAPI`): no server exists.
+  `BrainWaveAPI`): no server exists. In 1.0 (*1.0 scope*); blocked on the servers.
 - Implement patch feature
   - Let's go with a git-like concept for patch uploads (the concern is speed, parallel processing)
   - Need change upload, a server management page, client code
