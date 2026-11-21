@@ -1129,8 +1129,9 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     (`packpack/.../compile/extension/ExtensionCompilerTest.kt`,
     `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Since #155 the slot also builds (command and
     support tests in `ExtensionCompilerTest`: `checkSupport_acceptsWindowsOnItsOwnMachineIosWithItsFrameworkAndX86Android`,
-    `compile_buildsEachNewTargetWithItsCompilerFlagsAndLink`; no real build of these in CI yet, which is what
-    keeps this `partial`):
+    `compile_buildsEachNewTargetWithItsCompilerFlagsAndLink`; real builds, opt-in with `PPP_NATIVE_SLOT_REAL_BUILD=1`,
+    in `NativeSlotRealBuildTest` (test.yml `real-builds` for Android, `real-builds-host` on macOS for iOS and on
+    Windows, where the `.pyd` is imported); `partial` until those jobs have passed):
     - `x86_64-linux-android` through `NDK.kt`, like arm64;
     - every other Linux target (another architecture, musl, riscv64) with `zig cc -target <triple>` (glibc
       2.17, riscv64 2.27), the ziglang the Cargo backend already uses, run through `uv tool run`;

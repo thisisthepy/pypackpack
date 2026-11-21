@@ -8,12 +8,16 @@ import java.io.File
  *
  * @param linkArgs `-L<lib> -lpython3.15t` on Android (Bionic resolves no symbols from the host process),
  *   `-F<slice> -framework Python` on iOS, none on Linux.
+ * @param libDir / [libraryName] what the native slot links (`ExtensionCompileRequest.libDir`): the lib
+ *   directory and `libpython3.15t.so` on Android, the XCframework slice (holding `Python.framework`) on iOS.
  */
 data class TargetPython(
     val canonicalTarget: String,
     val includeDir: File,
     val extensionSuffix: String,
     val linkArgs: List<String>,
+    val libDir: File? = null,
+    val libraryName: String? = null,
 )
 
 /**
@@ -39,12 +43,14 @@ fun locateTargetPython(packageDir: File, canonicalTarget: String): TargetPython 
             include,
             extSuffix(lib),
             listOf("-L${lib.path}", "-l${ldLibrary.removePrefix("lib").removeSuffix(".so")}"),
+            lib,
+            ldLibrary,
         )
     }
     IOS_TARGETS[canonicalTarget]?.let { ios ->
         val slice = findTargetDir(packageDir, "${ios.installDirName}/Python.xcframework/${ios.slice}") ?: missing(ios.installDirName)
         val headers = File(slice, "Python.framework/Headers").takeIf { File(it, "Python.h").isFile } ?: missing(ios.installDirName)
-        return TargetPython(canonicalTarget, headers, extSuffix(File(slice, ios.libDir)), listOf("-F${slice.path}", "-framework", "Python"))
+        return TargetPython(canonicalTarget, headers, extSuffix(File(slice, ios.libDir)), listOf("-F${slice.path}", "-framework", "Python"), slice)
     }
     LINUX_CROSS_TARGETS[canonicalTarget]?.let { linux ->
         val root = findTargetDir(packageDir, linux.installDirName) ?: missing(linux.installDirName)
