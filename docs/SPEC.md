@@ -48,7 +48,7 @@ Agreed 2026-11-21 by the team lead for the owner's goal "ship a stable 1.0 of ev
   미루려고만 하네? ... 전부 1.0에 넣어"; owner rule 2026-11-21 22:05: a scope cut is never proposed). Every
   `planned` and `partial` item in this file is in 1.0 except the two the owner placed after it:
   *Code minification* and FastTrack deploy (core item (4)). In 1.0, each with its own issue: build-speed
-  measurement; Lpython and the transcompile interface (core (3)); the `binary` bundle; ResourceHub and
+  measurement; the `binary` bundle; ResourceHub and
   BrainWave deploy; cleaning subpackage build directories on `python use`; the *Package build* targets
   (dependency build scope and bundling mode in `pyproject.toml`, server-side patch version tracking); and
   closing every `partial`: the GraalVM and tool-acquisition goals, *CLI Version*, *Distribution through Maven
@@ -104,11 +104,14 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     TypedPython and stay only as benchmark comparisons (not build backends)"). TypedPython generates the C
     (python-multiplatform's `typedpython emit-c`) and this repository compiles it through the native slot
     (`BundleRequest.nativeModules`, the `native` / `mixed` levels of every bundle; see *The native compile
-    slot*). The Cython and Nuitka comparisons live in python-multiplatform's `benchmarks/typedpython/`;
-    `Nuitka.kt`, `Cython.kt`, `NuitkaTransInterface.kt` and `CythonTransInterface.kt` are empty placeholders
-    for build backends that will not exist (their removal is proposed to the lead, not yet done).
-  - Status: partial. The native slot is `implemented` per platform as *The native compile slot* states;
-    `Lpython.kt` and `transcompile/BaseTransInterface.kt` are empty placeholders, in 1.0 (see *1.0 scope*).
+    slot*). Lpython likewise (owner, 2026-11-21 23:00, relayed by the team lead: "Lpython도 비교군으로만":
+    Lpython is a benchmark comparison only, not a build backend). The Cython and Nuitka comparisons live in
+    python-multiplatform's `benchmarks/typedpython/`. The empty `Nuitka.kt`, `Cython.kt`, `Lpython.kt`,
+    `NuitkaTransInterface.kt` and `CythonTransInterface.kt` placeholders were deleted (team lead 2026-11-21
+    22:55 and the owner's 23:00 answer).
+  - Status: partial. The native slot is `implemented` per platform as *The native compile slot* states.
+    `transcompile/BaseTransInterface.kt` is an empty placeholder with no converter left to implement it
+    (its removal is proposed to the lead).
   - Minification is its own section, *Code minification* (planned, built after 1.0 by the owner's decision).
     (The `bytecode` level of the `resource` bundle uses `compileall`, which is none of this.)
 - (4). Support code update fast track API
@@ -207,16 +210,10 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - Cli.kt
           - Gradle.kt
         - middleware
-          - external
-            - Nuitka.kt  # placeholder; not a build backend (owner 2026-11-21: TypedPython replaces it), removal proposed
-            - Cython.kt  # placeholder; not a build backend (owner 2026-11-21: TypedPython replaces it), removal proposed
-            - Lpython.kt  # placeholder (llvm converter)
           - MiddlewareInterface.kt  # factory pattern
           - DefaultMiddleware.kt  # decorator pattern
           - transcompile
             - BaseTransInterface.kt  # placeholder
-            - NuitkaTransInterface.kt  # placeholder; not a build backend (owner 2026-11-21), removal proposed
-            - CythonTransInterface.kt  # placeholder; not a build backend (owner 2026-11-21), removal proposed
           - minification
             - BaseMinifyInterface.kt  # placeholder (*Code minification*, after 1.0)
         - backend
@@ -876,7 +873,7 @@ Limitation
 
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
 - Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
-- Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
+- Only the Meson and Cargo backends are implemented; the MSVC/XCode/Emscripten backend adapters and the minification middleware are empty placeholder files (Clang and NDK are the native slot's adapters; TypedPython, not Nuitka, Cython or Lpython, generates the C it compiles), so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
 - `build` does not verify dependencies first (the sheet's orchestration includes it).
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 - The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
