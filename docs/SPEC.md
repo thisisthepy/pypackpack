@@ -899,10 +899,23 @@ Limitation
 - Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 
-Not yet implemented (target). Status: planned
+Package metadata (#159). The sheet: "패키지의 pyproject.toml에 빌드해야 할 의존성 패키지의 범위 기술 필요 (기본적으로는
+전부 다 같은 레벨로 빌드)" and "단일 파일로 전부 다 묶는건지 따로 따로 빌드할건지 기술 필요 (메타 데이터)". The keys are an
+agent proposal, not confirmed. Status: implemented.
 
-- Describing, in the package's `pyproject.toml`, the scope of dependency packages that need to be built (today everything under the package is built at the same level).
-- Selecting whether to bundle everything into a single file or build separately, as metadata.
+- `[tool.ppp].build-dependencies = ["<distribution>", ...]` names the installed dependencies the build level
+  applies to (names compared PEP 503-normalized). Absent, every dependency is built at the same level (the
+  sheet's default); `[]` builds none. A dependency outside the list ships as source: its top-level entries
+  (from its `*.dist-info/RECORD`) are skipped by `compileall` and keep their `.py` in `release`. A listed
+  name that is not installed is a bundle warning. `ResourceBundlerTest`:
+  `bundle_buildDependenciesLimitsWhichDependenciesAreCompiled`, `bundle_withoutBuildDependenciesEveryDependencyIsCompiled`.
+- `[tool.ppp].bundle = "binary" | "fat" | "single" | "patch"` is the bundle `build <package> source` uses
+  when the command names none: `fat` puts the package and its dependencies in one file, `single` the package
+  alone. The command line wins; an unknown value is refused before compiling; absent, `binary`.
+  `cli/.../BuildCommandTest.kt`.
+
+Not yet implemented (target). Status: planned, in 1.0 (#158, blocked on a server)
+
 - Server-side patch version tracking (base version ledger, server management page).
 
 #### Rust extension modules (Cargo backend)

@@ -93,6 +93,33 @@ class BuildCommandTest {
         assertTrue("fake.whl" in result.output, result.output)
     }
 
+    /** The package's `[tool.ppp].bundle` picks the bundle when the command names none (#159). */
+    @Test
+    fun `source without a bundle type uses the package's tool ppp bundle`() {
+        File(packageDir, "pyproject.toml").appendText("\n[tool.ppp]\nbundle = \"fat\"\n")
+
+        val result = command(recordBundles = true).test("core source --target macos")
+
+        assertEquals(0, result.statusCode, result.output)
+        assertEquals(BundleType.FAT, bundled.single().first)
+    }
+
+    /** The command line still wins over the metadata, and an unknown metadata value is refused before compiling. */
+    @Test
+    fun `the command line bundle wins and an unknown tool ppp bundle is refused`() {
+        File(packageDir, "pyproject.toml").appendText("\n[tool.ppp]\nbundle = \"fat\"\n")
+        val chosen = command(recordBundles = true).test("core source single --target macos")
+        assertEquals(0, chosen.statusCode, chosen.output)
+        assertEquals(BundleType.SINGLE, bundled.single().first)
+
+        File(packageDir, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n\n[tool.ppp]\nbundle = \"zip\"\n")
+        compiled.clear()
+        val refused = command(recordBundles = true).test("core source --target macos")
+        assertEquals(1, refused.statusCode, refused.output)
+        assertTrue("zip" in refused.output, refused.output)
+        assertTrue(compiled.isEmpty(), "refused before compiling")
+    }
+
     @Test
     fun `source without a bundle type is binary, which says it is not implemented`() {
         val result = command().test("core source --target macos")
