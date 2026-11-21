@@ -104,7 +104,9 @@ internal class RecordingMiddleware : MiddlewareInterface {
         targets: List<String>,
     ): Result<String> = Result.success("ok")
 
-    override fun getToolVersion(): Result<String> = Result.success("ok")
+    var uvVersionResult: Result<String> = Result.success("ok")
+
+    override fun getToolVersion(): Result<String> = uvVersionResult
 
     override fun changePythonVersion(pythonVersion: String): Boolean = true
 

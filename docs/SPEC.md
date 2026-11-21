@@ -332,8 +332,9 @@ Limitation
 
 #### CLI Version
 
-Status: partial. `cli/.../BuildInfoTest.kt` checks the printed version's source, `--version` / `-v` and
-the `v` alias; nothing tests the uv part.
+Status: implemented (#159). `cli/.../BuildInfoTest.kt` checks the printed version's source, `--version` / `-v`,
+the `v` alias, and that `version` prints the uv version the middleware reports (and a failed check on
+stderr); `packpack/.../dependency/backend/UVBackendVersionTest.kt` runs the real `uv --version`.
 
 ```bash
 pypackpack version          # alias: pypackpack v
