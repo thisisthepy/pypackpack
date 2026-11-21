@@ -867,6 +867,14 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
   refused (exit 1) before anything runs.
 
 - Auto-generates a `meson.build` for the package by scanning the first source root containing Python packages in order: `[tool.ppp].python-dir` (when configured in `pyproject.toml`), `src/main`, `src`, `python`, `<package>/python`, and the package root. Inside each Python package, `.c`/`.cc`/`.cpp`/`.cxx` files become Meson `py.extension_module()` targets when `[tool.ppp].c-extensions` lists their project-relative path, or (when `[tool.ppp].c-extensions` is omitted) when their name starts with `_` or their source references `PyInit_`, `PyModExport_`, or `Python.h` (`c-extensions = []` disables C/C++ extension scanning completely, #144); all other non-excluded files (including `.py`, `.pyi`, `py.typed`, package data files, and data/template `.c`/`.cpp` files) become `py.install_sources()`, while `__pycache__`, `*.pyc`, `*.pyo`, dot-entries, `Thumbs.db`, `meson.build`, and Rust crate directories (`Cargo.toml`) are excluded.
+- Before anything is built, verifies the package's dependencies (the sheet's orchestration, #159):
+  `uv sync --check` in the workspace root (`--package <[project].name>` in a workspace,
+  `compile/backend/DefaultBackend.kt`'s `UvDependencyCheck`). An environment out of sync with the lock and
+  `pyproject.toml` stops the build with a message naming `pypackpack sync` and uv's output
+  (`DefaultBackendTest`: `compile_verifiesDependenciesBeforeBuildingAndStopsOnAFailedCheck`,
+  `uvDependencyCheck_runsUvSyncCheckForTheMember`).
+- The compile backend takes the workspace directory explicitly (`BackendInterface.compile(..., workingDir)`,
+  AGENTS.md rule 13); only the CLI's middleware passes `user.dir`. The tests point `user.dir` elsewhere.
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--type` is passed to Meson as `--buildtype=<type>`. `--type`, `--level` and `--target` select the directories: the Meson build directory is `<package>/build/packpack/single/<type>/<level>/<target>`, and `meson install` writes to `<package>/dist/<target>/<type>/<level>` (`<target>` is `default` when `--target` is omitted).
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
@@ -889,9 +897,7 @@ Limitation
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
 - Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
 - Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
-- `build` does not verify dependencies first (the sheet's orchestration includes it).
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
-- The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
 
 Not yet implemented (target). Status: planned
 

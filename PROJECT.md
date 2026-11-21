@@ -98,8 +98,8 @@ CLI 26개, 실패 0 (CLI 가 아직 `:cli` 모듈이던 때). Python 테스트�
   게시되는 컴포넌트는 `main` 뿐이라 라이브러리 소비자(`toolchain`)가 Clikt 를 받지 않는다. 루트 `cli/` 모듈은
   사용자 허락 없이 만든 것이라 되돌렸다 (#73, 첫 사양서 `spec.md` 의 배치를 따름).
 - **백엔드 계층은 `workingDir` 를 명시적으로 받는다**: `toolchain` 은 Gradle 데몬 안에서 호출하므로
-  JVM 전역 `user.dir` 에 의존하면 안 된다. 예외(`compile` 의 `DefaultBackend.compile`,
-  `installDir` 없이 호출한 `installPython`)는 결함으로 기록. `installPython(version, target, installDir)` 은
+  JVM 전역 `user.dir` 에 의존하면 안 된다. 예외(`installDir` 없이 호출한 `installPython`)는 결함으로 기록.
+  `compile` 의 `DefaultBackend.compile` 은 #159 부터 `workingDir` 를 받는다. `installPython(version, target, installDir)` 은
   주어진 디렉터리에만 설치하고 `projectRoot()`·`.venv`·레지스트리를 건드리지 않는다(#37, `toolchain` 의
   `build/pythonRuntime/<트리플>/<버전>/` 용).
 - **미구현은 실패한 `Result`**: `UnimplementedBundler`, `UnimplementedDeployer`; 빈 결과로 성공하지 않는다.
