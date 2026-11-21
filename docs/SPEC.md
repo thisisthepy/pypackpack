@@ -222,10 +222,10 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - BaseMinifyInterface.kt  # placeholder (*Code minification*, after 1.0)
         - backend
           - external
-            - Clang.kt  # desktop C compiler adapter (macOS xcrun clang -arch, Linux host clang/cc) for the compile slot (#20)
+            - Clang.kt  # C compiler adapter for the compile slot (#20, #155): macOS xcrun clang -arch, Linux host clang/cc, Linux cross zig cc, Windows clang --target, iOS xcrun --sdk clang
             - MSVC.kt  # placeholder
-            - NDK.kt  # Android aarch64 NDK clang adapter for the compile slot (#20)
-            - XCode.kt  # placeholder (adapter of Clang.kt)
+            - NDK.kt  # Android NDK clang adapter for the compile slot (aarch64 and x86_64; #20, #155)
+            - XCode.kt  # placeholder; iOS builds go through Clang.kt with the Xcode SDKs (#155)
             - Emscripten.kt  # placeholder
             - Cargo.kt  # Rust crates -> extension modules: discovery, maturin (abi3t), placement in crossenv
             - Meson.kt  # meson.build generation, meson setup/compile/install, meson/ninja auto-install
@@ -1125,9 +1125,19 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `x86_64-apple-darwin` via `Clang.kt`), Linux host architecture (`x86_64-unknown-linux-gnu`,
     `aarch64-unknown-linux-gnu` via `Clang.kt`), and Android `aarch64-linux-android` (via `NDK.kt`)
     (`packpack/.../compile/extension/ExtensionCompilerTest.kt`,
-    `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Windows, iOS, wasm, Linux cross-arch and
-    `x86_64-linux-android` are refused by `ExtensionCompilerInterface.checkSupport` with
-    `NoCompileBackendException`. `single`, `fat` and `patch` accept `native` and package the compiled
+    `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Since #155 the slot also builds (command and
+    support tests in `ExtensionCompilerTest`: `checkSupport_acceptsWindowsOnItsOwnMachineIosWithItsFrameworkAndX86Android`,
+    `compile_buildsEachNewTargetWithItsCompilerFlagsAndLink`; no real build of these in CI yet, which is what
+    keeps this `partial`):
+    - `x86_64-linux-android` through `NDK.kt`, like arm64;
+    - every other Linux target (another architecture, musl, riscv64) with `zig cc -target <triple>` (glibc
+      2.17, riscv64 2.27), the ziglang the Cargo backend already uses, run through `uv tool run`;
+    - Windows on a machine of the target's architecture only (owner decision 2026-11-19, as for Cargo) with
+      LLVM `clang --target=<triple>`, linked `-shared` against `libDir/libraryName` (`python315t.lib`);
+    - iOS device and simulators on a macOS host with `xcrun --sdk iphoneos|iphonesimulator clang -target
+      <arch>-apple-ios13.0[-simulator]`, linked `-dynamiclib -F <libDir> -framework Python` (`libDir` is the
+      XCframework slice that holds `Python.framework`).
+    wasm is refused with `NoCompileBackendException` until #82. `single`, `fat` and `patch` accept `native` and package the compiled
     output under `dist/<canonical target>/<build type>/native`.
 - `mixed`: bytecode for the developer's code, native code for libraries. The developer's modules ship
   as bytecode and TypedPython's C is not applied; libraries ship their prebuilt native wheels.

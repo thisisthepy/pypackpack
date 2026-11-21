@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.extension
 
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.CargoEnvironment
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Clang
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.NDK
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
@@ -345,11 +346,13 @@ interface ExtensionCompilerInterface {
             clang: Clang = Clang(),
             ndk: NDK = NDK(),
             hostTarget: () -> String = Platforms::detectHostTarget,
+            windowsMachine: () -> String? = { CargoEnvironment.windowsMachineTarget() },
         ): ExtensionCompilerInterface =
             NativeExtensionCompiler(
                 clang = clang,
                 ndk = ndk,
                 hostTarget = hostTarget,
+                windowsMachine = windowsMachine,
             )
     }
 }
@@ -365,6 +368,8 @@ class NativeExtensionCompiler(
     private val clang: Clang = Clang(),
     private val ndk: NDK = NDK(),
     private val hostTarget: () -> String = Platforms::detectHostTarget,
+    /** The Windows machine's own target (also under x64 emulation on ARM), `null` off Windows; a test seam. */
+    private val windowsMachine: () -> String? = { CargoEnvironment.windowsMachineTarget() },
 ) : ExtensionCompilerInterface {
     override fun checkSupport(
         target: String,
@@ -441,7 +446,7 @@ class NativeExtensionCompiler(
 
                     val compileCmd =
                         when (resolved.toolchain) {
-                            NativeToolchain.CLANG ->
+                            NativeToolchain.CLANG, NativeToolchain.XCODE ->
                                 clang.compileCommand(
                                     compilerCmd = resolved.compilerCmd,
                                     canonicalTarget = resolved.canonicalTarget,
@@ -469,7 +474,6 @@ class NativeExtensionCompiler(
                                     objectFile = objFile,
                                     depFile = depFile,
                                 )
-                            NativeToolchain.XCODE -> error("unreachable")
                         }
 
                     val cachedKey =
@@ -534,7 +538,7 @@ class NativeExtensionCompiler(
 
                 val linkCmd =
                     when (resolved.toolchain) {
-                        NativeToolchain.CLANG ->
+                        NativeToolchain.CLANG, NativeToolchain.XCODE ->
                             clang.linkCommand(
                                 compilerCmd = resolved.compilerCmd,
                                 canonicalTarget = resolved.canonicalTarget,
@@ -542,6 +546,8 @@ class NativeExtensionCompiler(
                                 objects = objects,
                                 linkFlags = request.options.linkFlags,
                                 outputFile = outFile,
+                                libDir = request.libDir,
+                                libraryName = request.libraryName,
                             )
                         NativeToolchain.NDK ->
                             ndk.linkCommand(
@@ -552,7 +558,6 @@ class NativeExtensionCompiler(
                                 linkFlags = request.options.linkFlags,
                                 outputFile = outFile,
                             )
-                        NativeToolchain.XCODE -> error("unreachable")
                     }
 
                 val linkRes = resolved.run(linkCmd, request.workingDir, linkEnv)
@@ -573,9 +578,9 @@ class NativeExtensionCompiler(
                 if (request.buildType == "release") {
                     val stripCmd =
                         when (resolved.toolchain) {
-                            NativeToolchain.CLANG -> clang.stripCommand(resolved.family, outFile)
+                            NativeToolchain.CLANG, NativeToolchain.XCODE ->
+                                clang.stripCommand(resolved.family, outFile).takeIf { resolved.compilerCmd.firstOrNull() != "uv" }
                             NativeToolchain.NDK -> ndk.stripBinary(resolved.ndkRoot!!)?.let { listOf(it.path, "--strip-unneeded", outFile.path) }
-                            NativeToolchain.XCODE -> null
                         }
                     if (stripCmd != null) {
                         resolved.run(stripCmd, request.workingDir, emptyMap())
@@ -632,27 +637,83 @@ class NativeExtensionCompiler(
 
         val resolved =
             when (family) {
-                "ios" ->
-                    throw NoCompileBackendException(
-                        target = canonical,
-                        pythonAbi = pythonAbi,
+                "ios" -> {
+                    if (runCatching { Platforms.getPlatformFamily(hostTarget()) }.getOrNull() != "macos") {
+                        throw NoCompileBackendException(
+                            target = canonical,
+                            pythonAbi = pythonAbi,
+                            toolchain = NativeToolchain.XCODE,
+                            reason = "iOS extensions are built with Xcode, on a macOS host.",
+                        )
+                    }
+                    if (libDir == null || !File(libDir, "Python.framework").isDirectory) {
+                        throw NoCompileBackendException(
+                            target = canonical,
+                            pythonAbi = pythonAbi,
+                            toolchain = NativeToolchain.XCODE,
+                            reason = "target '$canonical' links Python.framework: pass libDir, the XCframework slice directory that holds it.",
+                        )
+                    }
+                    val cmd =
+                        clang.compilerForTarget(canonical)
+                            ?: throw NoCompileBackendException(
+                                target = canonical,
+                                pythonAbi = pythonAbi,
+                                toolchain = NativeToolchain.XCODE,
+                                reason = "Xcode's iOS SDK was not found ('xcrun --sdk ${if (canonical.endsWith("-simulator")) "iphonesimulator" else "iphoneos"} clang').",
+                            )
+                    ResolvedBackend(
+                        canonicalTarget = canonical,
+                        family = family,
                         toolchain = NativeToolchain.XCODE,
-                        reason = "the Xcode backend is a placeholder (iOS is out of scope).",
+                        compilerCmd = cmd,
+                        compilerVersion = clang.versionOf(cmd),
+                        run = clang.run,
                     )
+                }
                 "wasm" ->
                     throw NoCompileBackendException(
                         target = canonical,
                         pythonAbi = pythonAbi,
                         toolchain = null,
-                        reason = "no Emscripten backend for '$canonical'.",
+                        reason = "no Emscripten backend for '$canonical' yet (#82, waits for python-multiplatform #175's wasm 3.15t).",
                     )
-                "windows" ->
-                    throw NoCompileBackendException(
-                        target = canonical,
-                        pythonAbi = pythonAbi,
+                "windows" -> {
+                    val machine = windowsMachine()
+                    if (machine != canonical) {
+                        throw NoCompileBackendException(
+                            target = canonical,
+                            pythonAbi = pythonAbi,
+                            toolchain = NativeToolchain.CLANG,
+                            reason = "Windows extensions build only on a $canonical machine (this is '${machine ?: "not Windows"}'; " +
+                                "no Windows cross toolchain, owner decision 2026-11-19).",
+                        )
+                    }
+                    if (libDir == null || libraryName.isNullOrBlank() || !File(libDir, libraryName).isFile) {
+                        throw NoCompileBackendException(
+                            target = canonical,
+                            pythonAbi = pythonAbi,
+                            toolchain = NativeToolchain.CLANG,
+                            reason = "target '$canonical' links python3XXt.lib: pass libDir and libraryName (the target CPython's libs directory).",
+                        )
+                    }
+                    val cmd =
+                        clang.compilerForTarget(canonical)
+                            ?: throw NoCompileBackendException(
+                                target = canonical,
+                                pythonAbi = pythonAbi,
+                                toolchain = NativeToolchain.CLANG,
+                                reason = "LLVM 'clang' was not found on PATH.",
+                            )
+                    ResolvedBackend(
+                        canonicalTarget = canonical,
+                        family = family,
                         toolchain = NativeToolchain.CLANG,
-                        reason = "Windows is out of scope for 2026-11; planned later through clang-cl and python315t.lib.",
+                        compilerCmd = cmd,
+                        compilerVersion = clang.versionOf(cmd),
+                        run = clang.run,
                     )
+                }
                 "macos" -> {
                     val cmd =
                         clang.compilerFor("macos")
@@ -672,31 +733,34 @@ class NativeExtensionCompiler(
                     )
                 }
                 "linux" -> {
-                    if (canonical != "x86_64-unknown-linux-gnu" && canonical != "aarch64-unknown-linux-gnu") {
-                        throw NoCompileBackendException(
-                            target = canonical,
-                            pythonAbi = pythonAbi,
-                            toolchain = NativeToolchain.CLANG,
-                            reason = "only x86_64-unknown-linux-gnu and aarch64-unknown-linux-gnu are supported on Linux.",
-                        )
-                    }
                     val host = runCatching { hostTarget() }.getOrNull()
-                    if (host != canonical) {
-                        throw NoCompileBackendException(
-                            target = canonical,
-                            pythonAbi = pythonAbi,
-                            toolchain = NativeToolchain.CLANG,
-                            reason = "cross-compiling Linux is not supported (host is '${host ?: "unknown"}'); build on a matching host.",
-                        )
-                    }
+                    val cross = host != canonical
                     val cmd =
-                        clang.compilerFor("linux")
-                            ?: throw NoCompileBackendException(
-                                target = canonical,
-                                pythonAbi = pythonAbi,
-                                toolchain = NativeToolchain.CLANG,
-                                reason = "neither 'clang' nor 'cc' was found on PATH.",
-                            )
+                        if (!cross) {
+                            clang.compilerFor("linux")
+                                ?: throw NoCompileBackendException(
+                                    target = canonical,
+                                    pythonAbi = pythonAbi,
+                                    toolchain = NativeToolchain.CLANG,
+                                    reason = "neither 'clang' nor 'cc' was found on PATH.",
+                                )
+                        } else {
+                            if (canonical !in Clang.ZIG_LINUX_TARGETS) {
+                                throw NoCompileBackendException(
+                                    target = canonical,
+                                    pythonAbi = pythonAbi,
+                                    toolchain = NativeToolchain.CLANG,
+                                    reason = "no cross compiler for '$canonical' (host '${host ?: "unknown"}').",
+                                )
+                            }
+                            clang.compilerForTarget(canonical)
+                                ?: throw NoCompileBackendException(
+                                    target = canonical,
+                                    pythonAbi = pythonAbi,
+                                    toolchain = NativeToolchain.CLANG,
+                                    reason = "cross-compiling '$canonical' uses 'zig cc' (uv tool run --from ziglang), which did not run.",
+                                )
+                        }
                     ResolvedBackend(
                         canonicalTarget = canonical,
                         family = family,
@@ -707,14 +771,6 @@ class NativeExtensionCompiler(
                     )
                 }
                 "android" -> {
-                    if (canonical != "aarch64-linux-android") {
-                        throw NoCompileBackendException(
-                            target = canonical,
-                            pythonAbi = pythonAbi,
-                            toolchain = NativeToolchain.NDK,
-                            reason = "only 'aarch64-linux-android' is in scope for the Android NDK backend.",
-                        )
-                    }
                     val ndkRoot =
                         ndk.ndkRoot()
                             ?: throw NoCompileBackendException(

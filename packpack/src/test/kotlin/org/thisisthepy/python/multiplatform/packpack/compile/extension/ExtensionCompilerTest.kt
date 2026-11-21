@@ -8,6 +8,7 @@ import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.nd
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -44,6 +45,7 @@ class ExtensionCompilerTest {
         listOf(
             "aarch64-linux-android24-clang",
             "aarch64-linux-android28-clang",
+            "x86_64-linux-android24-clang",
             "llvm-strip",
         ).forEach { name ->
             File(bin, name).apply {
@@ -72,6 +74,16 @@ class ExtensionCompilerTest {
         compilerVersion: String = "Apple clang version 17.0.0",
         ndkDir: File? = null,
         hostTarget: String = "aarch64-apple-darwin",
+        windowsMachine: String? = null,
+        targetCompiler: (String) -> List<String>? = { t ->
+            when {
+                t.endsWith("-apple-ios") -> listOf("xcrun", "--sdk", "iphoneos", "clang")
+                t.endsWith("-apple-ios-simulator") -> listOf("xcrun", "--sdk", "iphonesimulator", "clang")
+                t.endsWith("-pc-windows-msvc") -> listOf("clang")
+                t in Clang.ZIG_LINUX_TARGETS -> listOf("zig", "cc", "-target", Clang.ZIG_LINUX_TARGETS.getValue(t))
+                else -> null
+            }
+        },
         calls: MutableList<RecordedCall> = mutableListOf(),
         onRun: (RecordedCall) -> CompileProcessResult = { call ->
             val outIdx = call.command.indexOf("-o")
@@ -102,6 +114,7 @@ class ExtensionCompilerTest {
         return ExtensionCompilerInterface.create(
             clang = Clang(
                 locateCompiler = { clangBin },
+                locateTargetCompiler = targetCompiler,
                 locateStrip = { stripBin },
                 versionProbe = { compilerVersion },
                 run = runner,
@@ -112,6 +125,7 @@ class ExtensionCompilerTest {
                 run = runner,
             ),
             hostTarget = { hostTarget },
+            windowsMachine = { windowsMachine },
         )
     }
 
@@ -123,18 +137,19 @@ class ExtensionCompilerTest {
         assertTrue(compiler.checkSupport("aarch64-apple-darwin", abi315, headers).isSuccess)
         assertTrue(compiler.checkSupport("x86_64-apple-darwin", abi315, headers).isSuccess)
 
-        // Windows, iOS, wasm, x86_64 Android are refused with NoCompileBackendException
-        for (unsupported in listOf("x86_64-pc-windows-msvc", "arm64-apple-ios", "wasm32-emscripten", "x86_64-linux-android")) {
+        // wasm waits for #82; Windows off its own machine, and iOS without Python.framework, are refused (#155)
+        for (unsupported in listOf("wasm32-emscripten", "x86_64-pc-windows-msvc", "arm64-apple-ios")) {
             val ex = compiler.checkSupport(unsupported, abi315, headers).exceptionOrNull() as? NoCompileBackendException
             assertNotNull(ex, "expected NoCompileBackendException for $unsupported")
             assertEquals(unsupported, ex.target)
         }
 
-        // Linux cross-arch is refused when host does not match
-        val linuxCross =
-            compiler.checkSupport("x86_64-unknown-linux-gnu", abi315, headers).exceptionOrNull() as? NoCompileBackendException
-        assertNotNull(linuxCross)
-        assertTrue("host" in linuxCross.reason.lowercase() || "cross" in linuxCross.reason.lowercase(), linuxCross.reason)
+        // Linux cross targets build with zig cc (#155); a missing zig is refused naming it
+        assertTrue(compiler.checkSupport("x86_64-unknown-linux-gnu", abi315, headers).isSuccess)
+        val noZig = fakeCompiler(targetCompiler = { null })
+            .checkSupport("aarch64-unknown-linux-musl", abi315, headers).exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(noZig)
+        assertTrue("zig" in noZig.reason, noZig.reason)
 
         // Missing Python.h
         val emptyInclude = File(tempDir, "empty-include").apply { mkdirs() }
@@ -177,6 +192,78 @@ class ExtensionCompilerTest {
             androidCompiler.checkSupport("aarch64-linux-android", abi315, headers).exceptionOrNull() as? NoCompileBackendException
         assertNotNull(noLibEx)
         assertTrue("libDir" in noLibEx.reason, noLibEx.reason)
+    }
+
+    /** #155: the targets beyond macOS, the Linux host and Android arm64, accepted where their toolchain can run. */
+    @Test
+    fun checkSupport_acceptsWindowsOnItsOwnMachineIosWithItsFrameworkAndX86Android() {
+        val headers = fakeHeaders()
+        val winLibs = File(tempDir, "win-libs").apply { mkdirs(); File(this, "python315t.lib").writeText("lib") }
+
+        val onWindows = fakeCompiler(hostTarget = "x86_64-pc-windows-msvc", windowsMachine = "x86_64-pc-windows-msvc")
+        assertTrue(onWindows.checkSupport("x86_64-pc-windows-msvc", abi315, headers, winLibs, "python315t.lib").isSuccess)
+        val otherArch = onWindows.checkSupport("aarch64-pc-windows-msvc", abi315, headers, winLibs, "python315t.lib").exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(otherArch)
+        assertTrue("owner decision 2026-11-19" in otherArch.reason, otherArch.reason)
+        val noLib = onWindows.checkSupport("x86_64-pc-windows-msvc", abi315, headers).exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(noLib)
+        assertTrue("python3XXt.lib" in noLib.reason, noLib.reason)
+
+        val slice = File(tempDir, "ios-arm64").apply { File(this, "Python.framework").mkdirs() }
+        val onMac = fakeCompiler(hostTarget = "aarch64-apple-darwin")
+        for (target in listOf("arm64-apple-ios", "arm64-apple-ios-simulator", "x86_64-apple-ios-simulator")) {
+            assertTrue(onMac.checkSupport(target, abi315, headers, slice).isSuccess, target)
+        }
+        val iosOnLinux = fakeCompiler(hostTarget = "x86_64-unknown-linux-gnu")
+            .checkSupport("arm64-apple-ios", abi315, headers, slice).exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(iosOnLinux)
+        assertEquals(NativeToolchain.XCODE, iosOnLinux.toolchain)
+
+        val androidLib = fakeAndroidLib()
+        assertTrue(
+            fakeCompiler(ndkDir = fakeNdk()).checkSupport("x86_64-linux-android", abi315, headers, androidLib, "libpython3.15t.so").isSuccess,
+        )
+    }
+
+    /** The compile and link commands each new target gets (#155). */
+    @Test
+    fun compile_buildsEachNewTargetWithItsCompilerFlagsAndLink() {
+        val headers = fakeHeaders()
+        val cFile = File(tempDir, "src/k.c").apply { parentFile.mkdirs(); writeText("#include <Python.h>\n") }
+        val winLibs = File(tempDir, "win-libs").apply { mkdirs(); File(this, "python315t.lib").writeText("lib") }
+        val slice = File(tempDir, "ios-slice").apply { File(this, "Python.framework").mkdirs() }
+
+        fun build(target: String, host: String, windows: String? = null, libDir: File? = null, lib: String? = null, suffix: String, ndk: File? = null): List<RecordedCall> {
+            val calls = mutableListOf<RecordedCall>()
+            val pkg = File(tempDir, "pkg-$target").apply { mkdirs() }
+            fakeCompiler(hostTarget = host, windowsMachine = windows, calls = calls, ndkDir = ndk).compile(
+                ExtensionCompileRequest(
+                    modules = listOf(ExtensionModuleSource("app.k", listOf(cFile))),
+                    target = target, pythonAbi = abi315, buildType = "debug", workingDir = pkg,
+                    buildDir = File(pkg, "work"), outputDir = File(pkg, "out"), includeDir = headers,
+                    extensionSuffix = suffix, libDir = libDir, libraryName = lib,
+                ),
+            ).getOrThrow()
+            return calls
+        }
+
+        val win = build("x86_64-pc-windows-msvc", "x86_64-pc-windows-msvc", windows = "x86_64-pc-windows-msvc", libDir = winLibs, lib = "python315t.lib", suffix = ".cp315t-win_amd64.pyd")
+        assertEquals(listOf("clang", "-c", "--target=x86_64-pc-windows-msvc"), win[0].command.take(3))
+        assertFalse("-fPIC" in win[0].command, "clang refuses -fPIC for windows-msvc")
+        assertTrue(win[1].command.containsAll(listOf("-shared", "-L${winLibs.path}", "-lpython315t")), win[1].command.toString())
+        assertTrue(win[1].command.last().endsWith("app/k.cp315t-win_amd64.pyd"))
+        assertEquals(2, win.size, "no strip on Windows")
+
+        val ios = build("arm64-apple-ios-simulator", "aarch64-apple-darwin", libDir = slice, suffix = ".cpython-315t-iphonesimulator.so")
+        assertEquals(listOf("xcrun", "--sdk", "iphonesimulator", "clang", "-c", "-target", "arm64-apple-ios13.0-simulator"), ios[0].command.take(7))
+        assertTrue(ios[1].command.containsAll(listOf("-dynamiclib", "-F${slice.path}", "-framework", "Python")), ios[1].command.toString())
+
+        val musl = build("aarch64-unknown-linux-musl", "x86_64-unknown-linux-gnu", suffix = ".cpython-315t-aarch64-linux-musl.so")
+        assertEquals(listOf("zig", "cc", "-target", "aarch64-linux-musl", "-c"), musl[0].command.take(5))
+        assertTrue(musl[1].command.containsAll(listOf("-shared", "-fPIC")), musl[1].command.toString())
+
+        val x86Android = build("x86_64-linux-android", "aarch64-apple-darwin", libDir = fakeAndroidLib(File(tempDir, "alib2")), lib = "libpython3.15t.so", suffix = ".cpython-315t-x86_64-linux-android.so", ndk = fakeNdk(File(tempDir, "ndk2")))
+        assertTrue(x86Android[0].command.first().contains("x86_64-linux-android24-clang"), x86Android[0].command.first())
     }
 
     @Test
