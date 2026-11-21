@@ -834,7 +834,7 @@ Limitation
 
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
 - Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
-- Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
+- Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
 - `build` does not verify dependencies first (the sheet's orchestration includes it).
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 - The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
@@ -847,7 +847,7 @@ Not yet implemented (target). Status: planned
 
 #### Rust extension modules (Cargo backend)
 
-Status: implemented for the host (stage 1, #92), Linux cross-build (`manylinux_2_17`, #138), Android and iOS (stage 2, #94), and ABI / feature configuration (#135): `compile/backend/external/Cargo.kt`;
+Status: implemented for the host (stage 1, #92), Linux cross-build (`manylinux_2_17`, #138), Android and iOS (stage 2, #94), ABI / feature configuration (#135), and Windows on its own machine (#150): `compile/backend/external/Cargo.kt`;
 `packpack/.../compile/backend/external/CargoTest.kt` (discovery both ways and its refusals, `[tool.ppp.rust]` ABI and feature options, torchnative's
 layout, the maturin and cargo commands and environments per target, the placement, every refusal) and
 `CargoRealBuildTest.kt` (real builds, run with `PPP_CARGO_REAL_BUILD=1`: the host crate imported on 3.15t
@@ -859,7 +859,7 @@ is torchnative (thisisthepy/torchnative#53).
 ##### Stage 1: the host (implemented)
 
 - `pypackpack build <package>` (and `build <package> source ...`) builds the package's crates after Meson.
-  With no crate nothing runs. A target other than the host is refused as stage 2.
+  With no crate nothing runs. A target other than the host takes one of the paths below, or is refused.
 - Each crate: `uv tool run --from maturin==1.15.0 maturin build --manifest-path <crate>/Cargo.toml
   --interpreter <.venv python> --out build/packpack/cargo/<triple>/<module> --target-dir
   build/packpack/cargo/target [--no-default-features] [--features <features>] [--release]` (`--release` for
@@ -938,6 +938,25 @@ naming that command, before anything builds.
   runs.
 - Owner decision (2026-11-19): Windows builds stay host-only on Windows runners (no `cargo-xwin` or `llvm`
   cross-toolchain), and WASM (`wasm32-emscripten`) waits for `python-multiplatform#175`.
+
+##### Windows on its own machine (implemented, #150)
+
+- On Windows on ARM the CLI runs as the `win_amd64` native image under x64 emulation (GraalVM ships no Windows
+  aarch64 build, #147), so its host is `x86_64-pc-windows-msvc`. A Windows target (`x86_64-pc-windows-msvc`,
+  `aarch64-pc-windows-msvc`) other than that host builds when it is the machine's own architecture, read from
+  `PROCESSOR_ARCHITEW6432`, `PROCESSOR_ARCHITECTURE` or `PROCESSOR_IDENTIFIER` (`ARMv8 ...`), which an emulated
+  process still sees. This is a native MSVC build on the machine, not a cross toolchain, so the owner decision
+  above holds.
+- The build is `maturin build --target <triple> --interpreter <project>/<windows_arm64|windows_amd64>/python.exe`,
+  the target Python `pypackpack python install 3.15t <triple>` put in the project (it runs natively). maturin
+  tags the wheel `win_arm64` (or `win_amd64`); the `.pyd` is placed as for the host, and the `single` bundle tags
+  its wheel from the target (*Wheel tags*).
+- Refused before maturin runs: a Windows target on a machine of another architecture (naming the machine),
+  a missing Rust target (naming `rustup target add <triple>`), and a missing target Python (naming
+  `pypackpack python install 3.15t <triple>`).
+- Tests: `CargoTest` (`a Windows target that is the machine's own builds with maturin against the target Python`,
+  the refusals, and the environment detection). A real build is checked by torchnative's `publish-pypi` dry run
+  on `windows-11-arm`; not yet run.
 
 Limitation
 
