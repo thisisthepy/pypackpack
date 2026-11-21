@@ -97,7 +97,7 @@ ppp build core --target aarch64-apple-darwin              # Meson. 지금은 호
 
 ```kotlin
 repositories { mavenLocal() }    // ./gradlew :packpack:publishToMavenLocal
-dependencies { implementation("org.thisisthepy.python.multiplatform:packpack:0.1.0") }
+dependencies { implementation("org.thisisthepy.python.multiplatform:packpack:1.0.0") }
 ```
 
 ```kotlin

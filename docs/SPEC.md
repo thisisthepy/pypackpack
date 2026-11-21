@@ -92,7 +92,7 @@ carry no `Status:`.
 - (4). Extend pypackpack's code update fast track to also allow hot-reload during the development stage
 
 `toolchain` consumes this repository's `:packpack` library as
-`org.thisisthepy.python.multiplatform:packpack:0.1.0` (`packpack/build.gradle.kts`, `maven-publish`).
+`org.thisisthepy.python.multiplatform:packpack:1.0.0` (`packpack/build.gradle.kts`, `maven-publish`).
 
 #### <toolchain(python)>
 

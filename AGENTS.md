@@ -254,7 +254,7 @@ is acceptable for the CLI and nowhere else.
 
 ## 14. `toolchain` consumes this library from `mavenLocal`
 
-`toolchain` declares `implementation("org.thisisthepy.python.multiplatform:packpack:0.1.0")` and
+`toolchain` declares `implementation("org.thisisthepy.python.multiplatform:packpack:1.0.0")` and
 resolves it from `~/.m2`, not through `includeBuild`. Therefore:
 
 - A change to a public signature in `:packpack` breaks `toolchain` silently until someone republishes.

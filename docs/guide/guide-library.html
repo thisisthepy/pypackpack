@@ -31,7 +31,7 @@
 <p data-lang="en">Published to Maven Local only for now. Publish it from a checkout, then depend on it:</p><p data-lang="ko">지금은 Maven Local 에만 배포됩니다. 체크아웃에서 배포한 뒤 의존하세요.</p>
 <pre><code class="language-shell">./gradlew :packpack:publishToMavenLocal</code></pre>
 <pre><code class="language-kotlin">repositories { mavenLocal() }
-dependencies { implementation(&quot;org.thisisthepy.python.multiplatform:packpack:0.1.0&quot;) }</code></pre>
+dependencies { implementation(&quot;org.thisisthepy.python.multiplatform:packpack:1.0.0&quot;) }</code></pre>
 <p data-lang="en">It needs a Java 21 runtime and is compiled with Kotlin <code>apiVersion</code> 1.9, so a Gradle 8.9+ build (Kotlin 1.9 stdlib) can load it.</p><p data-lang="ko">Java 21 런타임이 필요하며, Kotlin <code>apiVersion</code> 1.9 로 컴파일되어 Gradle 8.9 이상 (Kotlin 1.9 stdlib) 빌드에서 읽힙니다.</p>
 </section>
 
