@@ -258,7 +258,8 @@ object RustCrates {
 
 /**
  * What the Cargo backend finds on this machine: `cargo` and `uv` on `PATH`, the installed rustup targets,
- * the Android NDK ([locateNdk]) and Xcode's iOS SDK (`xcrun --sdk iphoneos`).
+ * the Android NDK ([locateNdk]), Xcode's iOS SDK (`xcrun --sdk iphoneos`), and the Windows machine's own
+ * architecture ([windowsMachineTarget]).
  */
 data class CargoEnvironment(
     val cargo: Boolean,
@@ -266,6 +267,7 @@ data class CargoEnvironment(
     val rustTargets: Set<String> = emptySet(),
     val ndk: File? = null,
     val xcode: Boolean = false,
+    val windowsMachine: String? = null,
 ) {
     companion object {
         fun detect(): CargoEnvironment =
@@ -275,7 +277,29 @@ data class CargoEnvironment(
                 rustTargets = output("rustup", "target", "list", "--installed")?.lines()?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty(),
                 ndk = locateNdk(System.getenv()),
                 xcode = output("xcrun", "--sdk", "iphoneos", "--show-sdk-path") != null,
+                windowsMachine = windowsMachineTarget(),
             )
+
+        /**
+         * The Windows triple of the machine itself, which can differ from the JVM's host (#150): on Windows on
+         * ARM the CLI runs as the `win_amd64` native image under x64 emulation (GraalVM ships no Windows aarch64
+         * build), so `os.arch` says `amd64`. The emulated process still sees the machine in
+         * `PROCESSOR_ARCHITEW6432` or `PROCESSOR_IDENTIFIER` (`ARMv8 (64-bit) ...`). `null` off Windows.
+         */
+        fun windowsMachineTarget(
+            osName: String = System.getProperty("os.name"),
+            env: Map<String, String> = System.getenv(),
+        ): String? {
+            if (!osName.lowercase().startsWith("windows")) return null
+            val arm =
+                listOf("PROCESSOR_ARCHITEW6432", "PROCESSOR_ARCHITECTURE").any { env[it].equals("ARM64", ignoreCase = true) } ||
+                    env["PROCESSOR_IDENTIFIER"].orEmpty().trim().startsWith("ARM", ignoreCase = true)
+            return when {
+                arm -> "aarch64-pc-windows-msvc"
+                env["PROCESSOR_ARCHITECTURE"].equals("AMD64", ignoreCase = true) -> "x86_64-pc-windows-msvc"
+                else -> null
+            }
+        }
 
         /**
          * `ANDROID_NDK_HOME`, else the newest `<sdk>/ndk/<version>` holding `toolchains/llvm/prebuilt` under
@@ -320,7 +344,8 @@ const val IOS_DEPLOYMENT_TARGET = "13.0"
 
 /**
  * Builds a package's Rust crates into CPython extension modules: for the host desktop target (stage 1),
- * Linux cross-targets (`manylinux_2_17` / `manylinux_2_28` via `maturin --zig`, #138), Android and iOS (stage 2, #94).
+ * Linux cross-targets (`manylinux_2_17` / `manylinux_2_28` via `maturin --zig`, #138), Android and iOS (stage 2, #94),
+ * and the Windows machine's own architecture when the JVM runs emulated (Windows on ARM, #150).
  *
  * Each crate is built by maturin ([MATURIN_VERSION], through `uv tool run`, so nothing is installed or
  * linked) with PyO3's abi3t, into
@@ -373,15 +398,25 @@ open class Cargo(
             val android = ANDROID_DIRS[canonical]
             val ios = IOS_TARGETS[canonical]
             val linuxCross = LINUX_CROSS_TARGETS[canonical]?.takeIf { canonical != host }
-            require(canonical == host || android != null || ios != null || linuxCross != null) {
-                "Rust crates build for the host ($host), Linux (manylinux), Android and iOS; $canonical is not yet supported by the Cargo backend."
+            val windowsDir = WINDOWS_DIRS[canonical]?.takeIf { canonical != host }
+            if (windowsDir != null) {
+                require(canonical == environment.windowsMachine) {
+                    "Rust crates build for $canonical only on a $canonical machine (no Windows cross toolchain, " +
+                        "owner decision 2026-11-19); this machine is ${environment.windowsMachine ?: host}."
+                }
+            }
+            require(canonical == host || android != null || ios != null || linuxCross != null || windowsDir != null) {
+                "Rust crates build for the host ($host), Linux (manylinux), Windows on its own machine, Android and iOS; " +
+                    "$canonical is not yet supported by the Cargo backend."
             }
             check(environment.cargo) { "cargo is not on PATH. Install Rust with rustup (https://rustup.rs), then build again." }
             check(environment.uv) { "uv is not on PATH; the Cargo backend runs maturin with `uv tool run`." }
 
             val singleAbi = crates.map { it.abi }.distinct().size <= 1
             val interpreter =
-                if (ios == null && android == null && linuxCross == null) {
+                if (windowsDir != null) {
+                    windowsTargetInterpreter(pkg, canonical, windowsDir)
+                } else if (ios == null && android == null && linuxCross == null) {
                     findVenvInterpreter(pkg) ?: throw IllegalStateException(
                         "No Python interpreter under a '.venv' above $pkg to build the Rust crates against. " +
                             "Run `pypackpack python install 3.15t` first.",
@@ -419,7 +454,7 @@ open class Cargo(
                     out,
                     File(pkg, "build/packpack/cargo/target"),
                     buildType == "release",
-                    rustTarget = linuxCross?.rustTriple ?: canonical.takeIf { android != null },
+                    rustTarget = linuxCross?.rustTriple ?: canonical.takeIf { android != null || windowsDir != null },
                     zig = linuxCross != null,
                     compatibility = linuxCross?.compatibility,
                 )
@@ -552,6 +587,27 @@ open class Cargo(
         )
     }
 
+    /**
+     * The target Python's `python.exe` for a Windows [canonical] target that is this machine's own architecture
+     * but not the JVM's (#150): it runs natively, so maturin reads its configuration from it.
+     */
+    private fun windowsTargetInterpreter(
+        pkg: File,
+        canonical: String,
+        installDirName: String,
+    ): File {
+        check(canonical in environment.rustTargets) {
+            "The Rust target $canonical is not installed. Run `rustup target add $canonical`, then build again."
+        }
+        return generateSequence(pkg) { it.parentFile }
+            .map { File(it, "$installDirName/python.exe") }
+            .firstOrNull { it.isFile }
+            ?: throw IllegalStateException(
+                "No Python for $canonical under a '$installDirName' directory above $pkg. " +
+                    "Run `pypackpack python install 3.15t $canonical` first.",
+            )
+    }
+
     /** The cross-compile environment for a Linux [canonical] target: its Rust target and target Python's `lib` directory. */
     private fun linuxCrossEnvironment(
         pkg: File,
@@ -628,6 +684,9 @@ open class Cargo(
         }
     }
 }
+
+/** The Windows triples the Cargo backend builds on their own machine, and the directory `installPython` puts their Python in. */
+private val WINDOWS_DIRS = mapOf("x86_64-pc-windows-msvc" to "windows_amd64", "aarch64-pc-windows-msvc" to "windows_arm64")
 
 /** The canonical Android triples the Cargo backend builds, and the directory `installPython` puts their Python in. */
 private val ANDROID_DIRS = mapOf("aarch64-linux-android" to "android_arm64", "x86_64-linux-android" to "android_x86_64")
