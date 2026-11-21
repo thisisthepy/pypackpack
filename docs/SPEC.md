@@ -52,9 +52,10 @@ Agreed 2026-11-21 by the team lead for the owner's goal "ship a stable 1.0 of ev
   upload), *Project creation*, *Dev environment dependency management* (no test runs uv itself), *Package
   build* (Meson builds for the host only), and the `bytecode` / `native` / `mixed` build levels (per-platform
   coverage).
-- **Open:** WASM. *Scope decisions* below puts it in the first release (#70), but it waits on
-  python-multiplatform #175, which is on hold until Kotlin/Wasm can import shared memory. Whether 1.0 waits
-  for it is the lead's and owner's call, not recorded here as decided.
+- **WASM is in 1.0** (owner, 2026-11-21, relayed by the team lead: python-multiplatform #175, the
+  free-threaded wasm runtime built with a post-build `.wasm` memory-import patch, is back in 1.0, and with it
+  the `wasm32-emscripten` target, #82). *Scope decisions* below already put it in the first release (#70).
+  1.0 is not tagged until #82 lands on top of #175's build; until then nothing installs or compiles for it.
 
 #### Scope decisions
 
