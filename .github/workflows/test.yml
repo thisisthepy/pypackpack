@@ -80,6 +80,31 @@ jobs:
           name: ${{ matrix.name }}-test-reports
           path: packpack/build/reports/tests/${{ matrix.task }}/
 
+  # Opt-in real builds (team lead 2026-11-21 22:55, Decision 8: inside this workflow, no new one). Each test
+  # skips itself without its variable; here the variable is set, and the step fails if the test was skipped.
+  real-builds:
+    name: real builds (Meson cross)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+      - name: Meson cross build for aarch64 Linux (#155)
+        env:
+          PPP_MESON_CROSS_REAL_BUILD: "1"
+        run: |
+          rm -rf packpack/build/test-results/test
+          ./gradlew :packpack:test --tests '*.MesonCrossRealBuildTest' --rerun --console=plain
+          grep -q 'tests="1" skipped="0" failures="0" errors="0"' packpack/build/test-results/test/TEST-*MesonCrossRealBuildTest.xml \
+            || { echo "MesonCrossRealBuildTest did not run and pass"; exit 1; }
+
   guide:
     runs-on: ubuntu-latest
     steps:

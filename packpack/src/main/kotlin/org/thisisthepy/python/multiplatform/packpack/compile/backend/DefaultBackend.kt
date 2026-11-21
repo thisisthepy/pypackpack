@@ -3,6 +3,8 @@ package org.thisisthepy.python.multiplatform.packpack.compile.backend
 import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Cargo
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Meson
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.MesonCross
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.resolveWorkspacePackageDir
 import org.thisisthepy.python.multiplatform.packpack.utils.readProjectName
@@ -17,6 +19,10 @@ class DefaultBackend(
     val meson: Meson = Meson(),
     val cargo: Cargo = Cargo(),
     val dependencyCheck: DependencyCheck = UvDependencyCheck(),
+    /** The Meson cross build for a target, `null` for the host's own (#155); a seam for tests. */
+    val crossFor: (packageDir: File, canonicalTarget: String) -> MesonCross? = { dir, target ->
+        MesonCross.forTarget(dir, target, Platforms.detectHostTarget())
+    },
 ) : BackendInterface {
 
     override fun initialize() {
@@ -33,7 +39,11 @@ class DefaultBackend(
 
             val type = extraArgs?.get("type")?.takeIf { it.isNotBlank() } ?: "debug"
             val level = extraArgs?.get("level")?.takeIf { it.isNotBlank() } ?: "instant"
-            val target = extraArgs?.get("target")?.takeIf { it.isNotBlank() } ?: "default"
+            // An alias becomes its canonical triple, so the output lands where the bundlers look; an unknown
+            // target is refused (#155). `default` is the host's own build.
+            val target = extraArgs?.get("target")?.takeIf { it.isNotBlank() && it != "default" }
+                ?.let { Platforms.normalizeTarget(it) ?: throw IllegalArgumentException(Platforms.unsupportedTargetMessage(it)) }
+                ?: "default"
             val buildDir = "build/packpack/single/$type/$level/$target"
             val overwrite = extraArgs?.get("overwrite")?.toBooleanStrictOrNull() ?: false
             val workspaceRoot = findWorkspaceRoot(workingDir)
@@ -47,7 +57,9 @@ class DefaultBackend(
 
             val destdir = "${packageDir.absolutePath}/dist/$target/$type/$level"
 
-            meson.setup(buildDir = buildDir, options = listOf("--buildtype=$type"), workingDir = packageDir, overwrite = overwrite).getOrThrow()
+            // A target that is not this machine's builds with a Meson cross file against its own CPython (#155).
+            val cross = target.takeUnless { it == "default" }?.let { crossFor(packageDir, it) }
+            meson.setup(buildDir = buildDir, options = listOf("--buildtype=$type"), workingDir = packageDir, overwrite = overwrite, cross = cross).getOrThrow()
             meson.compile(buildDir = buildDir, options = null, workingDir = packageDir).getOrThrow()
             meson.install(buildDir = buildDir, options = null, workingDir = packageDir, destdir = destdir).getOrThrow()
             // The package's Rust crates (#92): their extensions go beside Meson's, in the destdir's site-packages.

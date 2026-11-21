@@ -228,7 +228,9 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - XCode.kt  # placeholder; iOS builds go through Clang.kt with the Xcode SDKs (#155)
             - Emscripten.kt  # placeholder
             - Cargo.kt  # Rust crates -> extension modules: discovery, maturin (abi3t), placement in crossenv
-            - Meson.kt  # meson.build generation, meson setup/compile/install, meson/ninja auto-install
+            - Meson.kt  # meson.build generation (native and cross), meson setup/compile/install, meson/ninja auto-install
+            - MesonCross.kt  # Meson cross file per target: the native slot's compilers, host_machine (#155)
+            - TargetPython.kt  # a target's CPython headers, EXT_SUFFIX and link args from python install's layout (#155)
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # strategy pattern
         - extension
@@ -895,9 +897,9 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
 
 Limitation
 
-- `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
-- Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
-- Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
+- `--level` changes only directory names (the levels act in the bundlers). `--target` cross-compiles (#155): a target that is not this machine's builds with a Meson cross file (`build/packpack/meson-cross-<target>.ini`, `compile/backend/external/MesonCross.kt`) and the native slot's compilers for it (zig cc for Linux, the NDK for Android, `xcrun --sdk` for iOS; Windows only on its own machine), against the target's CPython found where `pypackpack python install 3.15t <target>` puts it (`TargetPython.kt`, the Cargo backend's layout). Meson cannot run the target interpreter, so that `meson.build` names the target's headers and `EXT_SUFFIX` with `shared_module` and `install_data` instead of `import('python')`. Tests: `MesonCrossTest`, `DefaultBackendTest.compile_crossBuildsANonHostTargetAndRefusesAnUnknownOne`; a real aarch64 Linux build in CI is `MesonCrossRealBuildTest` (test.yml `real-builds`).
+- `--target` is normalized to its canonical triple (an alias such as `android_24_arm64` is accepted) before anything runs, so the output lands in `dist/<canonical target>/...` where the bundlers look; an unknown target is refused.
+- Only the Meson and Cargo backends are implemented; the Clang/MSVC/NDK/XCode/Emscripten backend adapters and the Nuitka/Cython/Lpython compilers and minification middleware are all empty placeholder files, so C/C++ extensions (Meson, any target #155 lists) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 
 Package metadata (#159). The sheet: "패키지의 pyproject.toml에 빌드해야 할 의존성 패키지의 범위 기술 필요 (기본적으로는

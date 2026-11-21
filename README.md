@@ -91,7 +91,7 @@ ppp core add six --target arm64-apple-ios                 # one target only
 ppp core sync --target aarch64-linux-android arm64-apple-ios \
     --python-version 3.15 --only-binary :all:          # → packages/core/build/crossenv/<triple>/
 
-ppp build core --target aarch64-apple-darwin              # Meson; host only for now
+ppp build core --target aarch64-linux-android             # Meson; a cross target needs `ppp python install 3.15t <target>` first
 ```
 
 Without `--target`, `sync` and `tree` use the host's target only. Put your modules in a package directory such as `packages/core/src/main/core/`; platform-specific
@@ -130,7 +130,7 @@ item-by-item contract.
 |---|---|
 | Python distributions (install, list, find, uninstall; pinned SHA-256) | ✅ implemented |
 | Targets and per-target dependencies (`add`, `remove`, `sync`, `tree`) | 🟡 working; part of it has no test yet |
-| C/C++ extensions through Meson | 🟡 host only, no cross-compiling yet |
+| C/C++ extensions through Meson | 🟡 host, and cross builds for Linux, Android and iOS (#155); real cross build checked in CI for aarch64 Linux |
 | Bundles: `resource`, `single`, `fat`, `patch` | ✅ implemented |
 | Build levels: `instant` / `bytecode` | ✅ / 🟡 (`resource` only) |
 | Build levels: `native` / `mixed` | 🟡 `resource` bundle only (macOS, Linux host, Android arm64) |
