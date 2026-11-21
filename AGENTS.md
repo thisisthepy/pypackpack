@@ -209,7 +209,7 @@ to implement", say what you counted against.
 - `docs/SPEC.md` holds the directory tree of both modules and of a user project. When you add, move
   or delete a source file, update that tree in the same change.
 - Many files are empty placeholders that only name a future feature (every compile backend except
-  `Meson`, all of `compile/middleware/{external,transcompile,minification}`, `bundle/binary/`, every
+  `Meson`, `compile/middleware/minification`, `bundle/binary/`, every
   class under `deploy/`). Do not count them as implemented; `docs/SPEC.md` marks them `planned`.
 - The root `pyproject.toml` is the PyPI distribution (user decision, 2026-10-03, #52): a platform
   wheel per OS that carries the native CLI as the `pypackpack` script, plus a small Python package
