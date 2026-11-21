@@ -467,10 +467,8 @@ pypackpack python use <python version>
 ```
 
 - Deletes `.venv` at the project root, recreates it with the new Python version, and performs `uv sync`.
-
-Limitation
-
-- There is no cleanup logic for subpackage `build` directories.
+- Before that, deletes each package's compile trees (see *Cleaning up subpackage build directories on
+  `python use`*).
 
 #### Listing, finding and uninstalling ppp Python distributions
 
@@ -812,7 +810,18 @@ Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTes
 
 #### Cleaning up subpackage build directories on `python use`
 
-Status: planned.
+Status: implemented (#159). `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt`
+(`changePythonVersionDeletesEachPackagesCompileTreesAndKeepsTheRest`,
+`changePythonVersionInASinglePackageRepositoryDeletesTheRootCompileTree`).
+
+- `python use` deletes `build/packpack/` in every workspace member listed in `[tool.uv.workspace].members`
+  (a path relative to the project root; glob patterns are not expanded), or in the project root when it has
+  no workspace members. Those are the Meson build trees `pypackpack build` configures against the
+  project's interpreter, so they are stale once the Python version changes.
+- Nothing else is deleted: a package's other `build/` contents, its `dist/` (built artefacts), and the
+  root's `build/crossenv/` (reinstalled per target by `sync`) stay. Symbolic links are not followed.
+- This runs before the `.venv` is deleted; if a tree cannot be deleted, `python use` fails and leaves the
+  `.venv` as it was. A listed member that does not exist is skipped.
 
 ### Build, bundling, deployment
 

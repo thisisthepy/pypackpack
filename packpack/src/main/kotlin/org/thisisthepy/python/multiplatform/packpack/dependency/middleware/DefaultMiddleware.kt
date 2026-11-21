@@ -6,6 +6,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendT
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.time.Year
@@ -256,6 +257,16 @@ class DefaultMiddleware : MiddlewareInterface {
                     println("Project root not found. Please initialize a project first.")
                     return false
                 }
+
+        // docs/SPEC.md *Cleaning up subpackage build directories on `python use`* (#159): each package's
+        // Meson trees were configured against the old interpreter. Before the .venv goes, so a failure
+        // leaves the project as it was.
+        for (tree in compileTreesFor(projectRoot)) {
+            if (tree.exists() && !tree.deleteWithoutFollowingLinks()) {
+                println("Failed to remove the stale build directory ${tree.path}")
+                return false
+            }
+        }
 
         val venvDir = File(projectRoot, VENV_DIR)
 
@@ -589,4 +600,23 @@ internal object MarkerPolicy {
             )
         }
     }
+}
+
+/** Where `pypackpack build` keeps a package's Meson trees (`compile/backend/DefaultBackend.compile`). */
+private const val COMPILE_TREE_DIR = "build/packpack"
+
+/**
+ * The compile trees `python use` deletes (docs/SPEC.md *Cleaning up subpackage build directories on
+ * `python use`*): `build/packpack` in each listed workspace member that exists inside [projectRoot], or in
+ * [projectRoot] itself when it lists none. Glob members are not expanded.
+ */
+internal fun compileTreesFor(projectRoot: File): List<File> {
+    val root = projectRoot.canonicalFile
+    val members = readWorkspaceMembers(root)
+    if (members.isEmpty()) return listOf(File(root, COMPILE_TREE_DIR))
+    return members
+        .filterNot { it.contains('*') }
+        .map { File(root, it).canonicalFile }
+        .filter { it.isDirectory && it.toPath().startsWith(root.toPath()) }
+        .map { File(it, COMPILE_TREE_DIR) }
 }

@@ -123,6 +123,63 @@ class DefaultMiddlewareInitTest {
         }
     }
 
+    /**
+     * docs/SPEC.md *Cleaning up subpackage build directories on `python use`* (#159): every workspace
+     * member's `build/packpack/` (the Meson trees configured against the old interpreter) is deleted;
+     * the rest of `build/`, `dist/` and the root's `build/crossenv/` stay.
+     */
+    @Test
+    fun changePythonVersionDeletesEachPackagesCompileTreesAndKeepsTheRest() {
+        val tempRoot = Files.createTempDirectory("ppp-python-use-clean-").toFile().canonicalFile
+        val oldUserDir = System.getProperty("user.dir")
+        try {
+            File(tempRoot, "pyproject.toml").writeText(
+                "[project]\nname = \"ws\"\n\n[tool.uv.workspace]\nmembers = [\"src/core\", \"src/ui\", \"src/gone\"]\n",
+            )
+            fun touch(path: String) = File(tempRoot, path).apply { parentFile.mkdirs(); writeText("x") }
+            val coreTree = touch("src/core/build/packpack/single/debug/instant/default/build.ninja")
+            val uiTree = touch("src/ui/build/packpack/single/release/native/default/build.ninja")
+            val coreOther = touch("src/core/build/notes.txt")
+            val coreDist = touch("src/core/dist/default/debug/instant/core.so")
+            val crossenv = touch("build/crossenv/aarch64-linux-android/core/pkg.py")
+            System.setProperty("user.dir", tempRoot.absolutePath)
+
+            assertTrue(DefaultMiddleware().withBackend(FakeBackend()).changePythonVersion("3.15t"))
+
+            assertFalse(File(tempRoot, "src/core/build/packpack").exists(), "core's compile tree must be deleted")
+            assertFalse(File(tempRoot, "src/ui/build/packpack").exists(), "ui's compile tree must be deleted")
+            assertFalse(coreTree.exists() || uiTree.exists())
+            assertTrue(coreOther.isFile, "the rest of build/ stays")
+            assertTrue(coreDist.isFile, "dist/ stays")
+            assertTrue(crossenv.isFile, "the root's build/crossenv stays")
+        } finally {
+            System.setProperty("user.dir", oldUserDir)
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /** Without workspace members the project root is the one package: its `build/packpack/` goes. */
+    @Test
+    fun changePythonVersionInASinglePackageRepositoryDeletesTheRootCompileTree() {
+        val tempRoot = Files.createTempDirectory("ppp-python-use-single-").toFile().canonicalFile
+        val oldUserDir = System.getProperty("user.dir")
+        try {
+            File(tempRoot, "pyproject.toml").writeText("[project]\nname = \"solo\"\n")
+            val tree = File(tempRoot, "build/packpack/single/debug/instant/default/build.ninja").apply { parentFile.mkdirs(); writeText("x") }
+            val crossenv = File(tempRoot, "build/crossenv/x86_64-unknown-linux-gnu/m.py").apply { parentFile.mkdirs(); writeText("x") }
+            System.setProperty("user.dir", tempRoot.absolutePath)
+
+            assertTrue(DefaultMiddleware().withBackend(FakeBackend()).changePythonVersion("3.15t"))
+
+            assertFalse(tree.exists(), "the root's compile tree must be deleted")
+            assertFalse(File(tempRoot, "build/packpack").exists())
+            assertTrue(crossenv.isFile, "build/crossenv stays")
+        } finally {
+            System.setProperty("user.dir", oldUserDir)
+            tempRoot.deleteRecursively()
+        }
+    }
+
     private class FakeBackend : BackendInterface {
         var initArgs: Map<String, String>? = null
         val venvCalls = mutableListOf<Triple<String, String?, String?>>()
