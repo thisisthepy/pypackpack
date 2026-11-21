@@ -693,9 +693,11 @@ Decided 2026-10-17 (#69, through the project lead); done in #86.
 
 #### Dev environment dependency management
 
-Status: partial. `cli/.../DependencyCommandTest.kt` and `cli/.../CommandExtensionTest.kt` cover
-argument parsing and forwarding to the middleware (against a recording middleware). No test runs
-the `uv` calls.
+Status: implemented (#159). `cli/.../DependencyCommandTest.kt` and `cli/.../CommandExtensionTest.kt` cover
+argument parsing and forwarding to the middleware (against a recording middleware);
+`packpack/.../dependency/middleware/DevEnvRealUvTest.kt` runs the root `add`, `tree`, `sync` and `remove`
+with the real uv on a real project and checks `pyproject.toml` and the root `.venv` (network: PyPI);
+`packpack/.../dependency/backend/UVBackendTest.kt` (`syncDependencies_*`) checks the venv `sync` targets.
 
 ```bash
 pypackpack add <pypi name>...
@@ -716,11 +718,8 @@ pypackpack remove <pypi name>...
 pypackpack sync
 ```
 
-- Performs `uv sync` targeting the project root's `.venv`.
-
-Limitation
-
-- The backend call operates based on the working directory; the `venvPath` argument is not passed to the `uv sync` command (`UVBackend.syncDependencies` ignores it).
+- Performs `uv sync` targeting the project root's `.venv`. `UVBackend.syncDependencies` names the venv it
+  is given through uv's `UV_PROJECT_ENVIRONMENT`; a blank path (the per-package sync) keeps uv's default.
 
 ```bash
 pypackpack tree [--target <target1> <target2> ...]

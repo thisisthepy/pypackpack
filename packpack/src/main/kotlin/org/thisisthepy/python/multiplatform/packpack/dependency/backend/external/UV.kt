@@ -171,6 +171,7 @@ class UV {
     suspend fun executeCommand(
         args: List<String>,
         workingDir: File? = null,
+        environment: Map<String, String> = emptyMap(),
     ): Pair<Int, String> =
         withContext(Dispatchers.IO) {
             val uvPath = getUVPath() ?: throw IllegalStateException("UV is not installed")
@@ -179,6 +180,7 @@ class UV {
             val processBuilder =
                 ProcessBuilder(command)
                     .redirectErrorStream(true)
+            processBuilder.environment().putAll(environment)
 
             if (workingDir != null) {
                 processBuilder.directory(workingDir)

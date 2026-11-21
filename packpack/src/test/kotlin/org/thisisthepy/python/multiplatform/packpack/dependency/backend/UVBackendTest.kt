@@ -349,16 +349,47 @@ class UVBackendTest {
         )
     }
 
+    /** `sync` targets the venv it is given through uv's `UV_PROJECT_ENVIRONMENT` (#159). */
+    @Test
+    fun syncDependencies_namesTheVenvThroughUvProjectEnvironment() {
+        val backend = RecordingUVBackend()
+        val root = File("build/uvbackend-sync").absoluteFile
+
+        assertTrue(runBlocking { backend.syncDependencies("${root.path}/envs/py315t", mapOf("frozen" to ""), root) }.isSuccess)
+
+        assertEquals(listOf("sync", "--frozen"), backend.lastCommand)
+        assertEquals(root, backend.lastWorkingDir)
+        assertEquals(mapOf("UV_PROJECT_ENVIRONMENT" to "${root.path}/envs/py315t"), backend.lastEnvironment)
+    }
+
+    /** A blank venv path (CrossEnv's per-package sync) leaves uv's default environment. */
+    @Test
+    fun syncDependencies_withABlankVenvPathSetsNoEnvironment() {
+        val backend = RecordingUVBackend()
+
+        assertTrue(runBlocking { backend.syncDependencies("", null, null) }.isSuccess)
+
+        assertEquals(emptyMap(), backend.lastEnvironment)
+    }
+
     private class RecordingUVBackend : UVBackend() {
         var lastCommand: List<String> = emptyList()
         var lastWorkingDir: File? = null
+        var lastEnvironment: Map<String, String> = emptyMap()
 
         override suspend fun executeCommand(
             command: List<String>,
             workingDir: File?,
+        ): Result<String> = executeCommand(command, workingDir, emptyMap())
+
+        override suspend fun executeCommand(
+            command: List<String>,
+            workingDir: File?,
+            environment: Map<String, String>,
         ): Result<String> {
             lastCommand = command
             lastWorkingDir = workingDir
+            lastEnvironment = environment
             return Result.success("ok")
         }
     }
