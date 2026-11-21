@@ -53,6 +53,51 @@ class DefaultMiddlewareInitTest {
         }
     }
 
+    /** An existing `pyproject.toml` is refused before uv runs, naming whose project it is (#159). */
+    @Test
+    fun initProjectRefusesAnExistingProjectAndNamesItsTool() {
+        val cases = mapOf(
+            "[project]\nname = \"a\"\n\n[tool.ppp.dependencies]\nplatforms = []\n" to "already a pypackpack project",
+            "[tool.poetry]\nname = \"a\"\n" to "configured for poetry",
+            "[project]\nname = \"a\"\n" to "a Python project already exists",
+        )
+        for ((toml, expected) in cases) {
+            val tempRoot = Files.createTempDirectory("ppp-init-existing-").toFile()
+            try {
+                File(tempRoot, "pyproject.toml").writeText(toml)
+                val backend = FakeBackend()
+                val result = DefaultMiddleware().withBackend(backend)
+                    .initProject(path = tempRoot.absolutePath, targets = null, extraArgs = null)
+
+                assertTrue(result.isFailure, toml)
+                assertTrue(expected in result.exceptionOrNull()?.message.orEmpty(), result.exceptionOrNull()?.message)
+                assertEquals(null, backend.initArgs, "uv init must not run")
+                assertEquals(toml, File(tempRoot, "pyproject.toml").readText(), "the existing file is untouched")
+            } finally {
+                tempRoot.deleteRecursively()
+            }
+        }
+    }
+
+    /** Another tool's files do not stop init, but the result says pypackpack does not read them. */
+    @Test
+    fun initProjectWarnsAboutAnotherPackagingToolsFiles() {
+        val tempRoot = Files.createTempDirectory("ppp-init-othertool-").toFile()
+        try {
+            File(tempRoot, "setup.py").writeText("from setuptools import setup\nsetup()\n")
+            File(tempRoot, "Pipfile").writeText("[packages]\n")
+
+            val output = DefaultMiddleware().withBackend(FakeBackend())
+                .initProject(path = tempRoot.absolutePath, targets = null, extraArgs = null)
+                .getOrThrow()
+
+            assertTrue("setup.py, Pipfile" in output && "another packaging tool" in output, output)
+            assertTrue(File(tempRoot, "pyproject.toml").isFile)
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
     /** An unknown target is refused before uv runs, so nothing is created. */
     @Test
     fun initProjectRefusesAnUnknownTargetBeforeUv() {

@@ -436,11 +436,11 @@ Limitation
 
 #### Project creation
 
-Status: partial. `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
+Status: implemented (#159). `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
 generated `README.md` and `LICENSE`, (with the real uv) that an ancestor `pyproject.toml` is left
-untouched, that `--target` is recorded as `platforms` and that an unknown target is refused before uv
-runs (#159); `cli/.../InitCommandTest.kt` covers the options reaching the middleware. Open: the
-ppp-project check below (#159).
+untouched, that `--target` is recorded as `platforms`, that an unknown target or an existing project is
+refused before uv runs, and the other-tool warning; `cli/.../InitCommandTest.kt` covers the options
+reaching the middleware.
 
 ```bash
 pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package] [--target <target>...]
@@ -454,10 +454,12 @@ pypackpack init [<path>] [--python <python version>] [--name <project name>] [--
 - `path`, `--python`, `--name`, `--package` are passed as `uv init` options, but `uv` only generates `pyproject.toml`, and ppp generates the other necessary files.
 - `--target` (the library API's `targets`) records the canonical targets in `[tool.ppp.dependencies].platforms` of the new `pyproject.toml`. An unknown target is refused before `uv init` runs, so nothing is created.
 - After `uv init --bare`, ppp additionally generates `.gitignore`, `README.md`, and `LICENSE`. `.python-version` is only generated when `--python` is passed.
-
-Limitation
-
-- There is not yet a check for whether an existing `pyproject.toml` is a ppp project, nor a determination of conflicts with other packaging tools.
+- A directory that already has a `pyproject.toml` is refused before `uv init` runs, and the file is left as
+  it is. The message says whether it is already a pypackpack project (`[tool.ppp]`), another tool's
+  (`[tool.poetry]`, `pdm`, `hatch`, `flit`, `setuptools`), or a plain Python project.
+- Another packaging tool's files in the directory (`setup.py`, `setup.cfg`, `Pipfile`, `poetry.lock`,
+  `pdm.lock`, `environment.yml`) do not stop `init`; its output ends with a warning naming them, since
+  pypackpack reads only `pyproject.toml` (agent proposal, not confirmed: warn rather than refuse).
 
 #### Changing the project's Python version
 

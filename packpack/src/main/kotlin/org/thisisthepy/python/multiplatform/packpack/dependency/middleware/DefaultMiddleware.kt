@@ -47,6 +47,9 @@ class DefaultMiddleware : MiddlewareInterface {
             runCatching { Platforms.normalizeTargetsOrThrow(targets, label = "platform") }
                 .onFailure { return Result.failure(it) }
         }
+        val targetDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
+        existingProjectRejection(targetDir)?.let { return Result.failure(IllegalStateException(it)) }
+        val otherTools = otherPackagingToolFiles(targetDir)
         val uvArgs =
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")
@@ -75,7 +78,9 @@ class DefaultMiddleware : MiddlewareInterface {
             pythonVersion = uvArgs["python"].takeUnless { it.isNullOrBlank() },
         )
 
-        return result
+        if (otherTools.isEmpty()) return result
+        val warning = otherPackagingToolsWarning(otherTools)
+        return result.map { output -> listOf(output.trim(), warning).filter { it.isNotEmpty() }.joinToString("\n") }
     }
 
     /**
@@ -625,3 +630,29 @@ internal fun compileTreesFor(projectRoot: File): List<File> {
         .filter { it.isDirectory && it.toPath().startsWith(root.toPath()) }
         .map { File(it, COMPILE_TREE_DIR) }
 }
+
+/** Files that show another packaging tool manages [dir] (docs/SPEC.md *Project creation*). */
+private val OTHER_PACKAGING_TOOL_FILES = listOf("setup.py", "setup.cfg", "Pipfile", "poetry.lock", "pdm.lock", "environment.yml")
+
+/**
+ * `init` into a directory that already has a `pyproject.toml` is refused before uv runs, naming
+ * whether it is already a ppp project (`[tool.ppp]`) or another tool's (`[tool.poetry]`, ...).
+ */
+internal fun existingProjectRejection(dir: File): String? {
+    val pyproject = File(dir, "pyproject.toml")
+    if (!pyproject.isFile) return null
+    val text = pyproject.readText()
+    val owner = when {
+        Regex("""(?m)^\s*\[tool\.ppp[.\]]""").containsMatchIn(text) -> "it is already a pypackpack project"
+        else -> Regex("""(?m)^\s*\[tool\.(poetry|pdm|hatch|flit|setuptools)[.\]]""").find(text)
+            ?.let { "it is configured for ${it.groupValues[1]}" }
+            ?: "a Python project already exists there"
+    }
+    return "${pyproject.path} exists: $owner. init creates a new project only; use target add / add in an existing pypackpack project."
+}
+
+internal fun otherPackagingToolFiles(dir: File): List<String> = OTHER_PACKAGING_TOOL_FILES.filter { File(dir, it).exists() }
+
+internal fun otherPackagingToolsWarning(files: List<String>): String =
+    "Warning: ${files.joinToString(", ")} in this directory belong to another packaging tool; pypackpack " +
+        "uses pyproject.toml and uv and does not read them."
