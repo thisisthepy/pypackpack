@@ -110,8 +110,8 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     `NuitkaTransInterface.kt` and `CythonTransInterface.kt` placeholders were deleted (team lead 2026-11-21
     22:55 and the owner's 23:00 answer).
   - Status: partial. The native slot is `implemented` per platform as *The native compile slot* states.
-    `transcompile/BaseTransInterface.kt` is an empty placeholder with no converter left to implement it
-    (its removal is proposed to the lead).
+    The empty `transcompile/BaseTransInterface.kt` was deleted too: no converter is left to implement it
+    (team lead 2026-11-22 05:40, Decision 10).
   - Minification is its own section, *Code minification* (planned, built after 1.0 by the owner's decision).
     (The `bytecode` level of the `resource` bundle uses `compileall`, which is none of this.)
 - (4). Support code update fast track API
@@ -212,8 +212,6 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
         - middleware
           - MiddlewareInterface.kt  # factory pattern
           - DefaultMiddleware.kt  # decorator pattern
-          - transcompile
-            - BaseTransInterface.kt  # placeholder
           - minification
             - BaseMinifyInterface.kt  # placeholder (*Code minification*, after 1.0)
         - backend
