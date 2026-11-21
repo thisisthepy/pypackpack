@@ -52,11 +52,12 @@ fun targetPythonIn(installDir: File, canonicalTarget: String): TargetPython {
         val prefix = File(installDir, "prefix").takeIf { it.isDirectory } ?: installDir
         val lib = File(prefix, "lib")
         val include = headerDir(File(prefix, "include")) ?: missing("include/python3.Xt/Python.h")
+        val suffix = extSuffix(lib)
         val ldLibrary = readSysconfigValue(lib, "LDLIBRARY") ?: missing("_sysconfigdata naming its LDLIBRARY")
         return TargetPython(
             canonicalTarget,
             include,
-            extSuffix(lib),
+            suffix,
             listOf("-L${lib.path}", "-l${ldLibrary.removePrefix("lib").removeSuffix(".so")}"),
             lib,
             ldLibrary,
