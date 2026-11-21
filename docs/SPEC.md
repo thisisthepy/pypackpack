@@ -25,15 +25,22 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 #### Goals to achieve
 
 - No OS dependency (Desktop, macOS, linux) via GraalVM Native Image
-  - Status: partial. `:packpack` applies `org.graalvm.buildtools.native` to its `cli` source set
-    (`./gradlew :packpack:nativeCompile`). publish-pypi.yml builds and smoke-tests the native image
-    on four platforms for every pull request that touches it; no other job does.
+  - Status: partial (#160). `:packpack` applies `org.graalvm.buildtools.native` to its `cli` source set
+    (`./gradlew :packpack:nativeCompile`). publish-pypi.yml builds and smoke-tests the native image for a
+    release; the development workflow (test.yml `native`) builds it on the same four platforms and runs it
+    through every command group (`.github/scripts/native/native_cli_suite.py`: version, help, init with
+    targets, target, package, root add/tree/sync/remove, python list, build resource). `implemented` once
+    that job has passed.
 - Must be easy to install and use (let's not make users configure paths for Python, JVM, etc.)
   - Status: partial. `uv` is downloaded into `~/.pypackpack/uv` when absent, and `meson`/`ninja` are
     installed through `uv tool install` when absent (see *CLI Version* and *Package build*).
     `uv tool install pypackpack` installs the native CLI from PyPI (see *Distribution through PyPI*).
 - Must be fast (build speed matters)
-  - Status: planned. Nothing measures build speed today.
+  - Status: partial (#160). `.github/scripts/native/build_speed.py <binary>` times `version`, `init`, `add`,
+    `sync`, `build <package> resource` and a Meson `build` on a scratch project (min, median, max over
+    `--runs`), refusing to start at a 1-minute load of 1.0 or more (AGENTS.md rule 8). The first result,
+    with its date and machine, is recorded here once the lead has run it in a quiet window; that is what
+    makes this `implemented`. Not yet run.
 
 #### 1.0 scope
 
