@@ -35,6 +35,27 @@ questions that are not yet a spec item are tracked in `docs/issues/KNOWN_ISSUES.
 - Must be fast (build speed matters)
   - Status: planned. Nothing measures build speed today.
 
+#### 1.0 scope
+
+Agreed 2026-11-21 by the team lead for the owner's goal "ship a stable 1.0 of every project below 1.0"
+(team brief 2026-11-21; proposal in the release-engineering report, approved as proposed):
+
+- **In 1.0:** every item below marked `implemented`, plus the Cargo backend's Windows-on-its-own-machine
+  build (#150). A `partial` item whose only gap was a missing test got the test (2026-11-21: *Changing the
+  project's Python version*, *Adding/removing packages*, *Viewing build target platforms*, *Per-package
+  target dependency management*).
+- **After 1.0, kept as tested refusals or placeholders:** every `planned` item: build-speed measurement;
+  Nuitka, Cython, Lpython, transcompile and minification; the `binary` bundle; FastTrack, ResourceHub and
+  BrainWave deploy (no servers exist); cleaning subpackage build directories on `python use`.
+- **Still `partial` in 1.0, with their limitations stated where they are:** the GraalVM and tool-acquisition
+  goals, *CLI Version* (the uv line is untested), *Distribution through Maven Central* (waits on the owner's
+  upload), *Project creation*, *Dev environment dependency management* (no test runs uv itself), *Package
+  build* (Meson builds for the host only), and the `bytecode` / `native` / `mixed` build levels (per-platform
+  coverage).
+- **Open:** WASM. *Scope decisions* below puts it in the first release (#70), but it waits on
+  python-multiplatform #175, which is on hold until Kotlin/Wasm can import shared memory. Whether 1.0 waits
+  for it is the lead's and owner's call, not recorded here as decided.
+
 #### Scope decisions
 
 Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
@@ -423,7 +444,8 @@ Limitation
 
 #### Changing the project's Python version
 
-Status: partial. No test in this repository.
+Status: implemented. `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt`
+(`changePythonVersionRecreatesTheRootVenvWithTheNewVersionAndSyncs`, against a recording backend).
 
 ```bash
 pypackpack python use <python version>
@@ -573,8 +595,9 @@ Limitation
 
 #### Adding/removing packages
 
-Status: partial. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
-(`addPackageCreatesSourceFoldersForInheritedWorkspaceTargets`) covers `add`; nothing covers `remove`.
+Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+(`addPackageCreatesSourceFoldersForInheritedWorkspaceTargets` for `add`,
+`removePackageDeletesItsDirectoryAndWorkspaceMember` for `remove`).
 
 ```bash
 pypackpack package add <package path> [--path <workspace root>]
@@ -597,7 +620,8 @@ Limitation
 
 #### Viewing build target platforms
 
-Status: partial. No test covers `target list`'s output.
+Status: implemented. `cli/.../TargetListCommandTest.kt` (every `SUPPORTED_TARGETS` entry listed once,
+under its family).
 
 ```bash
 pypackpack target list
@@ -690,7 +714,7 @@ pypackpack tree [--target <target1> <target2> ...]
 
 #### Per-package target dependency management
 
-Status: partial. See the per-command lines below. `cli/.../DynamicPackageCommandTest.kt`,
+Status: implemented. See the per-command lines below. `cli/.../DynamicPackageCommandTest.kt`,
 `cli/.../PackageCommandTest.kt` and `cli/.../TargetOptionParsingTest.kt` cover the CLI parsing and
 forwarding for all four commands.
 
@@ -698,7 +722,9 @@ forwarding for all four commands.
 pypackpack <package name> add <pypi name> [--target <target1> <target2> ...]
 ```
 
-Status: partial. No test runs the per-target `uv add --marker` loop.
+Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+(`addDependenciesRunsUvAddOncePerTargetWithThatTargetsMarker`,
+`addDependenciesWithoutTargetsOrPlatformsOrWithAMarkerIsRefusedBeforeUv`).
 
 ```bash
 # example
@@ -763,7 +789,8 @@ not the host's.
 pypackpack <package name> tree [--target <target1> <target2> ...]
 ```
 
-Status: partial. Only the CLI forwarding is tested.
+Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTest.kt`
+(`showDependencyTreeRunsUvTreePerTargetAndDefaultsToTheHost`) and the CLI forwarding tests.
 
 - `tree` calls `uv tree --package <name> --python-platform <target>` for each target and prints the results in sequence.
 - If `--target` is absent, uses a single host target as the default.
