@@ -437,11 +437,13 @@ Limitation
 #### Project creation
 
 Status: partial. `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
-generated `README.md` and `LICENSE`, and (with the real uv) that an ancestor `pyproject.toml` is left
-untouched.
+generated `README.md` and `LICENSE`, (with the real uv) that an ancestor `pyproject.toml` is left
+untouched, that `--target` is recorded as `platforms` and that an unknown target is refused before uv
+runs (#159); `cli/.../InitCommandTest.kt` covers the options reaching the middleware. Open: the
+ppp-project check below (#159).
 
 ```bash
-pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package]
+pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package] [--target <target>...]
 ```
 
 - Project initialization is performed based on `uv init --bare --no-workspace`.
@@ -450,13 +452,12 @@ pypackpack init [<path>] [--python <python version>] [--name <project name>] [--
   file, even when it belongs to an unrelated repository. A package inside a ppp workspace is created with
   `package add`, not `init`.
 - `path`, `--python`, `--name`, `--package` are passed as `uv init` options, but `uv` only generates `pyproject.toml`, and ppp generates the other necessary files.
-- If `targets` is given (library API only, see Limitation), updates `[tool.ppp.dependencies].platforms` in the root `pyproject.toml`.
+- `--target` (the library API's `targets`) records the canonical targets in `[tool.ppp.dependencies].platforms` of the new `pyproject.toml`. An unknown target is refused before `uv init` runs, so nothing is created.
 - After `uv init --bare`, ppp additionally generates `.gitignore`, `README.md`, and `LICENSE`. `.python-version` is only generated when `--python` is passed.
 
 Limitation
 
 - There is not yet a check for whether an existing `pyproject.toml` is a ppp project, nor a determination of conflicts with other packaging tools.
-- The `init` CLI command does not expose a way to pass `targets`, so `[tool.ppp.dependencies].platforms` cannot be set from `pypackpack init` even though the middleware supports it; targets must be added afterward via `target add`.
 
 #### Changing the project's Python version
 

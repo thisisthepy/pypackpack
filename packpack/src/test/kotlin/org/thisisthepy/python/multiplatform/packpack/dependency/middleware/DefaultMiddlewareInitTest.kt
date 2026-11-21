@@ -35,6 +35,42 @@ class DefaultMiddlewareInitTest {
         }
     }
 
+    /** `init --target` records the canonical targets in `[tool.ppp.dependencies].platforms` (#159). */
+    @Test
+    fun initProjectRecordsItsTargetsAsPlatforms() {
+        val tempRoot = Files.createTempDirectory("ppp-init-targets-").toFile()
+        try {
+            DefaultMiddleware().withBackend(FakeBackend())
+                .initProject(path = tempRoot.absolutePath, targets = listOf("aarch64-apple-ios", "aarch64-linux-android"), extraArgs = null)
+                .getOrThrow()
+
+            val toml = File(tempRoot, "pyproject.toml").readText()
+            assertTrue(Regex("""\[tool\.ppp\.dependencies]""").containsMatchIn(toml), toml)
+            val platforms = Regex("""platforms\s*=\s*\[([^\]]*)]""").find(toml)?.groupValues?.get(1).orEmpty()
+            assertTrue("\"aarch64-linux-android\"" in platforms && "\"aarch64-apple-ios\"" in platforms, toml)
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /** An unknown target is refused before uv runs, so nothing is created. */
+    @Test
+    fun initProjectRefusesAnUnknownTargetBeforeUv() {
+        val tempRoot = Files.createTempDirectory("ppp-init-badtarget-").toFile()
+        try {
+            val backend = FakeBackend()
+            val result = DefaultMiddleware().withBackend(backend)
+                .initProject(path = tempRoot.absolutePath, targets = listOf("not-a-target"), extraArgs = null)
+
+            assertTrue(result.isFailure)
+            assertTrue("not-a-target" in result.exceptionOrNull()?.message.orEmpty(), result.exceptionOrNull()?.message)
+            assertEquals(null, backend.initArgs, "uv init must not run")
+            assertFalse(File(tempRoot, "pyproject.toml").exists())
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
     /**
      * `ppp init` must not join an unrelated ancestor project: uv's `init` otherwise adds the new
      * project as a workspace member of the nearest ancestor `pyproject.toml` and writes

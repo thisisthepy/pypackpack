@@ -42,6 +42,11 @@ class DefaultMiddleware : MiddlewareInterface {
         targets: List<String>?,
         extraArgs: Map<String, String>?,
     ): Result<String> {
+        // An unknown target is refused before uv creates anything (docs/SPEC.md *Project creation*).
+        if (!targets.isNullOrEmpty()) {
+            runCatching { Platforms.normalizeTargetsOrThrow(targets, label = "platform") }
+                .onFailure { return Result.failure(it) }
+        }
         val uvArgs =
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")

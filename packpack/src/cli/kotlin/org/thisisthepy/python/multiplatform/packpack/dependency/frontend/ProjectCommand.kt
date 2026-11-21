@@ -41,6 +41,7 @@ class InitCommand : CliktCommand(name = "init") {
     val projectName by option("--name", help = "Project name", metavar = "<NAME>").default("")
     val `package` by option("--package", help = "Initialize as a package").flag()
     val pythonVersion by option("--python", help = "Python version to use", metavar = "<PYTHON>").default("")
+    val targets by option("--target", help = "Target platforms to record in [tool.ppp.dependencies] (--target android ios)").varargValues().default(emptyList())
 
     override fun run() {
         val middleware = requireMiddleware()
@@ -53,7 +54,7 @@ class InitCommand : CliktCommand(name = "init") {
 
         val result =
             currentContext.terminal.runWithProgress("Initializing project...") {
-                middleware.initProject(path, null, extraArgs)
+                middleware.initProject(path, targets.ifEmpty { null }, extraArgs)
             }
 
         result
