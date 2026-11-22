@@ -689,30 +689,30 @@ open class Cargo(
 private val WINDOWS_DIRS = mapOf("x86_64-pc-windows-msvc" to "windows_amd64", "aarch64-pc-windows-msvc" to "windows_arm64")
 
 /** The canonical Android triples the Cargo backend builds, and the directory `installPython` puts their Python in. */
-private val ANDROID_DIRS = mapOf("aarch64-linux-android" to "android_arm64", "x86_64-linux-android" to "android_x86_64")
+internal val ANDROID_DIRS = mapOf("aarch64-linux-android" to "android_arm64", "x86_64-linux-android" to "android_x86_64")
 
 /** An iOS target: its Rust triple, `installPython`'s directory, and the XCframework slice and lib directory. */
-private data class IosTarget(
+internal data class IosTarget(
     val rustTriple: String,
     val installDirName: String,
     val slice: String,
     val libDir: String,
 )
 
-private val IOS_TARGETS = mapOf(
+internal val IOS_TARGETS = mapOf(
     "arm64-apple-ios" to IosTarget("aarch64-apple-ios", "ios_arm64", "ios-arm64", "lib-arm64"),
     "arm64-apple-ios-simulator" to IosTarget("aarch64-apple-ios-sim", "ios_simulator_arm64", "ios-arm64_x86_64-simulator", "lib-arm64"),
     "x86_64-apple-ios-simulator" to IosTarget("x86_64-apple-ios", "ios_simulator_x86_64", "ios-arm64_x86_64-simulator", "lib-x86_64"),
 )
 
 /** A Linux cross-compile target: its Rust triple, `installPython`'s directory, and maturin `--compatibility` tag. */
-private data class LinuxCrossTarget(
+internal data class LinuxCrossTarget(
     val rustTriple: String,
     val installDirName: String,
     val compatibility: String,
 )
 
-private val LINUX_CROSS_TARGETS = mapOf(
+internal val LINUX_CROSS_TARGETS = mapOf(
     "x86_64-unknown-linux-gnu" to LinuxCrossTarget("x86_64-unknown-linux-gnu", "linux_x86_64", "manylinux_2_17"),
     "aarch64-unknown-linux-gnu" to LinuxCrossTarget("aarch64-unknown-linux-gnu", "linux_arm64", "manylinux_2_17"),
     "x86_64-manylinux2014" to LinuxCrossTarget("x86_64-unknown-linux-gnu", "linux_x86_64", "manylinux_2_17"),
@@ -726,7 +726,7 @@ private val LINUX_CROSS_TARGETS = mapOf(
 private const val SLICE_KEY = "pypackpack.ios.slice"
 
 /** `<dir>/<relative>` in the nearest directory at or above [startDir] that has one. */
-private fun findTargetDir(
+internal fun findTargetDir(
     startDir: File,
     relative: String,
 ): File? =
@@ -741,13 +741,17 @@ private fun findTargetPythonLib(
 ): File? = findTargetDir(startDir, "$installDirName/prefix/lib")
 
 /** A string value from the target Python's `_sysconfigdata_*.py` under [lib]. */
-private fun readSysconfigValue(
+internal fun readSysconfigValue(
     lib: File,
     key: String,
 ): String? =
     lib.walkTopDown().maxDepth(2).firstOrNull { it.isFile && it.name.startsWith("_sysconfigdata") && it.name.endsWith(".py") }
         ?.readText()
-        ?.let { Regex("'${Regex.escape(key)}':\\s*(?:'([^']*)'|([0-9]+))").find(it)?.groupValues?.let { g -> g[1].ifEmpty { g[2] } } }
+        // CPython writes single quotes; python-build-standalone writes double quotes, one key per line.
+        ?.let {
+            Regex("""(['"])${Regex.escape(key)}\1:\s*(?:'([^']*)'|"([^"]*)"|(-?[0-9]+))""").find(it)?.groupValues
+                ?.let { g -> g[2].ifEmpty { g[3].ifEmpty { g[4] } } }
+        }
 
 private fun runCommand(
     command: List<String>,

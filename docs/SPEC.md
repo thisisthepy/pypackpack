@@ -217,13 +217,15 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
             - BaseMinifyInterface.kt  # placeholder (*Code minification*, after 1.0)
         - backend
           - external
-            - Clang.kt  # desktop C compiler adapter (macOS xcrun clang -arch, Linux host clang/cc) for the compile slot (#20)
+            - Clang.kt  # C compiler adapter for the compile slot (#20, #155): macOS xcrun clang -arch, Linux host clang/cc, Linux cross zig cc, Windows clang --target, iOS xcrun --sdk clang
             - MSVC.kt  # placeholder
-            - NDK.kt  # Android aarch64 NDK clang adapter for the compile slot (#20)
-            - XCode.kt  # placeholder (adapter of Clang.kt)
+            - NDK.kt  # Android NDK clang adapter for the compile slot (aarch64 and x86_64; #20, #155)
+            - XCode.kt  # placeholder; iOS builds go through Clang.kt with the Xcode SDKs (#155)
             - Emscripten.kt  # placeholder
             - Cargo.kt  # Rust crates -> extension modules: discovery, maturin (abi3t), placement in crossenv
-            - Meson.kt  # meson.build generation, meson setup/compile/install, meson/ninja auto-install
+            - Meson.kt  # meson.build generation (native and cross), meson setup/compile/install, meson/ninja auto-install
+            - MesonCross.kt  # Meson cross file per target: the native slot's compilers, host_machine (#155)
+            - TargetPython.kt  # a target's CPython headers, EXT_SUFFIX and link args from python install's layout (#155)
           - BackendInterface.kt  # factory pattern
           - DefaultBackend.kt  # strategy pattern
         - extension
@@ -601,8 +603,10 @@ Limitation
 - Without `installDir`, the project root is located through `user.dir` (`findProjectRoot()`), not an
   explicit working directory.
 - `Downloader` holds the whole archive in memory before writing it.
-- `utils/Archive.kt` reads ustar names (100-byte name + 155-byte prefix) and skips PAX (`x`/`g`) and GNU
-  long-name (`L`) records, and has no `.tar.xz` support.
+- `utils/Archive.kt` has no `.tar.xz` support. It reads ustar names (100-byte name + 155-byte prefix) and takes a
+  longer name or link target from a PAX `x` record (`path`, `linkpath`) or a GNU `L`/`K` record; PAX global (`g`)
+  records are skipped. python-multiplatform's iOS XCframework archive needs this (its header paths pass 100 bytes;
+  run 44973431802). `ArchiveTest.extractArchive_takesLongNamesAndLinksFromPaxAndGnuRecords`.
 
 ### Package management features
 
@@ -890,9 +894,9 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
 
 Limitation
 
-- `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
-- Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
-- Only the Meson and Cargo backends are implemented; the MSVC/XCode/Emscripten backend adapters and the minification middleware are empty placeholder files (Clang and NDK are the native slot's adapters; TypedPython, not Nuitka, Cython or Lpython, generates the C it compiles), so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
+- `--level` changes only directory names (the levels act in the bundlers). `--target` cross-compiles (#155): a target that is not this machine's builds with a Meson cross file (`build/packpack/meson-cross-<target>.ini`, `compile/backend/external/MesonCross.kt`) and the native slot's compilers for it (zig cc for Linux, the NDK for Android, `xcrun --sdk` for iOS; Windows only on its own machine), against the target's CPython found where `pypackpack python install 3.15t <target>` puts it (`TargetPython.kt`, the Cargo backend's layout). Meson cannot run the target interpreter, so that `meson.build` names the target's headers and `EXT_SUFFIX` with `shared_module` and `install_data` instead of `import('python')`. Tests: `MesonCrossTest`, `DefaultBackendTest.compile_crossBuildsANonHostTargetAndRefusesAnUnknownOne`; a real aarch64 Linux build in CI is `MesonCrossRealBuildTest` (test.yml `real-builds`).
+- `--target` is normalized to its canonical triple (an alias such as `android_24_arm64` is accepted) before anything runs, so the output lands in `dist/<canonical target>/...` where the bundlers look; an unknown target is refused.
+- Only the Meson and Cargo backends are implemented; the MSVC/XCode/Emscripten backend adapters and the minification middleware are empty placeholder files (Clang and NDK are the native slot's adapters; TypedPython, not Nuitka, Cython or Lpython, generates the C it compiles), so C/C++ extensions (Meson, any target #155 lists) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
 
 Package metadata (#159). The sheet: "패키지의 pyproject.toml에 빌드해야 할 의존성 패키지의 범위 기술 필요 (기본적으로는
@@ -1120,9 +1124,20 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `x86_64-apple-darwin` via `Clang.kt`), Linux host architecture (`x86_64-unknown-linux-gnu`,
     `aarch64-unknown-linux-gnu` via `Clang.kt`), and Android `aarch64-linux-android` (via `NDK.kt`)
     (`packpack/.../compile/extension/ExtensionCompilerTest.kt`,
-    `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Windows, iOS, wasm, Linux cross-arch and
-    `x86_64-linux-android` are refused by `ExtensionCompilerInterface.checkSupport` with
-    `NoCompileBackendException`. `single`, `fat` and `patch` accept `native` and package the compiled
+    `packpack/.../bundle/resource/ResourceBundlerTest.kt`). Since #155 the slot also builds (command and
+    support tests in `ExtensionCompilerTest`: `checkSupport_acceptsWindowsOnItsOwnMachineIosWithItsFrameworkAndX86Android`,
+    `compile_buildsEachNewTargetWithItsCompilerFlagsAndLink`; real builds, opt-in with `PPP_NATIVE_SLOT_REAL_BUILD=1`,
+    in `NativeSlotRealBuildTest` (test.yml `real-builds` for Android, `real-builds-host` on macOS for iOS and on
+    Windows, where the `.pyd` is imported); `partial` until those jobs have passed):
+    - `x86_64-linux-android` through `NDK.kt`, like arm64;
+    - every other Linux target (another architecture, musl, riscv64) with `zig cc -target <triple>` (glibc
+      2.17, riscv64 2.27), the ziglang the Cargo backend already uses, run through `uv tool run`;
+    - Windows on a machine of the target's architecture only (owner decision 2026-11-19, as for Cargo) with
+      LLVM `clang --target=<triple>`, linked `-shared` against `libDir/libraryName` (`python315t.lib`);
+    - iOS device and simulators on a macOS host with `xcrun --sdk iphoneos|iphonesimulator clang -target
+      <arch>-apple-ios13.0[-simulator]`, linked `-dynamiclib -F <libDir> -framework Python` (`libDir` is the
+      XCframework slice that holds `Python.framework`).
+    wasm is refused with `NoCompileBackendException` until #82. `single`, `fat` and `patch` accept `native` and package the compiled
     output under `dist/<canonical target>/<build type>/native`.
 - `mixed`: bytecode for the developer's code, native code for libraries. The developer's modules ship
   as bytecode and TypedPython's C is not applied; libraries ship their prebuilt native wheels.

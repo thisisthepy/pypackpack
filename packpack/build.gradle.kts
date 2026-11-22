@@ -48,6 +48,17 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// A failing test prints its message and stack in the CI log, not only the exception's class (#155:
+// run 44945907832 showed "IllegalStateException at MesonCrossRealBuildTest.kt:46" and nothing more).
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Publishing
 //
