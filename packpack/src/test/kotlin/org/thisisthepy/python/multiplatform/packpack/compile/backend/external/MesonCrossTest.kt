@@ -27,6 +27,29 @@ class MesonCrossTest {
 
     private fun pkg(): File = File(root, "project/pkg").apply { mkdirs() }
 
+    /**
+     * python-build-standalone 20261013's `_sysconfigdata` is written with double quotes, one key per line
+     * (`"EXT_SUFFIX": ".cpython-315t-aarch64-linux-gnu.so",`); CPython's own is single-quoted. Both are read
+     * (run 44973431802: the Linux aarch64 runtime was refused as having no EXT_SUFFIX).
+     */
+    @Test
+    fun readsSysconfigValuesInEitherQuoteStyle() {
+        val doubled = File(root, "pbs/lib").apply { File(this, "python3.15t").mkdirs() }
+        File(doubled, "python3.15t/_sysconfigdata_t_linux_aarch64-linux-gnu.py").writeText(
+            "# system configuration generated and used by the sysconfig module\nbuild_time_vars = {\n" +
+                "    \"ABIFLAGS\": \"t\",\n    \"ANDROID_API_LEVEL\": 0,\n    \"EXT_SUFFIX\": \".cpython-315t-aarch64-linux-gnu.so\",\n" +
+                "    \"Py_GIL_DISABLED\": 1,\n}\n",
+        )
+        assertEquals(".cpython-315t-aarch64-linux-gnu.so", readSysconfigValue(doubled, "EXT_SUFFIX"))
+        assertEquals("1", readSysconfigValue(doubled, "Py_GIL_DISABLED"))
+        assertEquals("0", readSysconfigValue(doubled, "ANDROID_API_LEVEL"))
+        assertNull(readSysconfigValue(doubled, "LDLIBRARY"))
+
+        val single = File(root, "cpython/lib").apply { mkdirs() }
+        sysconfig(single, "EXT_SUFFIX" to ".cpython-315t-aarch64-linux-android.so")
+        assertEquals(".cpython-315t-aarch64-linux-android.so", readSysconfigValue(single, "EXT_SUFFIX"))
+    }
+
     @Test
     fun locatesAndroidLinuxAndIosPythonsWhereInstallPutsThem() {
         val pkg = pkg()

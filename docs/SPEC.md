@@ -613,8 +613,10 @@ Limitation
 - Without `installDir`, the project root is located through `user.dir` (`findProjectRoot()`), not an
   explicit working directory.
 - `Downloader` holds the whole archive in memory before writing it.
-- `utils/Archive.kt` reads ustar names (100-byte name + 155-byte prefix) and skips PAX (`x`/`g`) and GNU
-  long-name (`L`) records, and has no `.tar.xz` support.
+- `utils/Archive.kt` has no `.tar.xz` support. It reads ustar names (100-byte name + 155-byte prefix) and takes a
+  longer name or link target from a PAX `x` record (`path`, `linkpath`) or a GNU `L`/`K` record; PAX global (`g`)
+  records are skipped. python-multiplatform's iOS XCframework archive needs this (its header paths pass 100 bytes;
+  run 44973431802). `ArchiveTest.extractArchive_takesLongNamesAndLinksFromPaxAndGnuRecords`.
 
 ### Package management features
 

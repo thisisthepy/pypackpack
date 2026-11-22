@@ -747,7 +747,11 @@ internal fun readSysconfigValue(
 ): String? =
     lib.walkTopDown().maxDepth(2).firstOrNull { it.isFile && it.name.startsWith("_sysconfigdata") && it.name.endsWith(".py") }
         ?.readText()
-        ?.let { Regex("'${Regex.escape(key)}':\\s*(?:'([^']*)'|([0-9]+))").find(it)?.groupValues?.let { g -> g[1].ifEmpty { g[2] } } }
+        // CPython writes single quotes; python-build-standalone writes double quotes, one key per line.
+        ?.let {
+            Regex("""(['"])${Regex.escape(key)}\1:\s*(?:'([^']*)'|"([^"]*)"|(-?[0-9]+))""").find(it)?.groupValues
+                ?.let { g -> g[2].ifEmpty { g[3].ifEmpty { g[4] } } }
+        }
 
 private fun runCommand(
     command: List<String>,

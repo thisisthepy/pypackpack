@@ -49,15 +49,39 @@ fun extractArchive(
                     }
 
                 tarInput.use { tar ->
+                    // A PAX `x` record (or GNU `L`/`K`) carries the next entry's full name or link target,
+                    // which the 100-byte ustar fields truncate.
+                    var longName: String? = null
+                    var longLink: String? = null
                     while (true) {
                         val header = tar.readNBytes(512)
                         if (header.isEmpty()) break
                         if (header.size < 512) throw EOFException("Incomplete tar header in ${archiveFile.absolutePath}")
                         if (header.all { it == 0.toByte() }) break
 
-                        val entryName = stripArchivePath(tarEntryName(header), stripComponents, prefixFilter)
                         val size = tarEntrySize(header)
                         val typeFlag = header[156].toInt().toChar()
+                        val padding = (512 - size.mod(512)).mod(512).toLong()
+                        if (typeFlag in "xgLK") {
+                            val data = tar.readNBytes(size.toInt())
+                            if (data.size.toLong() != size) throw EOFException("Incomplete tar record in ${archiveFile.absolutePath}")
+                            if (padding > 0) tar.skipNBytes(padding)
+                            when (typeFlag) {
+                                'x' -> parsePaxRecords(data).let { records ->
+                                    records["path"]?.let { longName = it }
+                                    records["linkpath"]?.let { longLink = it }
+                                }
+                                'L' -> longName = String(data, Charsets.UTF_8).trimEnd('\u0000')
+                                'K' -> longLink = String(data, Charsets.UTF_8).trimEnd('\u0000')
+                                // 'g': global records hold no per-entry names this reader uses.
+                            }
+                            continue
+                        }
+
+                        val entryName = stripArchivePath(longName ?: tarEntryName(header), stripComponents, prefixFilter)
+                        val linkTarget = longLink ?: header.tarString(157, 100)
+                        longName = null
+                        longLink = null
 
                         if (entryName == null) {
                             tar.skipNBytes(size)
@@ -87,7 +111,7 @@ fun extractArchive(
                                 }
 
                                 '2' -> {
-                                    createContainedSymlink(destDir, entryName, header.tarString(157, 100))
+                                    createContainedSymlink(destDir, entryName, linkTarget)
                                 }
 
                                 else -> {
@@ -96,8 +120,7 @@ fun extractArchive(
                             }
                         }
 
-                        val padding = (512 - size.mod(512)).mod(512)
-                        if (padding > 0) tar.skipNBytes(padding.toLong())
+                        if (padding > 0) tar.skipNBytes(padding)
                     }
                 }
             }
@@ -158,6 +181,22 @@ private fun createContainedSymlink(
     } catch (e: java.nio.file.FileSystemException) {
         // e.g. Windows without SeCreateSymbolicLinkPrivilege; skipped as above.
     }
+}
+
+/** PAX extended header records: `<length> <key>=<value>\n`, the length counting the whole record in bytes. */
+private fun parsePaxRecords(data: ByteArray): Map<String, String> {
+    val records = mutableMapOf<String, String>()
+    var i = 0
+    while (i < data.size) {
+        val space = (i until data.size).firstOrNull { data[it] == ' '.code.toByte() } ?: break
+        val length = String(data, i, space - i, Charsets.US_ASCII).toIntOrNull() ?: break
+        if (length <= 0 || i + length > data.size) break
+        val record = String(data, space + 1, i + length - space - 2, Charsets.UTF_8)
+        val eq = record.indexOf('=')
+        if (eq > 0) records[record.substring(0, eq)] = record.substring(eq + 1)
+        i += length
+    }
+    return records
 }
 
 private fun tarEntryMode(header: ByteArray): Int =
