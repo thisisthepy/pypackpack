@@ -24,6 +24,9 @@ internal object CrossBuildScripts {
         |    if not path:
         |        return
         |    import json
+        |    # subprocess decides when it is imported whether the platform has processes (ios has none): import it
+        |    # while sys.platform is still the build host's.
+        |    import subprocess
         |
         |    with open(path, encoding="utf-8") as f:
         |        cfg = json.load(f)
@@ -58,6 +61,10 @@ internal object CrossBuildScripts {
         |        sc._CONFIG_VARS = None
         |        if hasattr(sc, "_CONFIG_VARS_INITIALIZED"):
         |            sc._CONFIG_VARS_INITIALIZED = False
+        |    # CPython 3.13 returns _PYTHON_HOST_PLATFORM as it is, 3.15 parses it again: answer for both.
+        |    import sysconfig
+        |
+        |    sysconfig.get_platform = lambda: cfg["host_platform"]
         |
         |
         |_activate()
@@ -67,8 +74,8 @@ internal object CrossBuildScripts {
      * `ppp-cross/pep517.py <mode> <source dir> <out> [settings]`: a standard-library PEP 517 frontend.
      * `static` writes `[build-system].requires` as JSON to the file `<out>`, `backend` the build backend's
      * name (as a one-item list), `dynamic` the backend's `get_requires_for_build_wheel` (the backend may print
-     * to stdout, hence a file), and `build` builds the wheel into the directory `<out>`, passing the JSON
-     * config settings in the file `[settings]`, and prints `PPP_WHEEL=<name>`.
+     * to stdout, hence a file), and `build` builds the wheel into the directory `<out>` and prints
+     * `PPP_WHEEL=<name>`. `dynamic` and `build` pass the JSON config settings in the file `[settings]`.
      */
     val PEP517 =
         """
@@ -103,20 +110,20 @@ internal object CrossBuildScripts {
         |for entry in reversed(system.get("backend-path", [])):
         |    sys.path.insert(0, os.path.join(src, entry))
         |os.chdir(src)
+        |settings = {}
+        |if len(argv) > 4:
+        |    with open(argv[4], encoding="utf-8") as f:
+        |        settings = json.load(f)
         |module, _, attrs = system.get("build-backend", "setuptools.build_meta:__legacy__").partition(":")
         |backend = importlib.import_module(module)
         |for attr in filter(None, attrs.split(".")):
         |    backend = getattr(backend, attr)
         |if mode == "dynamic":
         |    hook = getattr(backend, "get_requires_for_build_wheel", None)
-        |    write(list(hook({})) if hook else [])
+        |    write(list(hook(settings)) if hook else [])
         |elif mode == "build":
         |    out = os.path.abspath(argv[3])
         |    os.makedirs(out, exist_ok=True)
-        |    settings = {}
-        |    if len(argv) > 4:
-        |        with open(argv[4], encoding="utf-8") as f:
-        |            settings = json.load(f)
         |    print("PPP_WHEEL=" + backend.build_wheel(out, settings))
         |else:
         |    sys.exit("unknown mode " + mode)

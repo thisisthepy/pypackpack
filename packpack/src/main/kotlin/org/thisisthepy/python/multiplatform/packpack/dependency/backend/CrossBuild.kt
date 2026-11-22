@@ -24,11 +24,10 @@ import java.time.Duration
 
 /**
  * How the cross environment's interpreter reports [canonicalTarget] (docs/SPEC.md *Cross build environment*):
- * `_PYTHON_HOST_PLATFORM`, `sys.platform`, the multiarch and `os.uname()`. `sysconfig.get_platform()` turns
- * them into the wheel's platform: it splits `_PYTHON_HOST_PLATFORM` at the first `-` into the OS and machine,
- * and when `sys.platform` is `android` it adds the API level and the ABI name itself. CPython 3.13 and 3.14
- * take that branch only for the OS `linux` (3.15 also for `android`), so Android's is `linux-<machine>`
- * (`linux-aarch64` becomes `android-24-arm64_v8a`, runs 44980924111 and 44989636124).
+ * [hostPlatform] (the wheel's platform, `_PYTHON_HOST_PLATFORM` and what the hook makes
+ * `sysconfig.get_platform()` return), `sys.platform`, the multiarch and `os.uname()`. The hook answers
+ * `get_platform()` itself because CPython versions read `_PYTHON_HOST_PLATFORM` differently: 3.13 returns it
+ * as it is, 3.15 splits it and maps the Android machine again (runs 44980924111, 44989636124, 45003070103).
  */
 data class CrossTargetIdentity(
     val hostPlatform: String,
@@ -44,7 +43,8 @@ fun crossTargetIdentity(canonicalTarget: String): CrossTargetIdentity {
     val arm = canonicalTarget.startsWith("aarch64") || canonicalTarget.startsWith("arm64")
     val machine = if (arm) "aarch64" else "x86_64"
     if (canonicalTarget in ANDROID_DIRS) {
-        return CrossTargetIdentity("linux-$machine", "android", canonicalTarget, "Linux", machine, ANDROID_API_LEVEL)
+        val abi = if (arm) "arm64_v8a" else "x86_64"
+        return CrossTargetIdentity("android-$ANDROID_API_LEVEL-$abi", "android", canonicalTarget, "Linux", machine, ANDROID_API_LEVEL)
     }
     if (canonicalTarget in IOS_TARGETS) {
         val sdk = if (canonicalTarget.endsWith("-simulator")) "iphonesimulator" else "iphoneos"
@@ -209,12 +209,18 @@ open class CrossSdistBuilder(
             // Host mode: the build requirements run on this machine, so they are the host's wheels.
             exec(listOf(python, env.frontend.absolutePath, "static", src.absolutePath, scratch.absolutePath), src, emptyMap(), "read [build-system]")
             installRequirements(env, MiniJson.parseStringList(scratch.readText()), src)
-            exec(listOf(python, env.frontend.absolutePath, "dynamic", src.absolutePath, scratch.absolutePath), src, emptyMap(), "ask the backend for its requirements")
-            installRequirements(env, MiniJson.parseStringList(scratch.readText()), src)
-
             exec(listOf(python, env.frontend.absolutePath, "backend", src.absolutePath, scratch.absolutePath), src, emptyMap(), "read the build backend")
             val backendName = MiniJson.parseStringList(scratch.readText()).single()
             val settings = backendSettings(backendName, env, cross, canonicalTarget)
+            // The backend's own requirements depend on the settings (scikit-build-core asks for CMake when the
+            // build host's is older than cmake.version).
+            exec(
+                listOf(python, env.frontend.absolutePath, "dynamic", src.absolutePath, scratch.absolutePath) + listOfNotNull(settings?.absolutePath),
+                src,
+                emptyMap(),
+                "ask the backend for its requirements",
+            )
+            installRequirements(env, MiniJson.parseStringList(scratch.readText()), src)
 
             // Cross mode: the backend sees the target and compiles with its toolchain.
             val out = wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }
@@ -334,6 +340,21 @@ open class CrossSdistBuilder(
                     val cc = wrapper(File(dir, "bin/cc"), cross.c)
                     val cxx = wrapper(File(dir, "bin/c++"), cross.cpp)
                     val ar = wrapper(File(dir, "bin/ar"), cross.ar)
+                    // FindPython runs the interpreter while cross-compiling only through CMAKE_CROSSCOMPILING_EMULATOR
+                    // under policy CMP0190 NEW (CMake 4.1+; without it CMake 4 reports Interpreter missing and 3.x leaves
+                    // Python_SOABI empty, run 45003070103). So the build asks for CMake 4.1+ (scikit-build-core installs
+                    // it when the host's is older), sets the policy before the project's cmake_minimum_required, and
+                    // the emulator runs the environment's interpreter, which answers for the target through the hook.
+                    val envBin = env.interpreter.parentFile.absolutePath
+                    val emulator = File(dir, "bin/emulator").apply {
+                        writeText(
+                            "#!/bin/sh\n" +
+                                "case \"\$1\" in ${shellWord(envBin)}/*) exec \"\$@\" ;; esac\n" +
+                                "echo \"pypackpack cross build: \$1 is a $canonicalTarget program, it cannot run on the build host\" >&2\n" +
+                                "exit 1\n",
+                        )
+                        setExecutable(true)
+                    }
                     val identity = crossTargetIdentity(canonicalTarget)
                     val system = if (identity.sysPlatform == "ios") "iOS" else "Linux"
                     toolchain.writeText(
@@ -344,6 +365,7 @@ open class CrossSdistBuilder(
                             appendLine("set(CMAKE_C_COMPILER \"${cc.absolutePath}\")")
                             appendLine("set(CMAKE_CXX_COMPILER \"${cxx.absolutePath}\")")
                             appendLine("set(CMAKE_AR \"${ar.absolutePath}\" CACHE FILEPATH \"\")")
+                            appendLine("set(CMAKE_CROSSCOMPILING_EMULATOR \"${emulator.absolutePath}\")")
                             if (system == "iOS") {
                                 appendLine("set(CMAKE_OSX_SYSROOT ${if (canonicalTarget.endsWith("-simulator")) "iphonesimulator" else "iphoneos"})")
                                 appendLine("set(CMAKE_OSX_ARCHITECTURES ${identity.unameMachine})")
@@ -351,7 +373,11 @@ open class CrossSdistBuilder(
                             }
                         },
                     )
-                    mapOf("cmake.define.CMAKE_TOOLCHAIN_FILE" to toolchain.absolutePath)
+                    mapOf(
+                        "cmake.version" to ">=4.1",
+                        "cmake.define.CMAKE_POLICY_DEFAULT_CMP0190" to "NEW",
+                        "cmake.define.CMAKE_TOOLCHAIN_FILE" to toolchain.absolutePath,
+                    )
                 }
                 else -> return null
             }

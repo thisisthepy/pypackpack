@@ -854,12 +854,14 @@ macOS.
     headers and `lib` to its library directory, the layout `sysconfig` expects. The target CPython comes from
     `ppp python install <version> <target>` (`locateTargetPython`), as for the Cargo and Meson cross builds.
   - `ppp-cross/sysconfig/` holds a copy of the target's `_sysconfigdata_*.py`.
-  - `ppp-cross/config.json` names the target: `_PYTHON_HOST_PLATFORM` (`linux-aarch64` for Android,
+  - `ppp-cross/config.json` names the target: the wheel platform (`android-24-arm64_v8a`,
     `ios-13.0-arm64-iphoneos`, `manylinux_2_17_aarch64`, ...), `sys.platform`, the multiarch, the `os.uname()`
-    system and machine, and the Android API level. `sysconfig.get_platform()` makes the wheel's platform from
-    it; for Android it adds the API level and the ABI name (`android-24-arm64_v8a`).
+    system and machine, and the Android API level.
   - `site-packages/_ppp_cross.pth` imports `_ppp_cross`, which does nothing unless `PPP_CROSS_CONFIG` names
-    that file. When it does, it sets `_PYTHON_SYSCONFIGDATA_NAME` and `_PYTHON_HOST_PLATFORM`, puts
+    that file. When it does, it imports `subprocess` first (it decides at import whether the platform has
+    processes, and `ios` has none), sets `_PYTHON_SYSCONFIGDATA_NAME` and `_PYTHON_HOST_PLATFORM` (the wheel
+    platform), makes `sysconfig.get_platform()` return the wheel platform (CPython versions read
+    `_PYTHON_HOST_PLATFORM` differently), puts
     `ppp-cross/sysconfig` on `sys.path`, sets `sys.platform`, `sys.implementation._multiarch`,
     `sys.cross_compiling`, `sys.base_prefix` / `sys.base_exec_prefix` (the synthesized prefix), `os.uname()`
     and, for Android, `sys.getandroidapilevel()`; it answers `platform.android_ver()` / `platform.ios_ver()`
@@ -879,7 +881,12 @@ macOS.
   `cmake.define.CMAKE_TOOLCHAIN_FILE`): the target system (`Linux` for Android and Linux, `iOS` with its sysroot,
   architecture and deployment target) and processor, and the target compilers and `ar`, each behind a one-line
   wrapper script because CMake takes one executable. It finds Python through the interpreter, which reports the
-  target in cross mode.
+  target in cross mode: FindPython runs an interpreter while cross-compiling only through
+  `CMAKE_CROSSCOMPILING_EMULATOR` under policy CMP0190 NEW (CMake 4.1+), so the settings ask for
+  `cmake.version = ">=4.1"` (scikit-build-core installs CMake when the host's is older) and
+  `cmake.define.CMAKE_POLICY_DEFAULT_CMP0190 = "NEW"`, and the toolchain names `ppp-cross/bin/emulator`, which
+  runs the environment's interpreter and refuses any other program (a target binary cannot run on the build
+  host). The backend's dynamic requirements are asked with the same settings.
 - **The sdist:** `name==version` from uv's message, fetched through PyPI's JSON API
   (`https://pypi.org/pypi/<name>/<version>/json`), the `sdist` entry, its `sha256` checked.
 - **Recipes** (`pip-jit`, owner: "pypackpack 안에"): `[tool.ppp.recipes.<name>]` in the package's

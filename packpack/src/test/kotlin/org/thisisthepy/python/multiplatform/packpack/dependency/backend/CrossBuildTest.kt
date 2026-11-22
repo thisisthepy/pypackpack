@@ -25,10 +25,10 @@ class CrossBuildTest {
     @Test
     fun eachCrossTargetReportsItsWheelPlatformAndTheHostIsRefused() {
         val android = crossTargetIdentity("aarch64-linux-android")
-        assertEquals("linux-aarch64", android.hostPlatform, "sysconfig.get_platform() makes it android-24-arm64_v8a")
+        assertEquals("android-24-arm64_v8a", android.hostPlatform)
         assertEquals("android", android.sysPlatform)
         assertEquals(24, android.androidApiLevel)
-        assertEquals("linux-x86_64", crossTargetIdentity("x86_64-linux-android").hostPlatform)
+        assertEquals("android-24-x86_64", crossTargetIdentity("x86_64-linux-android").hostPlatform)
         assertEquals("ios-13.0-arm64-iphoneos", crossTargetIdentity("arm64-apple-ios").hostPlatform)
         assertEquals("ios-13.0-arm64-iphonesimulator", crossTargetIdentity("arm64-apple-ios-simulator").hostPlatform)
         assertEquals("ios-13.0-x86_64-iphonesimulator", crossTargetIdentity("x86_64-apple-ios-simulator").hostPlatform)
@@ -140,8 +140,9 @@ class CrossBuildTest {
         assertEquals(listOf("uv", "venv", "--python", File(pkg, "build/packpack/cross/host-python/bin/python3.15t").absolutePath, envDir.absolutePath), calls[0].command)
         assertEquals("static", calls[1].command[2])
         assertEquals(listOf("uv", "pip", "install", "--python", python, "setuptools>=61"), calls[2].command)
-        assertEquals("dynamic", calls[3].command[2])
-        assertEquals("backend", calls[4].command[2])
+        assertEquals("backend", calls[3].command[2])
+        assertEquals("dynamic", calls[4].command[2])
+        assertEquals(5, calls[4].command.size, "setuptools gets no settings: ${calls[4].command}")
         assertEquals(6, calls.size, "an empty dynamic list installs nothing")
         listOf(1, 3, 4).forEach { assertTrue(calls[it].env.isEmpty(), "host mode: ${calls[it].env}") }
         val build = calls[5]
@@ -153,7 +154,7 @@ class CrossBuildTest {
         assertTrue("-lpython3.15t" in build.env["LDFLAGS"].orEmpty(), build.env.toString())
 
         val config = MiniJson.parse(File(envDir, "ppp-cross/config.json").readText()) as Map<*, *>
-        assertEquals("linux-aarch64", config["host_platform"])
+        assertEquals("android-24-arm64_v8a", config["host_platform"])
         assertEquals("_sysconfigdata_t_android_aarch64-linux-android", config["sysconfigdata_name"])
         assertEquals(24L, config["android_api_level"])
         assertTrue(File(envDir, "ppp-cross/sysconfig/_sysconfigdata_t_android_aarch64-linux-android.py").isFile)
@@ -231,13 +232,36 @@ class CrossBuildTest {
         val cmake = mutableListOf<Call>()
         builder("scikit_build_core.build", cmake).buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
         val toolchain = File(crossFiles, "cmake-toolchain.cmake")
-        assertEquals(mapOf("cmake.define.CMAKE_TOOLCHAIN_FILE" to toolchain.absolutePath), settingsOf(cmake))
+        assertEquals(
+            mapOf(
+                "cmake.version" to ">=4.1",
+                "cmake.define.CMAKE_POLICY_DEFAULT_CMP0190" to "NEW",
+                "cmake.define.CMAKE_TOOLCHAIN_FILE" to toolchain.absolutePath,
+            ),
+            settingsOf(cmake),
+        )
+        val dynamic = cmake.single { it.command.getOrNull(2) == "dynamic" }
+        assertEquals(File(crossFiles, "settings.json").absolutePath, dynamic.command[5], "the requirements see cmake.version")
         val cmakeText = toolchain.readText()
         assertTrue("set(CMAKE_SYSTEM_NAME Linux)" in cmakeText && "set(CMAKE_SYSTEM_PROCESSOR aarch64)" in cmakeText, cmakeText)
         val cc = File(crossFiles, "bin/cc")
         assertTrue("set(CMAKE_C_COMPILER \"${cc.absolutePath}\")" in cmakeText, cmakeText)
         assertEquals("#!/bin/sh\nexec /ndk/bin/aarch64-linux-android24-clang \"\$@\"\n", cc.readText())
         assertTrue(cc.canExecute())
+
+        // FindPython runs the interpreter through the emulator (run 45003070103); a target program is refused.
+        val emulator = File(crossFiles, "bin/emulator")
+        assertTrue("set(CMAKE_CROSSCOMPILING_EMULATOR \"${emulator.absolutePath}\")" in cmakeText, cmakeText)
+        File(python).apply { parentFile.mkdirs(); writeText("#!/bin/sh\necho ran \"\$@\"\n"); setExecutable(true) }
+        fun emulate(vararg args: String): Pair<Int, String> {
+            val process = ProcessBuilder(listOf(emulator.absolutePath) + args).redirectErrorStream(true).start()
+            val out = process.inputStream.bufferedReader().readText()
+            return process.waitFor() to out
+        }
+        assertEquals(0 to "ran -c x\n", emulate(python, "-c", "x"))
+        val (refused, message) = emulate(File(tempDir, "a.out").absolutePath)
+        assertEquals(1, refused)
+        assertTrue("cannot run on the build host" in message, message)
     }
 
     @Test
@@ -305,18 +329,19 @@ class CrossBuildTest {
             MiniJson.write(
                 linkedMapOf(
                     "sysconfig_dir" to sysconfigDir.absolutePath, "sysconfigdata_name" to "_sysconfigdata_t_android_aarch64-linux-android",
-                    "host_platform" to "linux-aarch64", "sys_platform" to "android", "multiarch" to "aarch64-linux-android",
+                    "host_platform" to "android-24-arm64_v8a", "sys_platform" to "android", "multiarch" to "aarch64-linux-android",
                     "prefix" to prefix.absolutePath, "uname_system" to "Linux", "uname_release" to "", "uname_machine" to "aarch64",
                     "android_api_level" to 24,
                 ),
             ),
         )
-        // CPython 3.13+ (the 3.15t host) maps an Android platform to android-<API level>-<ABI> and platform.uname()
-        // to the system Android, which the hook answers without the device (runs 44980924111, 44989636124).
+        // sysconfig.get_platform() is the wheel platform on every CPython (3.13 returns _PYTHON_HOST_PLATFORM as
+        // it is, 3.15 parses it). CPython 3.13+ makes platform.uname()'s system Android, which the hook answers
+        // without the device (runs 44980924111, 44989636124, 45003070103).
         val (versionCode, version) = python3(listOf("-c", "import sys; print(sys.version_info >= (3, 13))"), emptyMap(), tempDir)
         assertEquals(0, versionCode, version)
         val modern = version.trim() == "True"
-        val platform = if (modern) "android-24-arm64_v8a" else "linux-aarch64"
+        val platform = "android-24-arm64_v8a"
         val system = if (modern) "Android" else "Linux"
         val probe = "import _ppp_cross, sys, os, sysconfig, platform; print(sys.platform, sysconfig.get_platform(), platform.system(), " +
             "sysconfig.get_config_var('EXT_SUFFIX'), os.uname().machine, getattr(sys, 'getandroidapilevel', lambda: 0)(), sys.base_prefix)"
@@ -337,10 +362,11 @@ class CrossBuildTest {
                 ),
             ),
         )
-        val iosProbe = "import _ppp_cross, sysconfig, platform; print(sysconfig.get_platform(), platform.system(), platform.machine(), platform.release())"
+        val iosProbe = "import _ppp_cross, sysconfig, platform, subprocess, sys; print(sysconfig.get_platform(), platform.system(), " +
+            "platform.machine(), platform.release(), subprocess.run([sys.executable, '-c', 'pass']).returncode)"
         val (iosCode, iosOut) = python3(listOf("-c", iosProbe), mapOf("PYTHONPATH" to hookDir.absolutePath, "PPP_CROSS_CONFIG" to iosConfig.absolutePath), tempDir)
         assertEquals(0, iosCode, iosOut)
-        assertEquals("ios-13.0-arm64-iphonesimulator iOS arm64 13.0", iosOut.trim())
+        assertEquals("ios-13.0-arm64-iphonesimulator iOS arm64 13.0 0", iosOut.trim(), "subprocess still runs processes")
 
         val (idle, idleOut) = python3(listOf("-c", "import _ppp_cross, sys; print(sys.platform)"), mapOf("PYTHONPATH" to hookDir.absolutePath), tempDir)
         assertEquals(0, idle, idleOut)
@@ -362,7 +388,8 @@ class CrossBuildTest {
             "import os\n" +
                 "import sys\n" +
                 "def get_requires_for_build_wheel(config_settings=None):\n" +
-                "    print('noise on stdout')\n    sys.argv = sys.argv[:1] + ['egg_info']\n    return ['cython>=3']\n" +
+                "    print('noise on stdout')\n    sys.argv = sys.argv[:1] + ['egg_info']\n" +
+                "    return ['cython>=3'] + (config_settings or {}).get('extra', [])\n" +
                 "def build_wheel(out, config_settings=None, metadata_directory=None):\n" +
                 "    name = 'proj-1.0-py3-none-any.whl'\n    open(os.path.join(out, name), 'w').write(repr(config_settings))\n    return name\n",
         )
@@ -376,6 +403,9 @@ class CrossBuildTest {
         val (dynCode, dynOut) = python3(listOf(frontend.path, "dynamic", src.path, answer.path), emptyMap(), tempDir)
         assertEquals(0, dynCode, dynOut)
         assertEquals(listOf("cython>=3"), MiniJson.parseStringList(answer.readText()))
+        val extra = File(tempDir, "extra.json").apply { writeText("{\"extra\": [\"cmake>=4.1\"]}") }
+        assertEquals(0, python3(listOf(frontend.path, "dynamic", src.path, answer.path, extra.path), emptyMap(), tempDir).first)
+        assertEquals(listOf("cython>=3", "cmake>=4.1"), MiniJson.parseStringList(answer.readText()), "dynamic passes the settings")
         assertEquals(0, python3(listOf(frontend.path, "backend", src.path, answer.path), emptyMap(), tempDir).first)
         assertEquals(listOf("backend"), MiniJson.parseStringList(answer.readText()))
         val out = File(tempDir, "out")
