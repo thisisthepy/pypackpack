@@ -54,10 +54,11 @@ internal object CrossBuildScripts {
         |""".trimMargin()
 
     /**
-     * `ppp-cross/pep517.py <mode> <source dir> <out>`: a standard-library PEP 517 frontend. `static` writes
-     * `[build-system].requires` as JSON to the file `<out>`, `dynamic` the backend's
-     * `get_requires_for_build_wheel` (the backend may print to stdout, hence a file), and `build` builds the
-     * wheel into the directory `<out>` and prints `PPP_WHEEL=<name>`.
+     * `ppp-cross/pep517.py <mode> <source dir> <out> [settings]`: a standard-library PEP 517 frontend.
+     * `static` writes `[build-system].requires` as JSON to the file `<out>`, `backend` the build backend's
+     * name (as a one-item list), `dynamic` the backend's `get_requires_for_build_wheel` (the backend may print
+     * to stdout, hence a file), and `build` builds the wheel into the directory `<out>`, passing the JSON
+     * config settings in the file `[settings]`, and prints `PPP_WHEEL=<name>`.
      */
     val PEP517 =
         """
@@ -84,6 +85,9 @@ internal object CrossBuildScripts {
         |if mode == "static":
         |    write(system.get("requires", ["setuptools>=40.8.0"]))
         |    sys.exit(0)
+        |if mode == "backend":
+        |    write([system.get("build-backend", "setuptools.build_meta:__legacy__")])
+        |    sys.exit(0)
         |for entry in reversed(system.get("backend-path", [])):
         |    sys.path.insert(0, os.path.join(src, entry))
         |os.chdir(src)
@@ -97,7 +101,11 @@ internal object CrossBuildScripts {
         |elif mode == "build":
         |    out = os.path.abspath(sys.argv[3])
         |    os.makedirs(out, exist_ok=True)
-        |    print("PPP_WHEEL=" + backend.build_wheel(out, {}))
+        |    settings = {}
+        |    if len(sys.argv) > 4:
+        |        with open(sys.argv[4], encoding="utf-8") as f:
+        |            settings = json.load(f)
+        |    print("PPP_WHEEL=" + backend.build_wheel(out, settings))
         |else:
         |    sys.exit("unknown mode " + mode)
         |""".trimMargin()

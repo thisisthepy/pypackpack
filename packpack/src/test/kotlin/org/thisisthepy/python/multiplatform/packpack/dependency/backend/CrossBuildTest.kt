@@ -91,7 +91,10 @@ class CrossBuildTest {
     private data class Call(val command: List<String>, val dir: File, val env: Map<String, String>)
 
     /** A runner that plays uv and the frontend: `uv venv` makes the venv, the frontend writes its answers and a wheel. */
-    private fun recordingRunner(calls: MutableList<Call>): (List<String>, File, Map<String, String>) -> CompileProcessResult = { command, dir, env ->
+    private fun recordingRunner(
+        calls: MutableList<Call>,
+        backend: String = "setuptools.build_meta",
+    ): (List<String>, File, Map<String, String>) -> CompileProcessResult = { command, dir, env ->
         calls += Call(command, dir, env)
         when {
             command.take(2) == listOf("uv", "venv") -> {
@@ -102,6 +105,7 @@ class CrossBuildTest {
             }
             command.getOrNull(2) == "static" -> File(command[4]).writeText("[\"setuptools>=61\"]")
             command.getOrNull(2) == "dynamic" -> File(command[4]).writeText("[]")
+            command.getOrNull(2) == "backend" -> File(command[4]).writeText("[\"$backend\"]")
             command.getOrNull(2) == "build" -> File(command[4], "demo-1.0-cp315-cp315t-android_24_arm64_v8a.whl").writeText("wheel")
         }
         val out = if (command.getOrNull(2) == "build") "running build_ext\nPPP_WHEEL=demo-1.0-cp315-cp315t-android_24_arm64_v8a.whl\n" else ""
@@ -137,10 +141,12 @@ class CrossBuildTest {
         assertEquals("static", calls[1].command[2])
         assertEquals(listOf("uv", "pip", "install", "--python", python, "setuptools>=61"), calls[2].command)
         assertEquals("dynamic", calls[3].command[2])
-        assertEquals(5, calls.size, "an empty dynamic list installs nothing")
-        listOf(1, 3).forEach { assertTrue(calls[it].env.isEmpty(), "host mode: ${calls[it].env}") }
-        val build = calls[4]
+        assertEquals("backend", calls[4].command[2])
+        assertEquals(6, calls.size, "an empty dynamic list installs nothing")
+        listOf(1, 3, 4).forEach { assertTrue(calls[it].env.isEmpty(), "host mode: ${calls[it].env}") }
+        val build = calls[5]
         assertEquals("build", build.command[2])
+        assertEquals(5, build.command.size, "setuptools needs no config settings: ${build.command}")
         assertEquals(File(envDir, "ppp-cross/config.json").absolutePath, build.env["PPP_CROSS_CONFIG"])
         assertEquals("/ndk/bin/aarch64-linux-android24-clang", build.env["CC"])
         assertEquals("/ndk/bin/aarch64-linux-android24-clang -shared", build.env["LDSHARED"])
@@ -163,6 +169,34 @@ class CrossBuildTest {
         builder.buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
         assertTrue(calls.none { it.command.take(2) == listOf("uv", "venv") })
         assertEquals(1, installs.size)
+    }
+
+    /** meson-python gets the Meson cross file through `setup-args`; scikit-build-core is refused naming itself. */
+    @Test
+    fun mesonPythonGetsACrossFileAndScikitBuildCoreIsRefused() {
+        val pkg = File(tempDir, "pkg").apply { mkdirs() }
+        val src = File(tempDir, "src/m-1.0").apply { mkdirs() }
+        fun builder(backend: String, calls: MutableList<Call>) = CrossSdistBuilder(
+            run = recordingRunner(calls, backend),
+            fetch = { error("no network") },
+            installHostPython = { _, _, dir -> File(dir, "bin").mkdirs(); File(dir, "bin/python3").writeText(""); Result.success(Unit) },
+            crossFor = { _, _ -> fakeCross() },
+            hostTarget = { "x86_64-unknown-linux-gnu" },
+        )
+
+        val calls = mutableListOf<Call>()
+        builder("mesonpy", calls).buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
+        val build = calls.single { it.command.getOrNull(2) == "build" }
+        val settings = File(build.command[5])
+        val crossFile = File(pkg, "build/packpack/cross/aarch64-linux-android/env/ppp-cross/meson-cross.ini")
+        assertEquals(mapOf("setup-args" to listOf("--cross-file=${crossFile.absolutePath}")), MiniJson.parse(settings.readText()))
+        val text = crossFile.readText()
+        val python = File(pkg, "build/packpack/cross/aarch64-linux-android/env/bin/python").absolutePath
+        assertTrue(text.startsWith("[binaries]\npython = '$python'\n"), text)
+        assertTrue("c = ['/ndk/bin/aarch64-linux-android24-clang']" in text && "system = 'android'" in text, text)
+
+        val refused = builder("scikit_build_core.build", mutableListOf()).buildSource(pkg, "aarch64-linux-android", src)
+        assertTrue("scikit-build-core" in refused.exceptionOrNull()?.message.orEmpty(), refused.exceptionOrNull()?.message)
     }
 
     @Test
@@ -259,7 +293,7 @@ class CrossBuildTest {
             "import os\n" +
                 "def get_requires_for_build_wheel(config_settings=None):\n    print('noise on stdout')\n    return ['cython>=3']\n" +
                 "def build_wheel(out, config_settings=None, metadata_directory=None):\n" +
-                "    name = 'proj-1.0-py3-none-any.whl'\n    open(os.path.join(out, name), 'w').close()\n    return name\n",
+                "    name = 'proj-1.0-py3-none-any.whl'\n    open(os.path.join(out, name), 'w').write(repr(config_settings))\n    return name\n",
         )
         val frontend = File(tempDir, "pep517.py").apply { writeText(CrossBuildScripts.PEP517) }
         val answer = File(tempDir, "answer.json")
@@ -271,11 +305,14 @@ class CrossBuildTest {
         val (dynCode, dynOut) = python3(listOf(frontend.path, "dynamic", src.path, answer.path), emptyMap(), tempDir)
         assertEquals(0, dynCode, dynOut)
         assertEquals(listOf("cython>=3"), MiniJson.parseStringList(answer.readText()))
+        assertEquals(0, python3(listOf(frontend.path, "backend", src.path, answer.path), emptyMap(), tempDir).first)
+        assertEquals(listOf("backend"), MiniJson.parseStringList(answer.readText()))
         val out = File(tempDir, "out")
-        val (code, built) = python3(listOf(frontend.path, "build", src.path, out.path), emptyMap(), tempDir)
+        val settings = File(tempDir, "settings.json").apply { writeText("{\"setup-args\": [\"--cross-file=x.ini\"]}") }
+        val (code, built) = python3(listOf(frontend.path, "build", src.path, out.path, settings.path), emptyMap(), tempDir)
         assertEquals(0, code, built)
         assertTrue("PPP_WHEEL=proj-1.0-py3-none-any.whl" in built, built)
-        assertTrue(File(out, "proj-1.0-py3-none-any.whl").isFile)
+        assertEquals("{'setup-args': ['--cross-file=x.ini']}", File(out, "proj-1.0-py3-none-any.whl").readText(), "the settings reach build_wheel")
 
         File(src, "pyproject.toml").writeText("[project]\nname = \"proj\"\n")
         assertEquals(0, python3(listOf(frontend.path, "static", src.path, answer.path), emptyMap(), tempDir).first)

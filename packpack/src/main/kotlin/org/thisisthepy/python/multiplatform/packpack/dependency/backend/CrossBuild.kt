@@ -209,10 +209,14 @@ open class CrossSdistBuilder(
             exec(listOf(python, env.frontend.absolutePath, "dynamic", src.absolutePath, scratch.absolutePath), src, emptyMap(), "ask the backend for its requirements")
             installRequirements(env, MiniJson.parseStringList(scratch.readText()), src)
 
+            exec(listOf(python, env.frontend.absolutePath, "backend", src.absolutePath, scratch.absolutePath), src, emptyMap(), "read the build backend")
+            val backendName = MiniJson.parseStringList(scratch.readText()).single()
+            val settings = backendSettings(backendName, env, cross, canonicalTarget)
+
             // Cross mode: the backend sees the target and compiles with its toolchain.
             val out = wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }
             val output = exec(
-                listOf(python, env.frontend.absolutePath, "build", src.absolutePath, out.absolutePath),
+                listOf(python, env.frontend.absolutePath, "build", src.absolutePath, out.absolutePath) + listOfNotNull(settings?.absolutePath),
                 src,
                 crossBuildEnv(env, cross) + extraEnv,
                 "build ${src.name} for $canonicalTarget",
@@ -288,6 +292,37 @@ open class CrossSdistBuilder(
         File(sitePackages, "_ppp_cross.py").writeText(CrossBuildScripts.HOOK)
         val frontend = File(crossFiles, "pep517.py").apply { writeText(CrossBuildScripts.PEP517) }
         return Environment(envDir, interpreter, frontend, config)
+    }
+
+    /**
+     * The PEP 517 config settings a backend needs for a cross build, written next to the config, or `null`.
+     * meson-python gets the Meson cross build's cross file, with `python` set to the environment's interpreter
+     * (which reports the target in cross mode), through `setup-args`. scikit-build-core is refused: CMake's
+     * FindPython needs its own cross setup, not built yet.
+     */
+    internal fun backendSettings(
+        backend: String,
+        env: Environment,
+        cross: MesonCross,
+        canonicalTarget: String,
+    ): File? {
+        val module = backend.substringBefore(':').trim()
+        return when {
+            module == "mesonpy" || module.startsWith("mesonpy.") -> {
+                val crossFile = File(env.config.parentFile, "meson-cross.ini")
+                val python = "python = '" + env.interpreter.absolutePath.replace("\\", "\\\\").replace("'", "\\'") + "'"
+                crossFile.writeText(cross.crossFileText().replaceFirst("[binaries]\n", "[binaries]\n$python\n"))
+                File(env.config.parentFile, "settings.json").apply {
+                    writeText(MiniJson.write(mapOf("setup-args" to listOf("--cross-file=${crossFile.absolutePath}"))))
+                }
+            }
+            module == "scikit_build_core" || module.startsWith("scikit_build_core.") ->
+                throw IllegalStateException(
+                    "The cross build environment does not build scikit-build-core sdists for $canonicalTarget yet " +
+                        "(CMake's FindPython needs a cross setup). Add a recipe or a prebuilt wheel.",
+                )
+            else -> null
+        }
     }
 
     /** The cross-mode environment variables: the config and the target toolchain. */

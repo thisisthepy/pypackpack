@@ -867,8 +867,10 @@ criterion. iOS and Linux cross targets share the code but have no real build in 
   target toolchain the Meson cross build uses (`MesonCross.forTarget`: the NDK's clang for API 24, `zig cc`
   for Linux cross targets, `xcrun --sdk ... clang` for iOS). uv's own frontend is not used because uv would
   query the interpreter and see the faked platform. Backends that read `sysconfig` and these variables
-  (setuptools, and so most C sdists) build; a backend that needs its own cross file (meson-python,
-  scikit-build-core) is not handled yet.
+  (setuptools, and so most C sdists) build. meson-python gets the Meson cross build's cross file
+  (`ppp-cross/meson-cross.ini`, with `python` set to the environment's interpreter, which reports the target
+  in cross mode) through the config setting `setup-args = ["--cross-file=..."]`. scikit-build-core is refused
+  with a message naming it: CMake's FindPython needs its own cross setup, not built yet.
 - **The sdist:** `name==version` from uv's message, fetched through PyPI's JSON API
   (`https://pypi.org/pypi/<name>/<version>/json`), the `sdist` entry, its `sha256` checked.
 - **Recipes** (`pip-jit`, owner: "pypackpack 안에"): `[tool.ppp.recipes.<name>]` in the package's
