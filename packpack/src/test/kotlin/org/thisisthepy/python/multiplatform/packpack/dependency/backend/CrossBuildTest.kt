@@ -171,9 +171,9 @@ class CrossBuildTest {
         assertEquals(1, installs.size)
     }
 
-    /** meson-python gets the Meson cross file through `setup-args`; scikit-build-core is refused naming itself. */
+    /** meson-python gets the Meson cross file through `setup-args`; scikit-build-core gets a CMake toolchain file. */
     @Test
-    fun mesonPythonGetsACrossFileAndScikitBuildCoreIsRefused() {
+    fun mesonPythonGetsACrossFileAndScikitBuildCoreACMakeToolchain() {
         val pkg = File(tempDir, "pkg").apply { mkdirs() }
         val src = File(tempDir, "src/m-1.0").apply { mkdirs() }
         fun builder(backend: String, calls: MutableList<Call>) = CrossSdistBuilder(
@@ -183,20 +183,29 @@ class CrossBuildTest {
             crossFor = { _, _ -> fakeCross() },
             hostTarget = { "x86_64-unknown-linux-gnu" },
         )
+        val crossFiles = File(pkg, "build/packpack/cross/aarch64-linux-android/env/ppp-cross")
+        fun settingsOf(calls: List<Call>) = MiniJson.parse(File(calls.single { it.command.getOrNull(2) == "build" }.command[5]).readText())
 
-        val calls = mutableListOf<Call>()
-        builder("mesonpy", calls).buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
-        val build = calls.single { it.command.getOrNull(2) == "build" }
-        val settings = File(build.command[5])
-        val crossFile = File(pkg, "build/packpack/cross/aarch64-linux-android/env/ppp-cross/meson-cross.ini")
-        assertEquals(mapOf("setup-args" to listOf("--cross-file=${crossFile.absolutePath}")), MiniJson.parse(settings.readText()))
+        val meson = mutableListOf<Call>()
+        builder("mesonpy", meson).buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
+        val crossFile = File(crossFiles, "meson-cross.ini")
+        assertEquals(mapOf("setup-args" to listOf("--cross-file=${crossFile.absolutePath}")), settingsOf(meson))
         val text = crossFile.readText()
         val python = File(pkg, "build/packpack/cross/aarch64-linux-android/env/bin/python").absolutePath
         assertTrue(text.startsWith("[binaries]\npython = '$python'\n"), text)
         assertTrue("c = ['/ndk/bin/aarch64-linux-android24-clang']" in text && "system = 'android'" in text, text)
+        assertTrue("[built-in options]" in text && "'-lpython3.15t'" in text, "libpython is linked on Android: $text")
 
-        val refused = builder("scikit_build_core.build", mutableListOf()).buildSource(pkg, "aarch64-linux-android", src)
-        assertTrue("scikit-build-core" in refused.exceptionOrNull()?.message.orEmpty(), refused.exceptionOrNull()?.message)
+        val cmake = mutableListOf<Call>()
+        builder("scikit_build_core.build", cmake).buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
+        val toolchain = File(crossFiles, "cmake-toolchain.cmake")
+        assertEquals(mapOf("cmake.define.CMAKE_TOOLCHAIN_FILE" to toolchain.absolutePath), settingsOf(cmake))
+        val cmakeText = toolchain.readText()
+        assertTrue("set(CMAKE_SYSTEM_NAME Linux)" in cmakeText && "set(CMAKE_SYSTEM_PROCESSOR aarch64)" in cmakeText, cmakeText)
+        val cc = File(crossFiles, "bin/cc")
+        assertTrue("set(CMAKE_C_COMPILER \"${cc.absolutePath}\")" in cmakeText, cmakeText)
+        assertEquals("#!/bin/sh\nexec /ndk/bin/aarch64-linux-android24-clang \"\$@\"\n", cc.readText())
+        assertTrue(cc.canExecute())
     }
 
     @Test

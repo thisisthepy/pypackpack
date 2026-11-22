@@ -295,10 +295,14 @@ open class CrossSdistBuilder(
     }
 
     /**
-     * The PEP 517 config settings a backend needs for a cross build, written next to the config, or `null`.
-     * meson-python gets the Meson cross build's cross file, with `python` set to the environment's interpreter
-     * (which reports the target in cross mode), through `setup-args`. scikit-build-core is refused: CMake's
-     * FindPython needs its own cross setup, not built yet.
+     * The PEP 517 config settings a backend needs for a cross build, written next to the config, or `null`
+     * (setuptools and other backends that read `sysconfig` and `CC`).
+     * - meson-python: the Meson cross build's cross file, with `python` set to the environment's interpreter
+     *   (which reports the target in cross mode) and the target's link arguments, through `setup-args`.
+     * - scikit-build-core: a CMake toolchain file (`cmake.define.CMAKE_TOOLCHAIN_FILE`) naming the target
+     *   system and processor and the target compilers, each behind a one-line wrapper script because CMake
+     *   takes a single executable. scikit-build-core finds Python through the interpreter, which reports the
+     *   target's headers and `SOABI` in cross mode; `LDFLAGS` carries the link arguments.
      */
     internal fun backendSettings(
         backend: String,
@@ -307,23 +311,58 @@ open class CrossSdistBuilder(
         canonicalTarget: String,
     ): File? {
         val module = backend.substringBefore(':').trim()
-        return when {
-            module == "mesonpy" || module.startsWith("mesonpy.") -> {
-                val crossFile = File(env.config.parentFile, "meson-cross.ini")
-                val python = "python = '" + env.interpreter.absolutePath.replace("\\", "\\\\").replace("'", "\\'") + "'"
-                crossFile.writeText(cross.crossFileText().replaceFirst("[binaries]\n", "[binaries]\n$python\n"))
-                File(env.config.parentFile, "settings.json").apply {
-                    writeText(MiniJson.write(mapOf("setup-args" to listOf("--cross-file=${crossFile.absolutePath}"))))
+        val dir = env.config.parentFile
+        fun quote(text: String) = "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+        val settings: Map<String, Any> =
+            when {
+                module == "mesonpy" || module.startsWith("mesonpy.") -> {
+                    val crossFile = File(dir, "meson-cross.ini")
+                    val linkArgs = cross.target.linkArgs.joinToString(", ", "[", "]") { quote(it) }
+                    crossFile.writeText(
+                        cross.crossFileText().replaceFirst("[binaries]\n", "[binaries]\npython = ${quote(env.interpreter.absolutePath)}\n") +
+                            "\n[built-in options]\nc_link_args = $linkArgs\ncpp_link_args = $linkArgs\n",
+                    )
+                    mapOf("setup-args" to listOf("--cross-file=${crossFile.absolutePath}"))
                 }
+                module == "scikit_build_core" || module.startsWith("scikit_build_core.") -> {
+                    val toolchain = File(dir, "cmake-toolchain.cmake")
+                    val cc = wrapper(File(dir, "bin/cc"), cross.c)
+                    val cxx = wrapper(File(dir, "bin/c++"), cross.cpp)
+                    val ar = wrapper(File(dir, "bin/ar"), cross.ar)
+                    val identity = crossTargetIdentity(canonicalTarget)
+                    val system = if (identity.sysPlatform == "ios") "iOS" else "Linux"
+                    toolchain.writeText(
+                        buildString {
+                            appendLine("# pypackpack cross build environment (docs/SPEC.md *Cross build environment*), $canonicalTarget")
+                            appendLine("set(CMAKE_SYSTEM_NAME $system)")
+                            appendLine("set(CMAKE_SYSTEM_PROCESSOR ${identity.unameMachine})")
+                            appendLine("set(CMAKE_C_COMPILER \"${cc.absolutePath}\")")
+                            appendLine("set(CMAKE_CXX_COMPILER \"${cxx.absolutePath}\")")
+                            appendLine("set(CMAKE_AR \"${ar.absolutePath}\" CACHE FILEPATH \"\")")
+                            if (system == "iOS") {
+                                appendLine("set(CMAKE_OSX_SYSROOT ${if (canonicalTarget.endsWith("-simulator")) "iphonesimulator" else "iphoneos"})")
+                                appendLine("set(CMAKE_OSX_ARCHITECTURES ${identity.unameMachine})")
+                                appendLine("set(CMAKE_OSX_DEPLOYMENT_TARGET $IOS_MIN_VERSION)")
+                            }
+                        },
+                    )
+                    mapOf("cmake.define.CMAKE_TOOLCHAIN_FILE" to toolchain.absolutePath)
+                }
+                else -> return null
             }
-            module == "scikit_build_core" || module.startsWith("scikit_build_core.") ->
-                throw IllegalStateException(
-                    "The cross build environment does not build scikit-build-core sdists for $canonicalTarget yet " +
-                        "(CMake's FindPython needs a cross setup). Add a recipe or a prebuilt wheel.",
-                )
-            else -> null
-        }
+        return File(dir, "settings.json").apply { writeText(MiniJson.write(settings)) }
     }
+
+    /** A `#!/bin/sh` script at [file] that runs [command] with its own arguments appended. */
+    private fun wrapper(
+        file: File,
+        command: List<String>,
+    ): File =
+        file.apply {
+            parentFile.mkdirs()
+            writeText("#!/bin/sh\nexec ${command.joinToString(" ") { shellWord(it) }} \"\$@\"\n")
+            setExecutable(true)
+        }
 
     /** The cross-mode environment variables: the config and the target toolchain. */
     internal fun crossBuildEnv(

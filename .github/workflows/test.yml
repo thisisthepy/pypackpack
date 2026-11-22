@@ -118,13 +118,13 @@ jobs:
           ./gradlew :packpack:test --tests '*.NativeSlotRealBuildTest' --rerun --console=plain
           grep -q 'tests="3" skipped="2" failures="0" errors="0"' packpack/build/test-results/test/TEST-*NativeSlotRealBuildTest.xml \
             || { echo "the Android build did not run and pass"; exit 1; }
-      - name: Cross build environment, an sdist-only C package for Android arm64 (#159)
+      - name: Cross build environment, sdist-only C packages (setuptools, meson-python, scikit-build-core) for Android arm64 (#159)
         env:
           PPP_CROSS_SDIST_REAL_BUILD: "1"
         run: |
           rm -rf packpack/build/test-results/test
           ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
-          grep -q 'tests="1" skipped="0" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+          grep -q 'tests="3" skipped="0" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
             || { echo "CrossSdistRealBuildTest did not run and pass"; exit 1; }
 
   # The native slot's iOS (Xcode) and Windows (LLVM clang, own machine) builds need those hosts (#155).

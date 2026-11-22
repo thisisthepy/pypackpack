@@ -832,8 +832,8 @@ with the target compiler; no `crossenv` dependency. Recipes live in pypackpack (
 Status: partial. Unit tests: `packpack/.../dependency/backend/CrossBuildTest.kt` (the configuration, the
 commands and the recipe handling against a recording runner) and `CrossEnvTest.syncBuildsAnSdistOnlyDependencyInTheCrossEnvironmentAndRetries`.
 The real build (`CrossSdistRealBuildTest`, env-gated `PPP_CROSS_SDIST_REAL_BUILD=1`, test.yml `real-builds`)
-builds an sdist-only C package for `aarch64-linux-android` with the runner's NDK; that is the completion
-criterion. iOS and Linux cross targets share the code but have no real build in CI yet.
+builds an sdist-only C package for `aarch64-linux-android` with the runner's NDK, once per backend
+(setuptools, meson-python, scikit-build-core); the setuptools build is the completion criterion. iOS and Linux cross targets share the code but have no real build in CI yet.
 
 - **When:** `sync` installs a target's dependencies (above). When uv fails with `NoWheelForTargetException`
   and only an sdist exists (`SdistAvailability.ONLY_SDIST`), `sync` builds that sdist for the target in the
@@ -869,8 +869,12 @@ criterion. iOS and Linux cross targets share the code but have no real build in 
   query the interpreter and see the faked platform. Backends that read `sysconfig` and these variables
   (setuptools, and so most C sdists) build. meson-python gets the Meson cross build's cross file
   (`ppp-cross/meson-cross.ini`, with `python` set to the environment's interpreter, which reports the target
-  in cross mode) through the config setting `setup-args = ["--cross-file=..."]`. scikit-build-core is refused
-  with a message naming it: CMake's FindPython needs its own cross setup, not built yet.
+  in cross mode) and the target's link arguments (`c_link_args`), through the config setting `setup-args = ["--cross-file=..."]`.
+  scikit-build-core gets a CMake toolchain file (`ppp-cross/cmake-toolchain.cmake`, the config setting
+  `cmake.define.CMAKE_TOOLCHAIN_FILE`): the target system (`Linux` for Android and Linux, `iOS` with its sysroot,
+  architecture and deployment target) and processor, and the target compilers and `ar`, each behind a one-line
+  wrapper script because CMake takes one executable. It finds Python through the interpreter, which reports the
+  target in cross mode.
 - **The sdist:** `name==version` from uv's message, fetched through PyPI's JSON API
   (`https://pypi.org/pypi/<name>/<version>/json`), the `sdist` entry, its `sha256` checked.
 - **Recipes** (`pip-jit`, owner: "pypackpack 안에"): `[tool.ppp.recipes.<name>]` in the package's
