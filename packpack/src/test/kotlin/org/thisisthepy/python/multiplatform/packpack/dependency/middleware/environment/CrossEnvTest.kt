@@ -2,6 +2,10 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.CrossSdistBuilder
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.MissingWheel
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.NoWheelForTargetException
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.SdistAvailability
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.nio.file.Files
@@ -229,6 +233,67 @@ class CrossEnvTest {
             )
             assertEquals("x86_64-pc-windows-msvc", call.pythonPlatform)
             assertEquals(File(workspaceRoot, "src/core").absolutePath, call.workingDir?.absolutePath)
+        }
+    }
+
+    /**
+     * docs/SPEC.md *Cross build environment*: uv reports an sdist-only dependency, `sync` builds it in the
+     * cross environment and repeats the install with `--find-links` to the built wheels. A package that fails
+     * again after its wheel was built ends the sync naming it; a package with no sdist fails as before.
+     */
+    @Test
+    fun syncBuildsAnSdistOnlyDependencyInTheCrossEnvironmentAndRetries() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val target = "aarch64-linux-android"
+            fun onlySdist(spec: String) = Result.failure<String>(
+                NoWheelForTargetException(MissingWheel(spec, target, SdistAvailability.ONLY_SDIST), IllegalStateException("uv")),
+            )
+            val builds = mutableListOf<Pair<String, String>>()
+            val builder = object : CrossSdistBuilder() {
+                override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String): Result<File> {
+                    builds += canonicalTarget to packageSpec
+                    return Result.success(File(wheelsDir(packageDir, canonicalTarget), "x.whl"))
+                }
+            }
+
+            val backend = FakeBackend()
+            backend.targetInstallResults += onlySdist("pkg-a==1.0")
+            backend.targetInstallResults += onlySdist("pkg-b==2.0")
+            val crossEnv = CrossEnv(builder)
+            crossEnv.initialize(backend)
+            crossEnv.syncDependencies("core", listOf(target), null).getOrThrow()
+
+            assertEquals(listOf(target to "pkg-a==1.0", target to "pkg-b==2.0"), builds)
+            assertEquals(3, backend.targetInstallCalls.size)
+            assertEquals(null, backend.targetInstallCalls[0].extraArgs["find-links"])
+            val wheels = File(workspaceRoot, "src/core/build/packpack/cross/$target/wheels").absolutePath
+            assertEquals(wheels, backend.targetInstallCalls[1].extraArgs["find-links"]?.let { File(it).absolutePath })
+            assertEquals(wheels, backend.targetInstallCalls[2].extraArgs["find-links"]?.let { File(it).absolutePath })
+
+            val again = FakeBackend()
+            again.targetInstallResults += onlySdist("pkg-a==1.0")
+            again.targetInstallResults += onlySdist("pkg-a==1.0")
+            val stuck = CrossEnv(builder).apply { initialize(again) }.syncDependencies("core", listOf(target), null)
+            assertTrue("still finds no wheel" in stuck.exceptionOrNull()?.message.orEmpty(), stuck.exceptionOrNull()?.message)
+
+            val noSdist = FakeBackend()
+            noSdist.targetInstallResults += Result.failure(
+                NoWheelForTargetException(MissingWheel("pkg-c==1.0", target, SdistAvailability.NO_SDIST), IllegalStateException("uv")),
+            )
+            builds.clear()
+            val refused = CrossEnv(builder).apply { initialize(noSdist) }.syncDependencies("core", listOf(target), null)
+            assertTrue(refused.exceptionOrNull() is NoWheelForTargetException)
+            assertTrue(builds.isEmpty(), "no sdist: nothing to build")
         }
     }
 
@@ -575,6 +640,9 @@ class CrossEnvTest {
             var lastInitExtraArgs: Map<String, String> = emptyMap()
         }
 
+        /** Results the next `installDependenciesToTarget` calls return, in order; success once empty. */
+        val targetInstallResults = ArrayDeque<Result<String>>()
+
         data class TargetInstallCall(
             val targetDir: String,
             val pythonPlatform: String,
@@ -665,7 +733,7 @@ class CrossEnvTest {
             requirements: List<String>?,
         ): Result<String> {
             targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir, extraArgs.orEmpty())
-            return Result.success("ok")
+            return targetInstallResults.removeFirstOrNull() ?: Result.success("ok")
         }
 
         override suspend fun showDependencyTree(
