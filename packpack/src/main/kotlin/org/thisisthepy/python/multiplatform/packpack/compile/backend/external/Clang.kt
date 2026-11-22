@@ -67,6 +67,8 @@ open class Clang(
             add("-ffp-contract=off")
             add("-fno-fast-math")
             if (family != "windows") add("-fPIC")
+            // Windows' pyconfig.h leaves the free-threaded switch to the build backend (#155).
+            if (family == "windows") add("-DPy_GIL_DISABLED=1")
             add("-ffile-prefix-map=${workingDir.canonicalFile.path}=.")
             add("-MMD")
             add("-MF")

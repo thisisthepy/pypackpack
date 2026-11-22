@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 
 /**
  * The `binary` bundle (docs/SPEC.md *Bundle Type*, #156). The runtime installer is a test double: on the
- * host it links the host's `python3` as the runtime's `bin/python3`, so the launcher really runs; on the
+ * host it writes a `bin/python3.15t` that execs the host's `python3` (with `bin/python3` a relative link to it), so the launcher really runs; on the
  * other targets it writes a stand-in interpreter file. No network.
  */
 class BinaryBundlerTest {
@@ -45,8 +45,15 @@ class BinaryBundlerTest {
                 if (family == "windows") {
                     File(dir, "python.exe").writeText("MZ")
                 } else if (target == host) {
+                    // Shaped like a python-build-standalone tree: bin/python3.15t plus a *relative* link
+                    // bin/python3 -> python3.15t (extractArchive refuses absolute links). The stand-in
+                    // interpreter execs the host's python3, so the launcher really runs.
                     val bin = File(dir, "bin").apply { mkdirs() }
-                    Files.createSymbolicLink(File(bin, "python3").toPath(), hostPython3().toPath())
+                    File(bin, "python3.15t").apply {
+                        writeText("#!/bin/sh\nexec '${hostPython3().path}' \"\$@\"\n")
+                        setExecutable(true)
+                    }
+                    Files.createSymbolicLink(File(bin, "python3").toPath(), java.nio.file.Paths.get("python3.15t"))
                 } else {
                     File(dir, "bin/python3.15t").apply { parentFile.mkdirs(); writeText("ELF"); setExecutable(true) }
                 }

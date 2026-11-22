@@ -96,6 +96,12 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.13.6"
+      # The Meson backend runs a meson and ninja the user installed (docs/SPEC.md); the runner has neither.
+      - name: Install meson and ninja
+        run: |
+          uv tool install meson
+          uv tool install ninja
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Meson cross build for aarch64 Linux (#155)
         env:
           PPP_MESON_CROSS_REAL_BUILD: "1"

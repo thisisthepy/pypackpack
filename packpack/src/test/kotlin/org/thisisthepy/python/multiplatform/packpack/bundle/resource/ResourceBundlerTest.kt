@@ -886,32 +886,24 @@ class ResourceBundlerTest {
         assertTrue(File(custom, "python/core/__init__.py").isFile)
     }
 
-    @Test
-    fun create_reportsUnimplementedBundleTypesInsteadOfPretendingToWork() {
-        // SINGLE (SingleWheelBundlerTest), FAT (FatWheelBundlerTest) and PATCH (WheelPatchBundlerTest)
-        // are all implemented now; only BINARY remains a stub (see `BinaryBundler`'s own KDoc -- it is
-        // blocked on every compiler backend under `compile/backend/external` still being an empty
-        // placeholder file).
-        listOf(BundleType.BINARY).forEach { type ->
-            val result =
-                BundlerInterface.create(type).bundle(
-                    BundleRequest(packageDir = packageDir(name = "p-${type.name.lowercase()}"), target = "macos"),
-                )
-            assertTrue(result.isFailure, "$type must not report success while unimplemented")
-            assertTrue(
-                result.exceptionOrNull()?.message.orEmpty().contains("not implemented", ignoreCase = true),
-                "$type: ${result.exceptionOrNull()?.message}",
-            )
-        }
-    }
-
     /**
-     * `FAT` and `PATCH` are now real bundlers (see `FatWheelBundlerTest`/`WheelPatchBundlerTest` for
-     * their full specs), so they must fail for *their own* reasons -- not the generic "not
-     * implemented" stub message -- when given a package with no compiled output at all.
+     * `FAT`, `PATCH` and `BINARY` are real bundlers (see `FatWheelBundlerTest`, `WheelPatchBundlerTest`
+     * and `BinaryBundlerTest` for their full specs), so they must fail for *their own* reasons, not the
+     * generic "not implemented" stub message, when given a package with no compiled output at all.
+     * `BINARY` stopped being a stub in #156; no bundle type is unimplemented any more.
      */
     @Test
-    fun create_fatAndPatchFailForTheirOwnReasonsNotTheStubMessage() {
+    fun create_fatPatchAndBinaryFailForTheirOwnReasonsNotTheStubMessage() {
+        val binaryResult =
+            BundlerInterface.create(BundleType.BINARY).bundle(
+                BundleRequest(packageDir = packageDir(name = "p-binary"), target = "macos"),
+            )
+        assertTrue(binaryResult.isFailure)
+        assertTrue(
+            binaryResult.exceptionOrNull()?.message.orEmpty().contains("No compiled output found"),
+            "${binaryResult.exceptionOrNull()?.message}",
+        )
+
         val fatResult =
             BundlerInterface.create(BundleType.FAT).bundle(
                 BundleRequest(packageDir = packageDir(name = "p-fat"), target = "macos"),
