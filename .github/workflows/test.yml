@@ -150,6 +150,41 @@ jobs:
           grep -q 'tests="3" skipped="2" failures="0" errors="0"' packpack/build/test-results/test/TEST-*NativeSlotRealBuildTest.xml \
             || { echo "this host's native slot build did not run and pass"; exit 1; }
 
+  # The GraalVM native binary on the four release platforms, run through every command group (#160): the
+  # JVM suites cannot see what native-image leaves out. Same matrix and setup as publish-pypi.yml.
+  native:
+    name: native binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Native image
+        run: ./gradlew --no-daemon :packpack:nativeCompile
+      - name: Every command group against the native binary
+        run: |
+          exe=packpack/build/native/nativeCompile/pypackpack
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          python .github/scripts/native/native_cli_suite.py "$exe"
+
   guide:
     runs-on: ubuntu-latest
     steps:
