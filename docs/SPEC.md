@@ -833,7 +833,10 @@ Status: partial. Unit tests: `packpack/.../dependency/backend/CrossBuildTest.kt`
 commands and the recipe handling against a recording runner) and `CrossEnvTest.syncBuildsAnSdistOnlyDependencyInTheCrossEnvironmentAndRetries`.
 The real build (`CrossSdistRealBuildTest`, env-gated `PPP_CROSS_SDIST_REAL_BUILD=1`, test.yml `real-builds`)
 builds an sdist-only C package for `aarch64-linux-android` with the runner's NDK, once per backend
-(setuptools, meson-python, scikit-build-core); the setuptools build is the completion criterion. iOS and Linux cross targets share the code but have no real build in CI yet.
+(setuptools, meson-python, scikit-build-core); the setuptools build is the completion criterion. The same test
+builds a setuptools sdist for `aarch64-unknown-linux-gnu` (`zig cc`, tag `manylinux_2_17_aarch64`) on the ubuntu
+runner and for `arm64-apple-ios-simulator` (Xcode, tag `ios_13_0_arm64_iphonesimulator`) in `real-builds-host` on
+macOS.
 
 - **When:** `sync` installs a target's dependencies (above). When uv fails with `NoWheelForTargetException`
   and only an sdist exists (`SdistAvailability.ONLY_SDIST`), `sync` builds that sdist for the target in the

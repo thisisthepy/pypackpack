@@ -171,6 +171,37 @@ class CrossBuildTest {
         assertEquals(1, installs.size)
     }
 
+    /** An iOS simulator slice holds both architectures; the environment takes the target's `_sysconfigdata`. */
+    @Test
+    fun anIosSimulatorTargetTakesItsOwnArchitecturesSysconfigData() {
+        val slice = File(tempDir, "ios_simulator_arm64/Python.xcframework/ios-arm64_x86_64-simulator")
+        val headers = File(slice, "Python.framework/Headers").apply { mkdirs(); File(this, "Python.h").writeText("") }
+        for (arch in listOf("x86_64", "arm64")) {
+            File(slice, "lib-$arch/python3.15t").mkdirs()
+            File(slice, "lib-$arch/python3.15t/_sysconfigdata_t_ios_$arch-iphonesimulator.py").writeText("build_time_vars = {}\n")
+        }
+        val cross = MesonCross(
+            TargetPython("arm64-apple-ios-simulator", headers, ".cpython-315t-iphonesimulator.so", listOf("-F${slice.path}", "-framework", "Python"), slice),
+            listOf("xcrun", "--sdk", "iphonesimulator", "clang"), listOf("xcrun", "--sdk", "iphonesimulator", "clang++"),
+            listOf("xcrun", "--sdk", "iphonesimulator", "ar"), "darwin", "ios-simulator", "aarch64",
+        )
+        val pkg = File(tempDir, "pkg").apply { mkdirs() }
+        val calls = mutableListOf<Call>()
+        val builder = CrossSdistBuilder(
+            run = recordingRunner(calls),
+            fetch = { error("no network") },
+            installHostPython = { _, _, dir -> File(dir, "bin").mkdirs(); File(dir, "bin/python3").writeText(""); Result.success(Unit) },
+            crossFor = { _, _ -> cross },
+            hostTarget = { "aarch64-apple-darwin" },
+        )
+        builder.buildSource(pkg, "arm64-apple-ios-simulator", File(tempDir, "src/x-1.0").apply { mkdirs() }).getOrThrow()
+
+        val config = MiniJson.parse(File(pkg, "build/packpack/cross/arm64-apple-ios-simulator/env/ppp-cross/config.json").readText()) as Map<*, *>
+        assertEquals("_sysconfigdata_t_ios_arm64-iphonesimulator", config["sysconfigdata_name"])
+        assertEquals("ios-13.0-arm64-iphonesimulator", config["host_platform"])
+        assertEquals("xcrun --sdk iphonesimulator clang -shared", calls.single { it.command.getOrNull(2) == "build" }.env["LDSHARED"])
+    }
+
     /** meson-python gets the Meson cross file through `setup-args`; scikit-build-core gets a CMake toolchain file. */
     @Test
     fun mesonPythonGetsACrossFileAndScikitBuildCoreACMakeToolchain() {

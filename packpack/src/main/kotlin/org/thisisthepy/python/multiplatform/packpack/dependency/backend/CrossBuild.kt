@@ -266,8 +266,10 @@ open class CrossSdistBuilder(
         val libDir = target.libDir ?: target.includeDir.parentFile.parentFile.let { File(it, "lib") }
         Files.createSymbolicLink(File(prefix, "lib").toPath(), libDir.absoluteFile.toPath())
 
-        val sysconfigData = findSysconfigData(libDir)
-            ?: throw IllegalStateException("The CPython for $canonicalTarget in ${libDir.path} has no _sysconfigdata_*.py.")
+        // An iOS simulator slice holds lib-arm64 and lib-x86_64: take the target architecture's sysconfig data.
+        val sysconfigRoot = IOS_TARGETS[canonicalTarget]?.let { File(libDir, it.libDir) } ?: libDir
+        val sysconfigData = findSysconfigData(sysconfigRoot)
+            ?: throw IllegalStateException("The CPython for $canonicalTarget in ${sysconfigRoot.path} has no _sysconfigdata_*.py.")
         val sysconfigDir = File(crossFiles, "sysconfig").apply { deleteWithoutFollowingLinks(); mkdirs() }
         sysconfigData.copyTo(File(sysconfigDir, sysconfigData.name), overwrite = true)
 

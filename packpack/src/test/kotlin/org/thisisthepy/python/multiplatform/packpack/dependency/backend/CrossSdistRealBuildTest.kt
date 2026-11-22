@@ -13,15 +13,17 @@ import kotlin.test.assertTrue
 /**
  * The completion criterion of the cross build environment (docs/SPEC.md *Cross build environment*, #159): an
  * sdist-only C package builds for `aarch64-linux-android`, its extension carries the Android suffix and is an
- * aarch64 ELF. Once per build backend: setuptools (the criterion), meson-python and scikit-build-core.
+ * aarch64 ELF. Once per build backend: setuptools (the criterion), meson-python and scikit-build-core. Then the
+ * other cross families with setuptools: aarch64 Linux (`zig cc`, `manylinux_2_17`) on a Linux host and the arm64
+ * iOS simulator (Xcode) on a macOS host.
  *
- * Needs a Linux host, the Android NDK, `uv`, `cmake` and network access (the host and target CPython, the
- * backends), so it runs only with `PPP_CROSS_SDIST_REAL_BUILD=1` (pypackpack test.yml's `real-builds` job). The
- * tests share the target CPython and the cross environment. Everything is under this module's `build/`.
+ * Needs the target's toolchain (the Android NDK, `uv` for zig, Xcode), `cmake` and network access (the host and
+ * target CPython, the backends), so it runs only with `PPP_CROSS_SDIST_REAL_BUILD=1` (pypackpack test.yml's
+ * `real-builds` and `real-builds-host` jobs); a test whose host cannot build its target is skipped. The tests of a
+ * target share its CPython and cross environment. Everything is under this module's `build/`.
  */
 class CrossSdistRealBuildTest {
     private val root = File("build/cross-sdist-real").absoluteFile
-    private val target = "aarch64-linux-android"
     private val pkg = File(root, "pkg")
 
     private val fastC =
@@ -30,18 +32,43 @@ class CrossSdistRealBuildTest {
             "static struct PyModuleDef def = {PyModuleDef_HEAD_INIT, \"_fast\", NULL, 0, NULL, slots};\n" +
             "PyMODINIT_FUNC PyInit__fast(void) { return PyModuleDef_Init(&def); }\n"
 
-    private fun setUp() {
+    /** Skips unless opted in on a [hostFamily] host, then installs [target]'s CPython into [installDir] once. */
+    private fun setUp(target: String, installDir: String, hostFamily: String) {
         assumeTrue(System.getenv("PPP_CROSS_SDIST_REAL_BUILD") == "1", "set PPP_CROSS_SDIST_REAL_BUILD=1 to build for real")
-        assumeTrue(Platforms.getPlatformFamily(Platforms.detectHostTarget()) == "linux", "the NDK cross build runs on a Linux host here")
+        assumeTrue(Platforms.getPlatformFamily(Platforms.detectHostTarget()) == hostFamily, "$target builds on a $hostFamily host here")
         pkg.mkdirs()
         File(pkg, "pyproject.toml").writeText("[project]\nname = \"app\"\nversion = \"0.1.0\"\n")
-        if (!File(root, "android_arm64").isDirectory) {
-            runBlocking { UVBackend().installPython("3.15t", target, File(root, "android_arm64")) }.getOrThrow()
+        if (!File(root, installDir).isDirectory) {
+            runBlocking { UVBackend().installPython("3.15t", target, File(root, installDir)) }.getOrThrow()
         }
     }
 
-    /** Writes the project [files] as `<name>-1.0.tar.gz`, builds it for Android and checks the wheel. */
-    private fun buildAndCheck(name: String, files: Map<String, String>) {
+    private fun setUpAndroid() = setUp("aarch64-linux-android", "android_arm64", "linux")
+
+    private fun assertAarch64Elf(header: ByteArray) {
+        assertEquals(listOf(0x7f, 'E'.code, 'L'.code, 'F'.code), header.take(4).map { it.toInt() and 0xff })
+        assertEquals(183, (header[18].toInt() and 0xff) or ((header[19].toInt() and 0xff) shl 8), "e_machine must be EM_AARCH64")
+    }
+
+    private fun setuptoolsProject(name: String) = mapOf(
+        "pyproject.toml" to "[build-system]\nrequires = [\"setuptools>=70\"]\nbuild-backend = \"setuptools.build_meta\"\n\n" +
+            "[project]\nname = \"$name\"\nversion = \"1.0\"\n",
+        "setup.py" to "from setuptools import Extension, setup\n" +
+            "setup(ext_modules=[Extension(\"$name._fast\", [\"src/fast.c\"])], packages=[\"$name\"])\n",
+    )
+
+    /**
+     * Writes the project [files] as `<name>-1.0.tar.gz`, builds it for [target] and checks the wheel's tag ends with
+     * [tagSuffix], its extension is `_fast<extSuffix>`, and [checkBinary] accepts the extension's first 20 bytes.
+     */
+    private fun buildAndCheck(
+        name: String,
+        files: Map<String, String>,
+        target: String = "aarch64-linux-android",
+        tagSuffix: String = "-cp315t-android_24_arm64_v8a.whl",
+        extSuffix: String = ".cpython-315t-aarch64-linux-android.so",
+        checkBinary: (ByteArray) -> Unit = ::assertAarch64Elf,
+    ) {
         val tree = File(root, "tree-$name").apply { deleteRecursively(); mkdirs() }
         files.forEach { (path, text) -> File(tree, path).apply { parentFile.mkdirs(); writeText(text) } }
         File(tree, "src/fast.c").apply { parentFile.mkdirs(); writeText(fastC) }
@@ -51,35 +78,47 @@ class CrossSdistRealBuildTest {
 
         val wheel = CrossSdistBuilder().buildSdist(pkg, target, sdist, name).getOrThrow()
 
-        assertTrue(wheel.name.startsWith("$name-1.0-") && wheel.name.endsWith("-cp315t-android_24_arm64_v8a.whl"), wheel.name)
+        assertTrue(wheel.name.startsWith("$name-1.0-") && wheel.name.endsWith(tagSuffix), wheel.name)
         val so = File(root, "unpacked-$name.so")
         ZipFile(wheel).use { zip ->
             val entry = zip.entries().asSequence().single { it.name.startsWith("$name/_fast.") }
-            assertEquals("$name/_fast.cpython-315t-aarch64-linux-android.so", entry.name)
+            assertEquals("$name/_fast$extSuffix", entry.name)
             zip.getInputStream(entry).use { input -> so.outputStream().use { input.copyTo(it) } }
         }
-        val header = so.inputStream().use { it.readNBytes(20) }
-        assertEquals(listOf(0x7f, 'E'.code, 'L'.code, 'F'.code), header.take(4).map { it.toInt() and 0xff })
-        assertEquals(183, (header[18].toInt() and 0xff) or ((header[19].toInt() and 0xff) shl 8), "e_machine must be EM_AARCH64")
+        checkBinary(so.inputStream().use { it.readNBytes(20) })
     }
 
     @Test
     fun `a setuptools sdist builds for aarch64 Android with the target's suffix`() {
-        setUp()
+        setUpAndroid()
+        buildAndCheck("stdemo", setuptoolsProject("stdemo"))
+    }
+
+    @Test
+    fun `a setuptools sdist builds for aarch64 Linux with zig as manylinux_2_17`() {
+        setUp("aarch64-unknown-linux-gnu", "linux_arm64", "linux")
         buildAndCheck(
-            "stdemo",
-            mapOf(
-                "pyproject.toml" to "[build-system]\nrequires = [\"setuptools>=70\"]\nbuild-backend = \"setuptools.build_meta\"\n\n" +
-                    "[project]\nname = \"stdemo\"\nversion = \"1.0\"\n",
-                "setup.py" to "from setuptools import Extension, setup\n" +
-                    "setup(ext_modules=[Extension(\"stdemo._fast\", [\"src/fast.c\"])], packages=[\"stdemo\"])\n",
-            ),
+            "lxdemo", setuptoolsProject("lxdemo"), target = "aarch64-unknown-linux-gnu",
+            tagSuffix = "-cp315t-manylinux_2_17_aarch64.whl", extSuffix = ".cpython-315t-aarch64-linux-gnu.so",
         )
     }
 
     @Test
+    fun `a setuptools sdist builds for the arm64 iOS simulator with Xcode`() {
+        setUp("arm64-apple-ios-simulator", "ios_simulator_arm64", "macos")
+        buildAndCheck(
+            "iodemo", setuptoolsProject("iodemo"), target = "arm64-apple-ios-simulator",
+            tagSuffix = "-cp315t-ios_13_0_arm64_iphonesimulator.whl", extSuffix = ".cpython-315t-iphonesimulator.so",
+        ) { header ->
+            assertEquals(listOf(0xcf, 0xfa, 0xed, 0xfe), header.take(4).map { it.toInt() and 0xff }, "MH_MAGIC_64")
+            val cpu = (header[4].toInt() and 0xff) or ((header[5].toInt() and 0xff) shl 8) or ((header[6].toInt() and 0xff) shl 16) or ((header[7].toInt() and 0xff) shl 24)
+            assertEquals(0x0100000c, cpu, "CPU_TYPE_ARM64")
+        }
+    }
+
+    @Test
     fun `a meson-python sdist builds for aarch64 Android with the target's suffix`() {
-        setUp()
+        setUpAndroid()
         buildAndCheck(
             "mpdemo",
             mapOf(
@@ -95,7 +134,7 @@ class CrossSdistRealBuildTest {
 
     @Test
     fun `a scikit-build-core sdist builds for aarch64 Android with the target's suffix`() {
-        setUp()
+        setUpAndroid()
         buildAndCheck(
             "skdemo",
             mapOf(
