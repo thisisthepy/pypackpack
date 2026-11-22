@@ -26,8 +26,9 @@ import java.time.Duration
  * How the cross environment's interpreter reports [canonicalTarget] (docs/SPEC.md *Cross build environment*):
  * `_PYTHON_HOST_PLATFORM`, `sys.platform`, the multiarch and `os.uname()`. `sysconfig.get_platform()` turns
  * them into the wheel's platform: it splits `_PYTHON_HOST_PLATFORM` at the first `-` into the OS and machine,
- * and for Android adds the API level and the ABI name itself, so Android's is `android-<machine>`
- * (`android-aarch64` becomes `android-24-arm64_v8a`, run 44980924111).
+ * and when `sys.platform` is `android` it adds the API level and the ABI name itself. CPython 3.13 and 3.14
+ * take that branch only for the OS `linux` (3.15 also for `android`), so Android's is `linux-<machine>`
+ * (`linux-aarch64` becomes `android-24-arm64_v8a`, runs 44980924111 and 44989636124).
  */
 data class CrossTargetIdentity(
     val hostPlatform: String,
@@ -43,7 +44,7 @@ fun crossTargetIdentity(canonicalTarget: String): CrossTargetIdentity {
     val arm = canonicalTarget.startsWith("aarch64") || canonicalTarget.startsWith("arm64")
     val machine = if (arm) "aarch64" else "x86_64"
     if (canonicalTarget in ANDROID_DIRS) {
-        return CrossTargetIdentity("android-$machine", "android", canonicalTarget, "Linux", machine, ANDROID_API_LEVEL)
+        return CrossTargetIdentity("linux-$machine", "android", canonicalTarget, "Linux", machine, ANDROID_API_LEVEL)
     }
     if (canonicalTarget in IOS_TARGETS) {
         val sdk = if (canonicalTarget.endsWith("-simulator")) "iphonesimulator" else "iphoneos"
@@ -286,7 +287,7 @@ open class CrossSdistBuilder(
                     "multiarch" to identity.multiarch,
                     "prefix" to prefix.absolutePath,
                     "uname_system" to identity.unameSystem,
-                    "uname_release" to "",
+                    "uname_release" to if (canonicalTarget in IOS_TARGETS) IOS_MIN_VERSION else "",
                     "uname_machine" to identity.unameMachine,
                     "android_api_level" to identity.androidApiLevel,
                 ),

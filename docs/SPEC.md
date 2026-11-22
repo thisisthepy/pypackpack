@@ -854,7 +854,7 @@ macOS.
     headers and `lib` to its library directory, the layout `sysconfig` expects. The target CPython comes from
     `ppp python install <version> <target>` (`locateTargetPython`), as for the Cargo and Meson cross builds.
   - `ppp-cross/sysconfig/` holds a copy of the target's `_sysconfigdata_*.py`.
-  - `ppp-cross/config.json` names the target: `_PYTHON_HOST_PLATFORM` (`android-aarch64`,
+  - `ppp-cross/config.json` names the target: `_PYTHON_HOST_PLATFORM` (`linux-aarch64` for Android,
     `ios-13.0-arm64-iphoneos`, `manylinux_2_17_aarch64`, ...), `sys.platform`, the multiarch, the `os.uname()`
     system and machine, and the Android API level. `sysconfig.get_platform()` makes the wheel's platform from
     it; for Android it adds the API level and the ABI name (`android-24-arm64_v8a`).
@@ -862,7 +862,8 @@ macOS.
     that file. When it does, it sets `_PYTHON_SYSCONFIGDATA_NAME` and `_PYTHON_HOST_PLATFORM`, puts
     `ppp-cross/sysconfig` on `sys.path`, sets `sys.platform`, `sys.implementation._multiarch`,
     `sys.cross_compiling`, `sys.base_prefix` / `sys.base_exec_prefix` (the synthesized prefix), `os.uname()`
-    and, for Android, `sys.getandroidapilevel()`, and makes `sysconfig` reload its variables.
+    and, for Android, `sys.getandroidapilevel()`; it answers `platform.android_ver()` / `platform.ios_ver()`
+    from the config (they would otherwise query the device), and makes `sysconfig` reload its variables.
 - **The build:** a PEP 517 frontend of pypackpack's own (`ppp-cross/pep517.py`, standard library only) runs
   the sdist's backend (`[build-system].build-backend`, default `setuptools.build_meta:__legacy__`). First, in
   host mode, uv installs `[build-system].requires` into the environment (`uv pip install --python`), then the

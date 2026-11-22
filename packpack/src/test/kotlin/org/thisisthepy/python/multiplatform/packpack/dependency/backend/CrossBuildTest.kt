@@ -25,10 +25,10 @@ class CrossBuildTest {
     @Test
     fun eachCrossTargetReportsItsWheelPlatformAndTheHostIsRefused() {
         val android = crossTargetIdentity("aarch64-linux-android")
-        assertEquals("android-aarch64", android.hostPlatform, "sysconfig.get_platform() makes it android-24-arm64_v8a")
+        assertEquals("linux-aarch64", android.hostPlatform, "sysconfig.get_platform() makes it android-24-arm64_v8a")
         assertEquals("android", android.sysPlatform)
         assertEquals(24, android.androidApiLevel)
-        assertEquals("android-x86_64", crossTargetIdentity("x86_64-linux-android").hostPlatform)
+        assertEquals("linux-x86_64", crossTargetIdentity("x86_64-linux-android").hostPlatform)
         assertEquals("ios-13.0-arm64-iphoneos", crossTargetIdentity("arm64-apple-ios").hostPlatform)
         assertEquals("ios-13.0-arm64-iphonesimulator", crossTargetIdentity("arm64-apple-ios-simulator").hostPlatform)
         assertEquals("ios-13.0-x86_64-iphonesimulator", crossTargetIdentity("x86_64-apple-ios-simulator").hostPlatform)
@@ -153,7 +153,7 @@ class CrossBuildTest {
         assertTrue("-lpython3.15t" in build.env["LDFLAGS"].orEmpty(), build.env.toString())
 
         val config = MiniJson.parse(File(envDir, "ppp-cross/config.json").readText()) as Map<*, *>
-        assertEquals("android-aarch64", config["host_platform"])
+        assertEquals("linux-aarch64", config["host_platform"])
         assertEquals("_sysconfigdata_t_android_aarch64-linux-android", config["sysconfigdata_name"])
         assertEquals(24L, config["android_api_level"])
         assertTrue(File(envDir, "ppp-cross/sysconfig/_sysconfigdata_t_android_aarch64-linux-android.py").isFile)
@@ -199,6 +199,7 @@ class CrossBuildTest {
         val config = MiniJson.parse(File(pkg, "build/packpack/cross/arm64-apple-ios-simulator/env/ppp-cross/config.json").readText()) as Map<*, *>
         assertEquals("_sysconfigdata_t_ios_arm64-iphonesimulator", config["sysconfigdata_name"])
         assertEquals("ios-13.0-arm64-iphonesimulator", config["host_platform"])
+        assertEquals("13.0", config["uname_release"], "platform.ios_ver() answers the deployment target")
         assertEquals("xcrun --sdk iphonesimulator clang -shared", calls.single { it.command.getOrNull(2) == "build" }.env["LDSHARED"])
     }
 
@@ -304,21 +305,42 @@ class CrossBuildTest {
             MiniJson.write(
                 linkedMapOf(
                     "sysconfig_dir" to sysconfigDir.absolutePath, "sysconfigdata_name" to "_sysconfigdata_t_android_aarch64-linux-android",
-                    "host_platform" to "android-aarch64", "sys_platform" to "android", "multiarch" to "aarch64-linux-android",
+                    "host_platform" to "linux-aarch64", "sys_platform" to "android", "multiarch" to "aarch64-linux-android",
                     "prefix" to prefix.absolutePath, "uname_system" to "Linux", "uname_release" to "", "uname_machine" to "aarch64",
                     "android_api_level" to 24,
                 ),
             ),
         )
-        // CPython 3.13+ (the 3.15t host) maps an Android platform to android-<API level>-<ABI>; older ones keep it.
+        // CPython 3.13+ (the 3.15t host) maps an Android platform to android-<API level>-<ABI> and platform.uname()
+        // to the system Android, which the hook answers without the device (runs 44980924111, 44989636124).
         val (versionCode, version) = python3(listOf("-c", "import sys; print(sys.version_info >= (3, 13))"), emptyMap(), tempDir)
         assertEquals(0, versionCode, version)
-        val platform = if (version.trim() == "True") "android-24-arm64_v8a" else "android-aarch64"
-        val probe = "import _ppp_cross, sys, os, sysconfig; print(sys.platform, sysconfig.get_platform(), " +
+        val modern = version.trim() == "True"
+        val platform = if (modern) "android-24-arm64_v8a" else "linux-aarch64"
+        val system = if (modern) "Android" else "Linux"
+        val probe = "import _ppp_cross, sys, os, sysconfig, platform; print(sys.platform, sysconfig.get_platform(), platform.system(), " +
             "sysconfig.get_config_var('EXT_SUFFIX'), os.uname().machine, getattr(sys, 'getandroidapilevel', lambda: 0)(), sys.base_prefix)"
         val (code, out) = python3(listOf("-c", probe), mapOf("PYTHONPATH" to hookDir.absolutePath, "PPP_CROSS_CONFIG" to config.absolutePath), tempDir)
         assertEquals(0, code, out)
-        assertEquals("android $platform .cpython-315t-aarch64-linux-android.so aarch64 24 ${prefix.absolutePath}", out.trim())
+        assertEquals("android $platform $system .cpython-315t-aarch64-linux-android.so aarch64 24 ${prefix.absolutePath}", out.trim())
+
+        // iOS: platform.uname() would ask UIDevice through Objective-C; the hook answers it.
+        File(sysconfigDir, "_sysconfigdata_t_ios_arm64-iphonesimulator.py").writeText("build_time_vars = {'IPHONEOS_DEPLOYMENT_TARGET': '13.0'}\n")
+        val iosConfig = File(tempDir, "ios.json")
+        iosConfig.writeText(
+            MiniJson.write(
+                linkedMapOf(
+                    "sysconfig_dir" to sysconfigDir.absolutePath, "sysconfigdata_name" to "_sysconfigdata_t_ios_arm64-iphonesimulator",
+                    "host_platform" to "ios-13.0-arm64-iphonesimulator", "sys_platform" to "ios", "multiarch" to "arm64-iphonesimulator",
+                    "prefix" to prefix.absolutePath, "uname_system" to "iOS", "uname_release" to "13.0", "uname_machine" to "arm64",
+                    "android_api_level" to null,
+                ),
+            ),
+        )
+        val iosProbe = "import _ppp_cross, sysconfig, platform; print(sysconfig.get_platform(), platform.system(), platform.machine(), platform.release())"
+        val (iosCode, iosOut) = python3(listOf("-c", iosProbe), mapOf("PYTHONPATH" to hookDir.absolutePath, "PPP_CROSS_CONFIG" to iosConfig.absolutePath), tempDir)
+        assertEquals(0, iosCode, iosOut)
+        assertEquals("ios-13.0-arm64-iphonesimulator iOS arm64 13.0", iosOut.trim())
 
         val (idle, idleOut) = python3(listOf("-c", "import _ppp_cross, sys; print(sys.platform)"), mapOf("PYTHONPATH" to hookDir.absolutePath), tempDir)
         assertEquals(0, idle, idleOut)

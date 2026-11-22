@@ -40,6 +40,16 @@ internal object CrossBuildScripts {
         |    level = cfg.get("android_api_level")
         |    if level:
         |        sys.getandroidapilevel = lambda: level
+        |    # With sys.platform android or ios, platform.uname() asks the device (ctypes libc.so, Objective-C),
+        |    # which the build host is not: answer from the config instead.
+        |    import platform
+        |
+        |    if cfg["sys_platform"] == "android" and hasattr(platform, "AndroidVer"):
+        |        platform.android_ver = lambda *a, **k: platform.AndroidVer(cfg["uname_release"], level or 0, "", "", "", False)
+        |    if cfg["sys_platform"] == "ios" and hasattr(platform, "IOSVersionInfo"):
+        |        simulator = cfg["multiarch"].endswith("simulator")
+        |        platform.ios_ver = lambda *a, **k: platform.IOSVersionInfo("iOS", cfg["uname_release"], "", simulator)
+        |    platform._uname_cache = None
         |    if "sysconfig" in sys.modules:
         |        sc = sys.modules["sysconfig"]
         |        for name in ("_BASE_PREFIX", "_BASE_EXEC_PREFIX"):
