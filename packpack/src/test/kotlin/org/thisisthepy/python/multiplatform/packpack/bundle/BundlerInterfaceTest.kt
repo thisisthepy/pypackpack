@@ -1,5 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.bundle
 
+import org.thisisthepy.python.multiplatform.packpack.bundle.binary.BinaryBundler
+
 import org.junit.jupiter.api.io.TempDir
 import org.thisisthepy.python.multiplatform.packpack.bundle.fat.FatWheelBundler
 import org.thisisthepy.python.multiplatform.packpack.bundle.patch.WheelPatchBundler
@@ -56,7 +58,7 @@ class BundlerInterfaceTest {
 
     @Test
     fun create_instantiatesCorrectBundlerForEveryType() {
-        assertTrue(BundlerInterface.create(BundleType.BINARY) is UnimplementedBundler)
+        assertTrue(BundlerInterface.create(BundleType.BINARY) is BinaryBundler)
         assertTrue(BundlerInterface.create(BundleType.SINGLE) is SingleWheelBundler)
         assertTrue(BundlerInterface.create(BundleType.FAT) is FatWheelBundler)
         assertTrue(BundlerInterface.create(BundleType.PATCH) is WheelPatchBundler)
@@ -64,17 +66,16 @@ class BundlerInterfaceTest {
     }
 
     @Test
-    fun unimplementedBundler_binaryReturnsFailureWithNotImplementedError() {
-        val bundler = BundlerInterface.create(BundleType.BINARY)
-        val request = BundleRequest(packageDir = tempDir, target = "macos")
-        val result = bundler.bundle(request)
+    fun unimplementedBundler_returnsFailureWithNotImplementedErrorNamingTheOthers() {
+        // No bundle type is unimplemented since #156; the base keeps its shape for the next one (rule 15).
+        val bundler = object : UnimplementedBundler(BundleType.PATCH) {}
+        val result = bundler.bundle(BundleRequest(packageDir = tempDir, target = "macos"))
 
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
         assertTrue(exception is NotImplementedError)
-        assertTrue(exception.message.orEmpty().contains("binary"))
-        // It names every type that does work, so the reader knows what to ask for instead.
-        listOf("resource", "single", "fat", "patch").forEach { assertTrue("'$it'" in exception.message.orEmpty(), exception.message) }
+        assertTrue(exception.message.orEmpty().contains("'patch' is not implemented"))
+        listOf("binary", "resource", "single", "fat").forEach { assertTrue("'$it'" in exception.message.orEmpty(), exception.message) }
     }
 
     @Test
