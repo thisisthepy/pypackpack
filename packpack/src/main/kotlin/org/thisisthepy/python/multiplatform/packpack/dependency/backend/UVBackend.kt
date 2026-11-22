@@ -130,7 +130,10 @@ open class UVBackend(
             val command = mutableListOf("sync")
             appendOptions(command, options)
 
-            return executeCommand(command, workingDir)
+            // uv syncs the project's own .venv unless UV_PROJECT_ENVIRONMENT names another one
+            // (docs/SPEC.md *Dev environment dependency management*, #159). Blank keeps uv's default.
+            if (venvPath.isBlank()) return executeCommand(command, workingDir)
+            return executeCommand(command, workingDir, mapOf(UV_PROJECT_ENVIRONMENT to File(venvPath).absolutePath))
         }
 
     /**
@@ -261,10 +264,17 @@ open class UVBackend(
     open suspend fun executeCommand(
         command: List<String>,
         workingDir: File? = null,
+    ): Result<String> = executeCommand(command, workingDir, emptyMap())
+
+    /** [executeCommand] with extra environment variables for uv (for example [UV_PROJECT_ENVIRONMENT]). */
+    open suspend fun executeCommand(
+        command: List<String>,
+        workingDir: File?,
+        environment: Map<String, String>,
     ): Result<String> =
         runCatching {
             ensureToolInstalled()
-            val (exitCode, output) = uv.executeCommand(command, workingDir)
+            val (exitCode, output) = uv.executeCommand(command, workingDir, environment)
             if (exitCode == 0) {
                 output
             } else {
@@ -292,3 +302,6 @@ open class UVBackend(
         }
     }
 }
+
+/** uv's variable naming the virtual environment `uv sync` targets instead of `<project>/.venv`. */
+const val UV_PROJECT_ENVIRONMENT = "UV_PROJECT_ENVIRONMENT"

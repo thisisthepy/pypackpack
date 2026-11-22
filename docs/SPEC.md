@@ -327,8 +327,9 @@ Limitation
 
 #### CLI Version
 
-Status: partial. `cli/.../BuildInfoTest.kt` checks the printed version's source, `--version` / `-v` and
-the `v` alias; nothing tests the uv part.
+Status: implemented (#159). `cli/.../BuildInfoTest.kt` checks the printed version's source, `--version` / `-v`,
+the `v` alias, and that `version` prints the uv version the middleware reports (and a failed check on
+stderr); `packpack/.../dependency/backend/UVBackendVersionTest.kt` runs the real `uv --version`.
 
 ```bash
 pypackpack version          # alias: pypackpack v
@@ -430,12 +431,14 @@ Limitation
 
 #### Project creation
 
-Status: partial. `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
-generated `README.md` and `LICENSE`, and (with the real uv) that an ancestor `pyproject.toml` is left
-untouched.
+Status: implemented (#159). `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt` covers the
+generated `README.md` and `LICENSE`, (with the real uv) that an ancestor `pyproject.toml` is left
+untouched, that `--target` is recorded as `platforms`, that an unknown target or an existing project is
+refused before uv runs, and the other-tool warning; `cli/.../InitCommandTest.kt` covers the options
+reaching the middleware.
 
 ```bash
-pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package]
+pypackpack init [<path>] [--python <python version>] [--name <project name>] [--package] [--target <target>...]
 ```
 
 - Project initialization is performed based on `uv init --bare --no-workspace`.
@@ -444,13 +447,14 @@ pypackpack init [<path>] [--python <python version>] [--name <project name>] [--
   file, even when it belongs to an unrelated repository. A package inside a ppp workspace is created with
   `package add`, not `init`.
 - `path`, `--python`, `--name`, `--package` are passed as `uv init` options, but `uv` only generates `pyproject.toml`, and ppp generates the other necessary files.
-- If `targets` is given (library API only, see Limitation), updates `[tool.ppp.dependencies].platforms` in the root `pyproject.toml`.
+- `--target` (the library API's `targets`) records the canonical targets in `[tool.ppp.dependencies].platforms` of the new `pyproject.toml`. An unknown target is refused before `uv init` runs, so nothing is created.
 - After `uv init --bare`, ppp additionally generates `.gitignore`, `README.md`, and `LICENSE`. `.python-version` is only generated when `--python` is passed.
-
-Limitation
-
-- There is not yet a check for whether an existing `pyproject.toml` is a ppp project, nor a determination of conflicts with other packaging tools.
-- The `init` CLI command does not expose a way to pass `targets`, so `[tool.ppp.dependencies].platforms` cannot be set from `pypackpack init` even though the middleware supports it; targets must be added afterward via `target add`.
+- A directory that already has a `pyproject.toml` is refused before `uv init` runs, and the file is left as
+  it is. The message says whether it is already a pypackpack project (`[tool.ppp]`), another tool's
+  (`[tool.poetry]`, `pdm`, `hatch`, `flit`, `setuptools`), or a plain Python project.
+- Another packaging tool's files in the directory (`setup.py`, `setup.cfg`, `Pipfile`, `poetry.lock`,
+  `pdm.lock`, `environment.yml`) do not stop `init`; its output ends with a warning naming them, since
+  pypackpack reads only `pyproject.toml` (agent proposal, not confirmed: warn rather than refuse).
 
 #### Changing the project's Python version
 
@@ -462,10 +466,8 @@ pypackpack python use <python version>
 ```
 
 - Deletes `.venv` at the project root, recreates it with the new Python version, and performs `uv sync`.
-
-Limitation
-
-- There is no cleanup logic for subpackage `build` directories.
+- Before that, deletes each package's compile trees (see *Cleaning up subpackage build directories on
+  `python use`*).
 
 #### Listing, finding and uninstalling ppp Python distributions
 
@@ -686,9 +688,11 @@ Decided 2026-10-17 (#69, through the project lead); done in #86.
 
 #### Dev environment dependency management
 
-Status: partial. `cli/.../DependencyCommandTest.kt` and `cli/.../CommandExtensionTest.kt` cover
-argument parsing and forwarding to the middleware (against a recording middleware). No test runs
-the `uv` calls.
+Status: implemented (#159). `cli/.../DependencyCommandTest.kt` and `cli/.../CommandExtensionTest.kt` cover
+argument parsing and forwarding to the middleware (against a recording middleware);
+`packpack/.../dependency/middleware/DevEnvRealUvTest.kt` runs the root `add`, `tree`, `sync` and `remove`
+with the real uv on a real project and checks `pyproject.toml` and the root `.venv` (network: PyPI);
+`packpack/.../dependency/backend/UVBackendTest.kt` (`syncDependencies_*`) checks the venv `sync` targets.
 
 ```bash
 pypackpack add <pypi name>...
@@ -709,11 +713,8 @@ pypackpack remove <pypi name>...
 pypackpack sync
 ```
 
-- Performs `uv sync` targeting the project root's `.venv`.
-
-Limitation
-
-- The backend call operates based on the working directory; the `venvPath` argument is not passed to the `uv sync` command (`UVBackend.syncDependencies` ignores it).
+- Performs `uv sync` targeting the project root's `.venv`. `UVBackend.syncDependencies` names the venv it
+  is given through uv's `UV_PROJECT_ENVIRONMENT`; a blank path (the per-package sync) keeps uv's default.
 
 ```bash
 pypackpack tree [--target <target1> <target2> ...]
@@ -807,7 +808,18 @@ Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTes
 
 #### Cleaning up subpackage build directories on `python use`
 
-Status: planned.
+Status: implemented (#159). `packpack/.../dependency/middleware/DefaultMiddlewareInitTest.kt`
+(`changePythonVersionDeletesEachPackagesCompileTreesAndKeepsTheRest`,
+`changePythonVersionInASinglePackageRepositoryDeletesTheRootCompileTree`).
+
+- `python use` deletes `build/packpack/` in every workspace member listed in `[tool.uv.workspace].members`
+  (a path relative to the project root; glob patterns are not expanded), or in the project root when it has
+  no workspace members. Those are the Meson build trees `pypackpack build` configures against the
+  project's interpreter, so they are stale once the Python version changes.
+- Nothing else is deleted: a package's other `build/` contents, its `dist/` (built artefacts), and the
+  root's `build/crossenv/` (reinstalled per target by `sync`) stay. Symbolic links are not followed.
+- This runs before the `.venv` is deleted; if a tree cannot be deleted, `python use` fails and leaves the
+  `.venv` as it was. A listed member that does not exist is skipped.
 
 ### Build, bundling, deployment
 
@@ -850,6 +862,14 @@ argument, and there is no `bundle` command (#81). The third, with no bundle kind
   refused (exit 1) before anything runs.
 
 - Auto-generates a `meson.build` for the package by scanning the first source root containing Python packages in order: `[tool.ppp].python-dir` (when configured in `pyproject.toml`), `src/main`, `src`, `python`, `<package>/python`, and the package root. Inside each Python package, `.c`/`.cc`/`.cpp`/`.cxx` files become Meson `py.extension_module()` targets when `[tool.ppp].c-extensions` lists their project-relative path, or (when `[tool.ppp].c-extensions` is omitted) when their name starts with `_` or their source references `PyInit_`, `PyModExport_`, or `Python.h` (`c-extensions = []` disables C/C++ extension scanning completely, #144); all other non-excluded files (including `.py`, `.pyi`, `py.typed`, package data files, and data/template `.c`/`.cpp` files) become `py.install_sources()`, while `__pycache__`, `*.pyc`, `*.pyo`, dot-entries, `Thumbs.db`, `meson.build`, and Rust crate directories (`Cargo.toml`) are excluded.
+- Before anything is built, verifies the package's dependencies (the sheet's orchestration, #159):
+  `uv sync --check` in the workspace root (`--package <[project].name>` in a workspace,
+  `compile/backend/DefaultBackend.kt`'s `UvDependencyCheck`). An environment out of sync with the lock and
+  `pyproject.toml` stops the build with a message naming `pypackpack sync` and uv's output
+  (`DefaultBackendTest`: `compile_verifiesDependenciesBeforeBuildingAndStopsOnAFailedCheck`,
+  `uvDependencyCheck_runsUvSyncCheckForTheMember`).
+- The compile backend takes the workspace directory explicitly (`BackendInterface.compile(..., workingDir)`,
+  AGENTS.md rule 13); only the CLI's middleware passes `user.dir`. The tests point `user.dir` elsewhere.
 - Runs `meson setup` / `meson compile` / `meson install` for the package by shelling out to the `meson` CLI. `setup` probes `meson --version`/`ninja --version` first (`Meson.isMesonInstalled()`, which also looks in `uv`'s tool directory) and calls `Meson.installMeson()` (`uv tool install meson`/`ninja`) when either is missing, so `meson`/`ninja` do not need to be pre-installed on `PATH`.
 - `--type` is passed to Meson as `--buildtype=<type>`. `--type`, `--level` and `--target` select the directories: the Meson build directory is `<package>/build/packpack/single/<type>/<level>/<target>`, and `meson install` writes to `<package>/dist/<target>/<type>/<level>` (`<target>` is `default` when `--target` is omitted).
 - `--overwrite` regenerates `meson.build` (erroring otherwise if one already exists) and clears the build directory first.
@@ -872,14 +892,26 @@ Limitation
 - `--level` and `--target` change only directory names. No level compiles differently, and `--target` does not cross-compile: Meson builds for the host.
 - Without a bundle kind, `--target` is used as typed. The wheel bundlers look for `dist/<canonical target triple>/...`, so a compile-only build meant for a later bundle has to be run with the canonical triple; the `source` form does this itself.
 - Only the Meson and Cargo backends are implemented; the MSVC/XCode/Emscripten backend adapters and the minification middleware are empty placeholder files (Clang and NDK are the native slot's adapters; TypedPython, not Nuitka, Cython or Lpython, generates the C it compiles), so C/C++ extensions (Meson, host only) and Rust extensions (Cargo: host, Linux manylinux, Windows on its own machine, Android, iOS) compile, and there is no pure-Python compilation/optimization/minification.
-- `build` does not verify dependencies first (the sheet's orchestration includes it).
 - A second compile without `--overwrite` fails on the existing `meson.build` (see `--overwrite` above).
-- The workspace is located through `user.dir` (`compile/backend/DefaultBackend.kt`), not an explicit working directory.
 
-Not yet implemented (target). Status: planned
+Package metadata (#159). The sheet: "패키지의 pyproject.toml에 빌드해야 할 의존성 패키지의 범위 기술 필요 (기본적으로는
+전부 다 같은 레벨로 빌드)" and "단일 파일로 전부 다 묶는건지 따로 따로 빌드할건지 기술 필요 (메타 데이터)". The keys are an
+agent proposal, not confirmed. Status: implemented.
 
-- Describing, in the package's `pyproject.toml`, the scope of dependency packages that need to be built (today everything under the package is built at the same level).
-- Selecting whether to bundle everything into a single file or build separately, as metadata.
+- `[tool.ppp].build-dependencies = ["<distribution>", ...]` names the installed dependencies the build level
+  applies to in the `resource` bundle, which carries installed dependencies (the wheel bundlers carry
+  workspace packages, not installed ones). Names are compared PEP 503-normalized. Absent, every dependency is built at the same level (the
+  sheet's default); `[]` builds none. A dependency outside the list ships as source: its top-level entries
+  (from its `*.dist-info/RECORD`) are skipped by `compileall` and keep their `.py` in `release`. A listed
+  name that is not installed is a bundle warning. `ResourceBundlerTest`:
+  `bundle_buildDependenciesLimitsWhichDependenciesAreCompiled`, `bundle_withoutBuildDependenciesEveryDependencyIsCompiled`.
+- `[tool.ppp].bundle = "binary" | "fat" | "single" | "patch"` is the bundle `build <package> source` uses
+  when the command names none: `fat` puts the package and its dependencies in one file, `single` the package
+  alone. The command line wins; an unknown value is refused before compiling; absent, `binary`.
+  `cli/.../BuildCommandTest.kt`.
+
+Not yet implemented (target). Status: planned, in 1.0 (#158, blocked on a server)
+
 - Server-side patch version tracking (base version ledger, server management page).
 
 #### Rust extension modules (Cargo backend)

@@ -246,11 +246,10 @@ is acceptable for the CLI and nowhere else.
 
 - Every backend-layer function that touches a project takes the directory as a parameter
   (`workingDir: File?`, or `BundleRequest.packageDir`). Do not add one that reads `user.dir`.
-- Known exceptions, which predate the rule and are defects, not precedent:
-  `compile/backend/DefaultBackend.compile` (finds the workspace from `user.dir`) and
+- Known exception, which predates the rule and is a defect, not precedent:
   `dependency/backend/DefaultBackend.installPython` when called without `installDir` (it then calls
-  `findProjectRoot()`; pass `installDir` from any daemon-hosted caller). Fixing `compile` is a public
-  signature change: rule 14 applies.
+  `findProjectRoot()`; pass `installDir` from any daemon-hosted caller). `compile/backend/DefaultBackend.compile`
+  takes its `workingDir` since #159 (`toolchain` does not call it).
 
 ## 14. `toolchain` consumes this library from `mavenLocal`
 

@@ -25,13 +25,13 @@ class DefaultBackendTest {
                     return Result.success(emptyList())
                 }
             }
-            val backend = DefaultBackend(RecordingMeson(), cargo)
+            val backend = DefaultBackend(RecordingMeson(), cargo, NO_CHECK)
 
             val previousDir = System.getProperty("user.dir")
             try {
-                System.setProperty("user.dir", this.absolutePath)
-                runBlocking { backend.compile("core", mapOf("type" to "release", "target" to "macos")) }.getOrThrow()
-                runBlocking { backend.compile("core", mapOf("type" to "debug")) }.getOrThrow()
+                System.setProperty("user.dir", File(this.absolutePath).parentFile.absolutePath) // not the workspace: compile must use its workingDir (#159)
+                runBlocking { backend.compile("core", mapOf("type" to "release", "target" to "macos"), this@withWorkspace) }.getOrThrow()
+                runBlocking { backend.compile("core", mapOf("type" to "debug"), this@withWorkspace) }.getOrThrow()
             } finally {
                 System.setProperty("user.dir", previousDir)
             }
@@ -62,8 +62,8 @@ class DefaultBackendTest {
 
             val previousDir = System.getProperty("user.dir")
             try {
-                System.setProperty("user.dir", this.absolutePath)
-                runBlocking { DefaultBackend(RecordingMeson()).compile("core", mapOf("overwrite" to "true")) }.getOrThrow()
+                System.setProperty("user.dir", File(this.absolutePath).parentFile.absolutePath) // not the workspace: compile must use its workingDir (#159)
+                runBlocking { DefaultBackend(RecordingMeson(), dependencyCheck = NO_CHECK).compile("core", mapOf("overwrite" to "true"), this@withWorkspace) }.getOrThrow()
             } finally {
                 System.setProperty("user.dir", previousDir)
             }
@@ -93,13 +93,13 @@ class DefaultBackendTest {
             File(packageDir, "__init__.py").writeText("")
 
             val recordingMeson = RecordingMeson()
-            val backend = DefaultBackend(recordingMeson)
+            val backend = DefaultBackend(recordingMeson, dependencyCheck = NO_CHECK)
 
             val previousDir = System.getProperty("user.dir")
             try {
-                System.setProperty("user.dir", this.absolutePath)
+                System.setProperty("user.dir", File(this.absolutePath).parentFile.absolutePath) // not the workspace: compile must use its workingDir (#159)
                 val result = runBlocking {
-                    backend.compile("core", mapOf("type" to "release"))
+                    backend.compile("core", mapOf("type" to "release"), this@withWorkspace)
                 }
                 assertTrue(result.isSuccess, result.exceptionOrNull()?.message)
                 assertEquals("build/packpack/single/release/instant/default", recordingMeson.lastSetupBuildDir)
@@ -142,19 +142,19 @@ class DefaultBackendTest {
             File(packageDir, "__init__.py").writeText("")
 
             val recordingMeson = RecordingMeson()
-            val backend = DefaultBackend(recordingMeson)
+            val backend = DefaultBackend(recordingMeson, dependencyCheck = NO_CHECK)
 
             val previousDir = System.getProperty("user.dir")
             try {
-                System.setProperty("user.dir", this.absolutePath)
+                System.setProperty("user.dir", File(this.absolutePath).parentFile.absolutePath) // not the workspace: compile must use its workingDir (#159)
                 val first = runBlocking {
-                    backend.compile("core", mapOf("target" to "aarch64-apple-darwin", "type" to "release", "level" to "full"))
+                    backend.compile("core", mapOf("target" to "aarch64-apple-darwin", "type" to "release", "level" to "full"), this@withWorkspace)
                 }
                 assertTrue(first.isSuccess, first.exceptionOrNull()?.message)
                 val firstDestdir = recordingMeson.lastInstallDestdir
 
                 val second = runBlocking {
-                    backend.compile("core", mapOf("target" to "x86_64-linux-gnu", "type" to "release", "level" to "full"))
+                    backend.compile("core", mapOf("target" to "x86_64-linux-gnu", "type" to "release", "level" to "full"), this@withWorkspace)
                 }
                 assertTrue(second.isSuccess, second.exceptionOrNull()?.message)
                 val secondDestdir = recordingMeson.lastInstallDestdir
@@ -194,21 +194,21 @@ class DefaultBackendTest {
             File(this, "__init__.py").writeText("")
 
             val recordingMeson = RecordingMeson()
-            val backend = DefaultBackend(recordingMeson)
+            val backend = DefaultBackend(recordingMeson, dependencyCheck = NO_CHECK)
 
             val previousDir = System.getProperty("user.dir")
             try {
-                System.setProperty("user.dir", this.absolutePath)
+                System.setProperty("user.dir", File(this.absolutePath).parentFile.absolutePath) // not the workspace: compile must use its workingDir (#159)
 
-                val byName = runBlocking { backend.compile("torchnative", emptyMap()) }
+                val byName = runBlocking { backend.compile("torchnative", emptyMap(), this@withWorkspace) }
                 assertTrue(byName.isSuccess, byName.exceptionOrNull()?.message)
                 assertEquals(this.canonicalFile, recordingMeson.lastSetupWorkingDir?.canonicalFile)
 
-                val byDot = runBlocking { backend.compile(".", emptyMap()) }
+                val byDot = runBlocking { backend.compile(".", emptyMap(), this@withWorkspace) }
                 assertTrue(byDot.isSuccess, byDot.exceptionOrNull()?.message)
                 assertEquals(this.canonicalFile, recordingMeson.lastSetupWorkingDir?.canonicalFile)
 
-                val unknown = runBlocking { backend.compile("other-pkg", emptyMap()) }
+                val unknown = runBlocking { backend.compile("other-pkg", emptyMap(), this@withWorkspace) }
                 assertTrue(unknown.isFailure)
                 assertTrue(
                     "not a workspace member" in unknown.exceptionOrNull()?.message.orEmpty(),
@@ -217,6 +217,52 @@ class DefaultBackendTest {
             } finally {
                 System.setProperty("user.dir", previousDir)
             }
+        }
+    }
+
+    /** `build` verifies dependencies before Meson runs, and a failed check stops it (#159). */
+    @Test
+    fun compile_verifiesDependenciesBeforeBuildingAndStopsOnAFailedCheck() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[tool.uv.workspace]\nmembers = [\"src/main/core\"]\n")
+            val packageDir = File(this, "src/main/core").apply { mkdirs() }
+            File(packageDir, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val checked = mutableListOf<Pair<File, File>>()
+            val meson = RecordingMeson()
+            val failing = DependencyCheck { root, pkg ->
+                checked += root to pkg
+                Result.failure(IllegalStateException("not in sync; run `pypackpack sync`"))
+            }
+
+            val result = runBlocking { DefaultBackend(meson, dependencyCheck = failing).compile("core", null, this@withWorkspace) }
+
+            assertTrue(result.isFailure)
+            assertTrue("pypackpack sync" in result.exceptionOrNull()?.message.orEmpty())
+            assertEquals(listOf(this.canonicalFile to packageDir.canonicalFile), checked)
+            assertEquals(null, meson.lastSetupBuildDir, "Meson must not run after a failed check")
+        }
+    }
+
+    /** `UvDependencyCheck` asks uv `sync --check`, naming the member package in a workspace. */
+    @Test
+    fun uvDependencyCheck_runsUvSyncCheckForTheMember() {
+        withWorkspace {
+            File(this, "pyproject.toml").writeText("[tool.uv.workspace]\nmembers = [\"src/main/core\"]\n")
+            val packageDir = File(this, "src/main/core").apply { mkdirs() }
+            File(packageDir, "pyproject.toml").writeText("[project]\nname = \"core\"\nversion = \"0.1.0\"\n")
+            val commands = mutableListOf<Pair<List<String>, File?>>()
+            val uv = object : org.thisisthepy.python.multiplatform.packpack.dependency.backend.UVBackend() {
+                override suspend fun executeCommand(command: List<String>, workingDir: File?): Result<String> {
+                    commands += command to workingDir
+                    return Result.failure(Exception("Would install 1 package"))
+                }
+            }
+
+            val result = runBlocking { UvDependencyCheck(uv).check(this@withWorkspace, packageDir) }
+
+            assertEquals<List<Pair<List<String>, File?>>>(listOf(listOf("sync", "--check", "--package", "core") to this), commands)
+            assertTrue(result.isFailure)
+            assertTrue("pypackpack sync" in result.exceptionOrNull()?.message.orEmpty() && "Would install" in result.exceptionOrNull()?.message.orEmpty())
         }
     }
 
@@ -266,5 +312,9 @@ class DefaultBackendTest {
         } finally {
             tempRoot.deleteRecursively()
         }
+    }
+
+    private companion object {
+        val NO_CHECK = DependencyCheck { _, _ -> Result.success(Unit) }
     }
 }

@@ -186,11 +186,20 @@ class ResourceBundler(
                 nativeResult = null
             }
 
+            // [tool.ppp].build-dependencies (docs/SPEC.md *Package build*, #159): which installed
+            // dependencies the build level applies to; absent means all of them (the sheet's default).
+            val scope = readBuildDependencyScope(editor)
+            val (outOfScope, scopeWarnings) =
+                if (scope == null) emptySet<String>() to emptyList() else dependenciesOutsideScope(scope, request.libDirs)
+            val sourceOnly = payload.filter { (rel, item) -> item.origin == PayloadOrigin.LIB && rel.substringBefore('/') in outOfScope }
+                .keys.map { File(pythonRoot, it) }.toSet()
+            nativeWarnings += scopeWarnings
+
             val entries =
                 if (request.buildLevel == BUILD_LEVEL_INSTANT) {
                     scanEntries(pythonRoot)
                 } else {
-                    compileToBytecode(packageDir, pythonRoot, keepSource = request.buildType != "release")
+                    compileToBytecode(packageDir, pythonRoot, keepSource = request.buildType != "release", sourceOnly = sourceOnly, sourceOnlyTops = outOfScope)
                 }
 
             val manifestFile = File(outputDir, MANIFEST_FILE_NAME)
@@ -396,14 +405,19 @@ class ResourceBundler(
         packageDir: File,
         pythonRoot: File,
         keepSource: Boolean,
+        sourceOnly: Set<File> = emptySet(),
+        sourceOnlyTops: Set<String> = emptySet(),
     ): List<ManifestEntry> {
-        val pyFiles = pythonRoot.walkTopDown().filter { it.isFile && it.extension == "py" }.toList()
+        val pyFiles = pythonRoot.walkTopDown().filter { it.isFile && it.extension == "py" && it !in sourceOnly }.toList()
         if (pyFiles.isEmpty()) {
             return scanEntries(pythonRoot)
         }
         val python = locateBytecodeCompiler(packageDir)
+        // Dependencies outside [tool.ppp].build-dependencies ship as source: compileall's -x skips them.
+        val exclude =
+            if (sourceOnlyTops.isEmpty()) emptyList() else listOf("-x", compileallExcludePattern(pythonRoot, sourceOnlyTops))
         val process =
-            ProcessBuilder(python.absolutePath, "-m", "compileall", "-q", "-b", pythonRoot.absolutePath)
+            ProcessBuilder(listOf(python.absolutePath, "-m", "compileall", "-q", "-b") + exclude + pythonRoot.absolutePath)
                 .redirectErrorStream(true)
                 .start()
         val output = process.inputStream.bufferedReader().readText()
@@ -537,4 +551,55 @@ class ResourceBundler(
         val size: Long,
         val sha256: String,
     )
+}
+
+/**
+ * `[tool.ppp].build-dependencies`: the installed distributions the build level applies to, names
+ * normalized (PEP 503). `null` when the key is absent: every dependency is built at the level.
+ */
+internal fun readBuildDependencyScope(editor: TomlEditor): Set<String>? {
+    val value = editor.getValue("tool.ppp", "build-dependencies") ?: return null
+    val items = (value as? TomlValue.Array)?.items
+        ?: throw IllegalArgumentException("[tool.ppp].build-dependencies must be an array of distribution names, got $value")
+    return items.map { normalizeDistributionName(it) }.toSet()
+}
+
+/** PEP 503 name normalization: runs of `-`, `_` and `.` become one `-`, lower case. */
+internal fun normalizeDistributionName(name: String): String = name.trim().lowercase().replace(Regex("[-_.]+"), "-")
+
+/**
+ * The top-level payload entries (first path segment under the python root) of every distribution in
+ * [libDirs] whose name is not in [scope], read from each `*.dist-info/RECORD`, and a warning for each
+ * name in [scope] that no installed distribution has.
+ */
+internal fun dependenciesOutsideScope(scope: Set<String>, libDirs: List<File>): Pair<Set<String>, List<String>> {
+    val outside = mutableSetOf<String>()
+    val found = mutableSetOf<String>()
+    libDirs.filter { it.isDirectory }.forEach { dir ->
+        dir.listFiles { f -> f.isDirectory && f.name.endsWith(".dist-info") }.orEmpty().forEach { info ->
+            val name = normalizeDistributionName(info.name.removeSuffix(".dist-info").substringBeforeLast('-'))
+            found += name
+            if (name in scope) return@forEach
+            val record = File(info, "RECORD")
+            if (!record.isFile) return@forEach
+            record.readLines().map { it.substringBefore(',').trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("..") && !it.startsWith("/") }
+                .map { it.substringBefore('/') }
+                .filterNot { it.endsWith(".dist-info") || it.endsWith(".data") || it == "__pycache__" }
+                .forEach { outside += it }
+        }
+    }
+    val warnings = (scope - found).sorted().map { "[tool.ppp].build-dependencies names '$it', which is not an installed dependency." }
+    return outside to warnings
+}
+
+/**
+ * A Python `re` pattern (compileall `-x` searches each file's full path with it) matching every file
+ * under [pythonRoot]'s top-level entries [tops]: a package directory or a single module.
+ */
+internal fun compileallExcludePattern(pythonRoot: File, tops: Set<String>): String {
+    fun esc(text: String) = text.replace(Regex("""[\\.^$|?*+()\[\]{}]"""), """\\$0""")
+    val root = pythonRoot.absolutePath.split('/', '\\').joinToString("[/\\\\]") { esc(it) }
+    val alternatives = tops.sorted().joinToString("|") { esc(it) }
+    return "^$root[/\\\\]($alternatives)([/\\\\]|$)"
 }

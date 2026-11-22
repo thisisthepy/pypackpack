@@ -35,6 +35,87 @@ class DefaultMiddlewareInitTest {
         }
     }
 
+    /** `init --target` records the canonical targets in `[tool.ppp.dependencies].platforms` (#159). */
+    @Test
+    fun initProjectRecordsItsTargetsAsPlatforms() {
+        val tempRoot = Files.createTempDirectory("ppp-init-targets-").toFile()
+        try {
+            DefaultMiddleware().withBackend(FakeBackend())
+                .initProject(path = tempRoot.absolutePath, targets = listOf("arm64-apple-ios", "aarch64-linux-android"), extraArgs = null)
+                .getOrThrow()
+
+            val toml = File(tempRoot, "pyproject.toml").readText()
+            assertTrue(Regex("""\[tool\.ppp\.dependencies]""").containsMatchIn(toml), toml)
+            val platforms = Regex("""platforms\s*=\s*\[([^\]]*)]""").find(toml)?.groupValues?.get(1).orEmpty()
+            assertTrue("\"aarch64-linux-android\"" in platforms && "\"arm64-apple-ios\"" in platforms, toml)
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /** An existing `pyproject.toml` is refused before uv runs, naming whose project it is (#159). */
+    @Test
+    fun initProjectRefusesAnExistingProjectAndNamesItsTool() {
+        val cases = mapOf(
+            "[project]\nname = \"a\"\n\n[tool.ppp.dependencies]\nplatforms = []\n" to "already a pypackpack project",
+            "[tool.poetry]\nname = \"a\"\n" to "configured for poetry",
+            "[project]\nname = \"a\"\n" to "a Python project already exists",
+        )
+        for ((toml, expected) in cases) {
+            val tempRoot = Files.createTempDirectory("ppp-init-existing-").toFile()
+            try {
+                File(tempRoot, "pyproject.toml").writeText(toml)
+                val backend = FakeBackend()
+                val result = DefaultMiddleware().withBackend(backend)
+                    .initProject(path = tempRoot.absolutePath, targets = null, extraArgs = null)
+
+                assertTrue(result.isFailure, toml)
+                assertTrue(expected in result.exceptionOrNull()?.message.orEmpty(), result.exceptionOrNull()?.message)
+                assertEquals(null, backend.initArgs, "uv init must not run")
+                assertEquals(toml, File(tempRoot, "pyproject.toml").readText(), "the existing file is untouched")
+            } finally {
+                tempRoot.deleteRecursively()
+            }
+        }
+    }
+
+    /** Another tool's files do not stop init, but the result says pypackpack does not read them. */
+    @Test
+    fun initProjectWarnsAboutAnotherPackagingToolsFiles() {
+        val tempRoot = Files.createTempDirectory("ppp-init-othertool-").toFile()
+        try {
+            File(tempRoot, "setup.py").writeText("from setuptools import setup\nsetup()\n")
+            File(tempRoot, "Pipfile").writeText("[packages]\n")
+
+            val output = DefaultMiddleware().withBackend(FakeBackend())
+                .initProject(path = tempRoot.absolutePath, targets = null, extraArgs = null)
+                .getOrThrow()
+
+            assertTrue("setup.py, Pipfile" in output && "another packaging tool" in output, output)
+            assertTrue(File(tempRoot, "pyproject.toml").isFile)
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /** An unknown target is refused before uv runs, so nothing is created. */
+    @Test
+    fun initProjectRefusesAnUnknownTargetBeforeUv() {
+        val tempRoot = Files.createTempDirectory("ppp-init-badtarget-").toFile()
+        try {
+            val backend = FakeBackend()
+            val result = DefaultMiddleware().withBackend(backend)
+                .initProject(path = tempRoot.absolutePath, targets = listOf("not-a-target"), extraArgs = null)
+
+            assertTrue(result.isFailure)
+            assertTrue("not-a-target" in result.exceptionOrNull()?.message.orEmpty(), result.exceptionOrNull()?.message)
+            assertEquals(null, backend.initArgs, "uv init must not run")
+            assertFalse(File(tempRoot, "pyproject.toml").exists())
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
     /**
      * `ppp init` must not join an unrelated ancestor project: uv's `init` otherwise adds the new
      * project as a workspace member of the nearest ancestor `pyproject.toml` and writes
@@ -117,6 +198,63 @@ class DefaultMiddlewareInitTest {
             val venv = File(tempRoot, ".venv").absolutePath
             assertEquals<List<Triple<String, String?, String?>>>(listOf(Triple(venv, "3.15t", tempRoot.absolutePath)), backend.venvCalls)
             assertEquals<List<Pair<String, String?>>>(listOf(venv to tempRoot.absolutePath), backend.syncCalls)
+        } finally {
+            System.setProperty("user.dir", oldUserDir)
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /**
+     * docs/SPEC.md *Cleaning up subpackage build directories on `python use`* (#159): every workspace
+     * member's `build/packpack/` (the Meson trees configured against the old interpreter) is deleted;
+     * the rest of `build/`, `dist/` and the root's `build/crossenv/` stay.
+     */
+    @Test
+    fun changePythonVersionDeletesEachPackagesCompileTreesAndKeepsTheRest() {
+        val tempRoot = Files.createTempDirectory("ppp-python-use-clean-").toFile().canonicalFile
+        val oldUserDir = System.getProperty("user.dir")
+        try {
+            File(tempRoot, "pyproject.toml").writeText(
+                "[project]\nname = \"ws\"\n\n[tool.uv.workspace]\nmembers = [\"src/core\", \"src/ui\", \"src/gone\"]\n",
+            )
+            fun touch(path: String) = File(tempRoot, path).apply { parentFile.mkdirs(); writeText("x") }
+            val coreTree = touch("src/core/build/packpack/single/debug/instant/default/build.ninja")
+            val uiTree = touch("src/ui/build/packpack/single/release/native/default/build.ninja")
+            val coreOther = touch("src/core/build/notes.txt")
+            val coreDist = touch("src/core/dist/default/debug/instant/core.so")
+            val crossenv = touch("build/crossenv/aarch64-linux-android/core/pkg.py")
+            System.setProperty("user.dir", tempRoot.absolutePath)
+
+            assertTrue(DefaultMiddleware().withBackend(FakeBackend()).changePythonVersion("3.15t"))
+
+            assertFalse(File(tempRoot, "src/core/build/packpack").exists(), "core's compile tree must be deleted")
+            assertFalse(File(tempRoot, "src/ui/build/packpack").exists(), "ui's compile tree must be deleted")
+            assertFalse(coreTree.exists() || uiTree.exists())
+            assertTrue(coreOther.isFile, "the rest of build/ stays")
+            assertTrue(coreDist.isFile, "dist/ stays")
+            assertTrue(crossenv.isFile, "the root's build/crossenv stays")
+        } finally {
+            System.setProperty("user.dir", oldUserDir)
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    /** Without workspace members the project root is the one package: its `build/packpack/` goes. */
+    @Test
+    fun changePythonVersionInASinglePackageRepositoryDeletesTheRootCompileTree() {
+        val tempRoot = Files.createTempDirectory("ppp-python-use-single-").toFile().canonicalFile
+        val oldUserDir = System.getProperty("user.dir")
+        try {
+            File(tempRoot, "pyproject.toml").writeText("[project]\nname = \"solo\"\n")
+            val tree = File(tempRoot, "build/packpack/single/debug/instant/default/build.ninja").apply { parentFile.mkdirs(); writeText("x") }
+            val crossenv = File(tempRoot, "build/crossenv/x86_64-unknown-linux-gnu/m.py").apply { parentFile.mkdirs(); writeText("x") }
+            System.setProperty("user.dir", tempRoot.absolutePath)
+
+            assertTrue(DefaultMiddleware().withBackend(FakeBackend()).changePythonVersion("3.15t"))
+
+            assertFalse(tree.exists(), "the root's compile tree must be deleted")
+            assertFalse(File(tempRoot, "build/packpack").exists())
+            assertTrue(crossenv.isFile, "build/crossenv stays")
         } finally {
             System.setProperty("user.dir", oldUserDir)
             tempRoot.deleteRecursively()

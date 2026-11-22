@@ -29,11 +29,20 @@ internal class RecordingMiddleware : MiddlewareInterface {
 
     override fun initialize() = Unit
 
+    var lastInitPath: String? = null
+    var lastInitTargets: List<String>? = null
+    var lastInitExtraArgs: Map<String, String>? = null
+
     override fun initProject(
         path: String?,
         targets: List<String>?,
         extraArgs: Map<String, String>?,
-    ): Result<String> = Result.success("ok")
+    ): Result<String> {
+        lastInitPath = path
+        lastInitTargets = targets
+        lastInitExtraArgs = extraArgs
+        return Result.success("ok")
+    }
 
     override fun addDependencies(
         packageName: String?,
@@ -104,7 +113,9 @@ internal class RecordingMiddleware : MiddlewareInterface {
         targets: List<String>,
     ): Result<String> = Result.success("ok")
 
-    override fun getToolVersion(): Result<String> = Result.success("ok")
+    var uvVersionResult: Result<String> = Result.success("ok")
+
+    override fun getToolVersion(): Result<String> = uvVersionResult
 
     override fun changePythonVersion(pythonVersion: String): Boolean = true
 

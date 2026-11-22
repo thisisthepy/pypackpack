@@ -722,6 +722,58 @@ class ResourceBundlerTest {
         assertTrue(File(result.outputDir, "python/core/__init__.pyc").isFile, "release bytecode level must keep the .pyc")
     }
 
+    /**
+     * `[tool.ppp].build-dependencies` (docs/SPEC.md *Package build*, #159): only the named installed
+     * dependencies are built at the level; the others ship as source. A name that is not installed warns.
+     */
+    @Test
+    fun bundle_buildDependenciesLimitsWhichDependenciesAreCompiled() {
+        val pkg = packageDir()
+        installVenvPython(pkg)
+        File(pkg, "pyproject.toml").appendText("\n\n[tool.ppp]\nbuild-dependencies = [\"Six\", \"missing_dist\"]\n")
+        write(pkg, "src/main/core/__init__.py", "VALUE = 1\n")
+        val libDir = File(tempDir, "site-packages-scope")
+        write(libDir, "six.py", "X = 1\n")
+        write(libDir, "six-1.17.0.dist-info/RECORD", "six.py,sha256=x,6\nsix-1.17.0.dist-info/RECORD,,\n")
+        write(libDir, "other_pkg/__init__.py", "Y = 2\n")
+        write(libDir, "other_pkg/sub/mod.py", "Z = 3\n")
+        write(libDir, "other_pkg-2.0.dist-info/RECORD", "other_pkg/__init__.py,,\nother_pkg/sub/mod.py,,\nother_pkg-2.0.dist-info/RECORD,,\n")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = "bytecode", buildType = "release", libDirs = listOf(libDir)))
+                .also { assertTrue(it.isSuccess, it.exceptionOrNull()?.stackTraceToString()) }
+                .getOrThrow()
+
+        val py = File(result.outputDir, "python")
+        assertTrue(File(py, "core/__init__.pyc").isFile, "the developer's code is always built")
+        assertFalse(File(py, "core/__init__.py").exists())
+        assertTrue(File(py, "six.pyc").isFile, "six is in build-dependencies (name normalized)")
+        assertFalse(File(py, "six.py").exists())
+        assertTrue(File(py, "other_pkg/__init__.py").isFile && File(py, "other_pkg/sub/mod.py").isFile, "other_pkg ships as source")
+        assertFalse(File(py, "other_pkg/__init__.pyc").exists() || File(py, "other_pkg/sub/mod.pyc").exists(), "other_pkg must not be compiled")
+        assertTrue(result.warnings.any { "missing-dist" in it }, result.warnings.toString())
+    }
+
+    /** Without `[tool.ppp].build-dependencies` every dependency is built at the level (the sheet's default). */
+    @Test
+    fun bundle_withoutBuildDependenciesEveryDependencyIsCompiled() {
+        val pkg = packageDir()
+        installVenvPython(pkg)
+        write(pkg, "src/main/core/__init__.py", "VALUE = 1\n")
+        val libDir = File(tempDir, "site-packages-all")
+        write(libDir, "other_pkg/__init__.py", "Y = 2\n")
+        write(libDir, "other_pkg-2.0.dist-info/RECORD", "other_pkg/__init__.py,,\n")
+
+        val result =
+            bundler()
+                .bundle(BundleRequest(packageDir = pkg, target = "macos", buildLevel = "bytecode", buildType = "release", libDirs = listOf(libDir)))
+                .getOrThrow()
+
+        assertTrue(File(result.outputDir, "python/other_pkg/__init__.pyc").isFile)
+        assertFalse(File(result.outputDir, "python/other_pkg/__init__.py").exists())
+    }
+
     /** The `.pyc` this produces must actually be a compiled Python module, not a copy or a stub. */
     @Test
     fun bundle_bytecodeLevelProducesARealLoadablePycFile() {
