@@ -24,7 +24,10 @@ import java.time.Duration
 
 /**
  * How the cross environment's interpreter reports [canonicalTarget] (docs/SPEC.md *Cross build environment*):
- * `_PYTHON_HOST_PLATFORM` (which becomes the wheel's platform tag), `sys.platform`, the multiarch and `os.uname()`.
+ * `_PYTHON_HOST_PLATFORM`, `sys.platform`, the multiarch and `os.uname()`. `sysconfig.get_platform()` turns
+ * them into the wheel's platform: it splits `_PYTHON_HOST_PLATFORM` at the first `-` into the OS and machine,
+ * and for Android adds the API level and the ABI name itself, so Android's is `android-<machine>`
+ * (`android-aarch64` becomes `android-24-arm64_v8a`, run 44980924111).
  */
 data class CrossTargetIdentity(
     val hostPlatform: String,
@@ -40,8 +43,7 @@ fun crossTargetIdentity(canonicalTarget: String): CrossTargetIdentity {
     val arm = canonicalTarget.startsWith("aarch64") || canonicalTarget.startsWith("arm64")
     val machine = if (arm) "aarch64" else "x86_64"
     if (canonicalTarget in ANDROID_DIRS) {
-        val abi = if (arm) "arm64_v8a" else "x86_64"
-        return CrossTargetIdentity("android-$ANDROID_API_LEVEL-$abi", "android", canonicalTarget, "Linux", machine, ANDROID_API_LEVEL)
+        return CrossTargetIdentity("android-$machine", "android", canonicalTarget, "Linux", machine, ANDROID_API_LEVEL)
     }
     if (canonicalTarget in IOS_TARGETS) {
         val sdk = if (canonicalTarget.endsWith("-simulator")) "iphonesimulator" else "iphoneos"

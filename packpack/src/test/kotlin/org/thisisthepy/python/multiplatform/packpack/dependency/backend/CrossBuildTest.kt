@@ -25,10 +25,10 @@ class CrossBuildTest {
     @Test
     fun eachCrossTargetReportsItsWheelPlatformAndTheHostIsRefused() {
         val android = crossTargetIdentity("aarch64-linux-android")
-        assertEquals("android-24-arm64_v8a", android.hostPlatform)
+        assertEquals("android-aarch64", android.hostPlatform, "sysconfig.get_platform() makes it android-24-arm64_v8a")
         assertEquals("android", android.sysPlatform)
         assertEquals(24, android.androidApiLevel)
-        assertEquals("android-24-x86_64", crossTargetIdentity("x86_64-linux-android").hostPlatform)
+        assertEquals("android-x86_64", crossTargetIdentity("x86_64-linux-android").hostPlatform)
         assertEquals("ios-13.0-arm64-iphoneos", crossTargetIdentity("arm64-apple-ios").hostPlatform)
         assertEquals("ios-13.0-arm64-iphonesimulator", crossTargetIdentity("arm64-apple-ios-simulator").hostPlatform)
         assertEquals("ios-13.0-x86_64-iphonesimulator", crossTargetIdentity("x86_64-apple-ios-simulator").hostPlatform)
@@ -153,7 +153,7 @@ class CrossBuildTest {
         assertTrue("-lpython3.15t" in build.env["LDFLAGS"].orEmpty(), build.env.toString())
 
         val config = MiniJson.parse(File(envDir, "ppp-cross/config.json").readText()) as Map<*, *>
-        assertEquals("android-24-arm64_v8a", config["host_platform"])
+        assertEquals("android-aarch64", config["host_platform"])
         assertEquals("_sysconfigdata_t_android_aarch64-linux-android", config["sysconfigdata_name"])
         assertEquals(24L, config["android_api_level"])
         assertTrue(File(envDir, "ppp-cross/sysconfig/_sysconfigdata_t_android_aarch64-linux-android.py").isFile)
@@ -304,24 +304,31 @@ class CrossBuildTest {
             MiniJson.write(
                 linkedMapOf(
                     "sysconfig_dir" to sysconfigDir.absolutePath, "sysconfigdata_name" to "_sysconfigdata_t_android_aarch64-linux-android",
-                    "host_platform" to "android-24-arm64_v8a", "sys_platform" to "android", "multiarch" to "aarch64-linux-android",
+                    "host_platform" to "android-aarch64", "sys_platform" to "android", "multiarch" to "aarch64-linux-android",
                     "prefix" to prefix.absolutePath, "uname_system" to "Linux", "uname_release" to "", "uname_machine" to "aarch64",
                     "android_api_level" to 24,
                 ),
             ),
         )
+        // CPython 3.13+ (the 3.15t host) maps an Android platform to android-<API level>-<ABI>; older ones keep it.
+        val (versionCode, version) = python3(listOf("-c", "import sys; print(sys.version_info >= (3, 13))"), emptyMap(), tempDir)
+        assertEquals(0, versionCode, version)
+        val platform = if (version.trim() == "True") "android-24-arm64_v8a" else "android-aarch64"
         val probe = "import _ppp_cross, sys, os, sysconfig; print(sys.platform, sysconfig.get_platform(), " +
             "sysconfig.get_config_var('EXT_SUFFIX'), os.uname().machine, getattr(sys, 'getandroidapilevel', lambda: 0)(), sys.base_prefix)"
         val (code, out) = python3(listOf("-c", probe), mapOf("PYTHONPATH" to hookDir.absolutePath, "PPP_CROSS_CONFIG" to config.absolutePath), tempDir)
         assertEquals(0, code, out)
-        assertEquals("android android-24-arm64_v8a .cpython-315t-aarch64-linux-android.so aarch64 24 ${prefix.absolutePath}", out.trim())
+        assertEquals("android $platform .cpython-315t-aarch64-linux-android.so aarch64 24 ${prefix.absolutePath}", out.trim())
 
         val (idle, idleOut) = python3(listOf("-c", "import _ppp_cross, sys; print(sys.platform)"), mapOf("PYTHONPATH" to hookDir.absolutePath), tempDir)
         assertEquals(0, idle, idleOut)
         assertTrue(idleOut.trim() != "android", "without PPP_CROSS_CONFIG the hook does nothing")
     }
 
-    /** The PEP 517 frontend, run by the host `python3` against an in-tree backend. */
+    /**
+     * The PEP 517 frontend, run by the host `python3` against an in-tree backend. The backend rewrites `sys.argv`
+     * in its hook, as setuptools does (run 44980924111).
+     */
     @Test
     fun theFrontendReadsRequirementsAndBuildsThroughTheBackend() {
         val src = File(tempDir, "proj").apply { mkdirs() }
@@ -331,7 +338,9 @@ class CrossBuildTest {
         File(src, "_build").mkdirs()
         File(src, "_build/backend.py").writeText(
             "import os\n" +
-                "def get_requires_for_build_wheel(config_settings=None):\n    print('noise on stdout')\n    return ['cython>=3']\n" +
+                "import sys\n" +
+                "def get_requires_for_build_wheel(config_settings=None):\n" +
+                "    print('noise on stdout')\n    sys.argv = sys.argv[:1] + ['egg_info']\n    return ['cython>=3']\n" +
                 "def build_wheel(out, config_settings=None, metadata_directory=None):\n" +
                 "    name = 'proj-1.0-py3-none-any.whl'\n    open(os.path.join(out, name), 'w').write(repr(config_settings))\n    return name\n",
         )

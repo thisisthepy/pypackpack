@@ -69,7 +69,9 @@ internal object CrossBuildScripts {
         |import sys
         |import tomllib
         |
-        |mode, src = sys.argv[1], os.path.abspath(sys.argv[2])
+        |# setuptools' hooks rewrite sys.argv, so the arguments are read once, here.
+        |argv = list(sys.argv)
+        |mode, src = argv[1], os.path.abspath(argv[2])
         |system = {}
         |pyproject = os.path.join(src, "pyproject.toml")
         |if os.path.isfile(pyproject):
@@ -78,7 +80,7 @@ internal object CrossBuildScripts {
         |
         |
         |def write(value):
-        |    with open(sys.argv[3], "w", encoding="utf-8") as f:
+        |    with open(argv[3], "w", encoding="utf-8") as f:
         |        json.dump(value, f)
         |
         |
@@ -99,11 +101,11 @@ internal object CrossBuildScripts {
         |    hook = getattr(backend, "get_requires_for_build_wheel", None)
         |    write(list(hook({})) if hook else [])
         |elif mode == "build":
-        |    out = os.path.abspath(sys.argv[3])
+        |    out = os.path.abspath(argv[3])
         |    os.makedirs(out, exist_ok=True)
         |    settings = {}
-        |    if len(sys.argv) > 4:
-        |        with open(sys.argv[4], encoding="utf-8") as f:
+        |    if len(argv) > 4:
+        |        with open(argv[4], encoding="utf-8") as f:
         |            settings = json.load(f)
         |    print("PPP_WHEEL=" + backend.build_wheel(out, settings))
         |else:

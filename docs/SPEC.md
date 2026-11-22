@@ -854,9 +854,10 @@ macOS.
     headers and `lib` to its library directory, the layout `sysconfig` expects. The target CPython comes from
     `ppp python install <version> <target>` (`locateTargetPython`), as for the Cargo and Meson cross builds.
   - `ppp-cross/sysconfig/` holds a copy of the target's `_sysconfigdata_*.py`.
-  - `ppp-cross/config.json` names the target: `_PYTHON_HOST_PLATFORM` (`android-24-arm64_v8a`,
+  - `ppp-cross/config.json` names the target: `_PYTHON_HOST_PLATFORM` (`android-aarch64`,
     `ios-13.0-arm64-iphoneos`, `manylinux_2_17_aarch64`, ...), `sys.platform`, the multiarch, the `os.uname()`
-    system and machine, and the Android API level.
+    system and machine, and the Android API level. `sysconfig.get_platform()` makes the wheel's platform from
+    it; for Android it adds the API level and the ABI name (`android-24-arm64_v8a`).
   - `site-packages/_ppp_cross.pth` imports `_ppp_cross`, which does nothing unless `PPP_CROSS_CONFIG` names
     that file. When it does, it sets `_PYTHON_SYSCONFIGDATA_NAME` and `_PYTHON_HOST_PLATFORM`, puts
     `ppp-cross/sysconfig` on `sys.path`, sets `sys.platform`, `sys.implementation._multiarch`,
