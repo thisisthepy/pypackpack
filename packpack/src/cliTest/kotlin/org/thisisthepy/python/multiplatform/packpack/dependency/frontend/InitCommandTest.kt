@@ -14,11 +14,11 @@ class InitCommandTest {
     fun targetsAndOptionsReachTheMiddleware() {
         val middleware = RecordingMiddleware()
         val result = InitCommand().apply { configureContext { obj = middleware } }
-            .test("demo --name demo_pkg --python 3.15t --target aarch64-linux-android aarch64-apple-ios")
+            .test("demo --name demo_pkg --python 3.15t --target aarch64-linux-android arm64-apple-ios")
 
         assertEquals(0, result.statusCode, result.output)
         assertEquals("demo", middleware.lastInitPath)
-        assertEquals(listOf("aarch64-linux-android", "aarch64-apple-ios"), middleware.lastInitTargets)
+        assertEquals(listOf("aarch64-linux-android", "arm64-apple-ios"), middleware.lastInitTargets)
         assertEquals(mapOf("name" to "demo_pkg", "python" to "3.15t"), middleware.lastInitExtraArgs)
     }
 
