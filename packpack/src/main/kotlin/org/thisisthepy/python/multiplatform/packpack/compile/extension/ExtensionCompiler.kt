@@ -862,13 +862,21 @@ class NativeExtensionCompiler(
             )
         }
         val pyconfig = File(includeDir, "pyconfig.h")
+        // A multi-architecture framework (the iOS simulator slice holds arm64 and x86_64) ships a pyconfig.h
+        // that only includes pyconfig-<arch>.h; then the target architecture's file is the one that counts.
+        val archConfig =
+            pyconfig.takeIf { it.isFile }?.let { shim ->
+                val arch = if (canonicalTarget.startsWith("aarch64") || canonicalTarget.startsWith("arm64")) "arm64" else "x86_64"
+                File(includeDir, "pyconfig-$arch.h").takeIf { Regex("""#\s*include\s+"pyconfig-$arch\.h"""").containsMatchIn(shim.readText()) }
+            }
+        val config = archConfig ?: pyconfig
         // Windows' pyconfig.h leaves Py_GIL_DISABLED to the build backend (python-build-standalone
         // 3.15t only tests it), so there the free-threaded import library python3XYt.lib marks the
         // build and Clang passes -DPy_GIL_DISABLED=1 (#155).
         val gilDisabled =
-            pyconfig.isFile &&
+            config.isFile &&
                 (
-                    Regex("""#\s*define\s+Py_GIL_DISABLED\s+1\b""").containsMatchIn(pyconfig.readText()) ||
+                    Regex("""#\s*define\s+Py_GIL_DISABLED\s+1\b""").containsMatchIn(config.readText()) ||
                         (family == "windows" && libraryName != null && WINDOWS_FREE_THREADED_LIB.matches(libraryName))
                 )
         if (!gilDisabled) {
@@ -880,7 +888,7 @@ class NativeExtensionCompiler(
                     if (family == "windows") {
                         "'${libraryName ?: "no library"}' is not a free-threaded import library (python3XYt.lib) and pyconfig.h does not define Py_GIL_DISABLED 1."
                     } else {
-                        "includeDir '${includeDir.path}' does not define Py_GIL_DISABLED 1 in pyconfig.h (free-threaded 3.15t headers required)."
+                        "includeDir '${includeDir.path}' does not define Py_GIL_DISABLED 1 in ${config.name} (free-threaded 3.15t headers required)."
                     },
             )
         }
