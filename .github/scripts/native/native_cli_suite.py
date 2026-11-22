@@ -58,9 +58,9 @@ def main() -> int:
             print("FAIL init into an existing project was not refused")
             return 1
         print("ok   pypackpack init demo (refused: existing project)")
-        run(exe, ["target", "add", "aarch64-apple-ios"], project)
-        run(exe, ["target", "list"], project, "aarch64-apple-ios")
-        run(exe, ["target", "remove", "aarch64-apple-ios"], project)
+        run(exe, ["target", "add", "arm64-apple-ios"], project)
+        run(exe, ["target", "list"], project, "arm64-apple-ios")
+        run(exe, ["target", "remove", "arm64-apple-ios"], project)
         run(exe, ["package", "add", "core"], project)
         core = next(p.parent for p in project.rglob("pyproject.toml") if p.parent.name == "core")
         (core / "src/main/core").mkdir(parents=True, exist_ok=True)
