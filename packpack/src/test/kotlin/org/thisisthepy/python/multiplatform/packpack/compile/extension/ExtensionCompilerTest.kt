@@ -169,6 +169,21 @@ class ExtensionCompilerTest {
         assertNotNull(gilEx)
         assertTrue("Py_GIL_DISABLED" in gilEx.reason, gilEx.reason)
 
+        // A multi-architecture framework's pyconfig.h only includes pyconfig-<arch>.h (the iOS simulator slice of
+        // python-multiplatform's 3.15t XCframework, run 44980924111): the target architecture's file decides.
+        val shim = "#ifdef __arm64__\n#include \"pyconfig-arm64.h\"\n#endif\n\n#ifdef __x86_64__\n#include \"pyconfig-x86_64.h\"\n#endif\n"
+        val fatHeaders = fakeHeaders(File(tempDir, "incFat")).apply {
+            File(this, "pyconfig.h").writeText(shim)
+            File(this, "pyconfig-arm64.h").writeText("#define Py_GIL_DISABLED 1\n")
+            File(this, "pyconfig-x86_64.h").writeText("/* GIL build */\n")
+        }
+        assertTrue(compiler.checkSupport("aarch64-apple-darwin", abi315, fatHeaders).isSuccess, "the arm64 slice header defines it")
+        File(fatHeaders, "pyconfig-arm64.h").writeText("/* GIL build */\n")
+        File(fatHeaders, "pyconfig-x86_64.h").writeText("#define Py_GIL_DISABLED 1\n")
+        val fatGil = compiler.checkSupport("aarch64-apple-darwin", abi315, fatHeaders).exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(fatGil, "another architecture's header does not count")
+        assertTrue("pyconfig-arm64.h" in fatGil.reason, fatGil.reason)
+
         // Missing toolchain
         val noClang = fakeCompiler(clangBin = null)
         val noToolEx = noClang.checkSupport("aarch64-apple-darwin", abi315, headers).exceptionOrNull() as? NoCompileBackendException
