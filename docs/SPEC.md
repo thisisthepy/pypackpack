@@ -105,7 +105,8 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
   - Status: partial. Per-target dependency markers and per-target install directories
     (`build/crossenv/<target>`), see *Per-package target dependency management*; a real `uv`
     install of Android and iOS wheels is tested (`packpack/.../dependency/backend/UVBackendRealInstallTest.kt`).
-    No cross interpreter environment is created.
+    An sdist-only dependency is built for the target in pypackpack's own cross environment, see *Cross build
+    environment (sdist-only dependencies)* (partial: Android has the real build).
 - (3). Support Python code compilation/optimization/minification (nuitka, lpython, etc.)
   - Compilation is TypedPython's (owner, 2026-11-21, relayed by the team lead (toolchain report, "Owner decision (2026-11-21 21:55)"): "Nuitka and Cython are replaced by
     TypedPython and stay only as benchmark comparisons (not build backends)"). TypedPython generates the C
@@ -212,6 +213,8 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - PythonDistributions.kt  # (version, target) -> interpreter archive URL and pinned SHA-256
           - UVBackend.kt
           - MissingWheel.kt  # parses uv's "no wheel for this target" failure
+          - CrossBuild.kt  # the cross build environment: builds sdist-only dependencies for a target (#159)
+          - CrossBuildScripts.kt  # the environment's Python hook and PEP 517 frontend
       - compile
         - frontend
           - FrontendInterface.kt  # factory pattern
@@ -815,6 +818,62 @@ Status: implemented. `packpack/.../dependency/middleware/environment/CrossEnvTes
 
 - `tree` calls `uv tree --package <name> --python-platform <target>` for each target and prints the results in sequence.
 - If `--target` is absent, uses a single host target as the default.
+
+#### Cross build environment (sdist-only dependencies)
+
+Core item (2), "멀티플랫폼 코드를 위한 crossenv 지원". How it is built is the owner's (2026-11-22 05:45, relayed by
+the team lead in the toolchain report, "Owner answers"): "직접 구현", pypackpack's own cross environment, a
+`_sysconfigdata` override plus a startup hook so the host 3.15t reports the target, then the sdist is built
+with the target compiler; no `crossenv` dependency. Recipes live in pypackpack (same source: "pypackpack
+안에"). The details below are an agent proposal, not confirmed.
+
+Status: partial. Unit tests: `packpack/.../dependency/backend/CrossBuildTest.kt` (the configuration, the
+commands and the recipe handling against a recording runner) and `CrossEnvTest.syncBuildsAnSdistOnlyDependencyInTheCrossEnvironmentAndRetries`.
+The real build (`CrossSdistRealBuildTest`, env-gated `PPP_CROSS_SDIST_REAL_BUILD=1`, test.yml `real-builds`)
+builds an sdist-only C package for `aarch64-linux-android` with the runner's NDK; that is the completion
+criterion. iOS and Linux cross targets share the code but have no real build in CI yet.
+
+- **When:** `sync` installs a target's dependencies (above). When uv fails with `NoWheelForTargetException`
+  and only an sdist exists (`SdistAvailability.ONLY_SDIST`), `sync` builds that sdist for the target in the
+  cross environment, then repeats the install with `--find-links <the built wheels>`. It repeats until the
+  install succeeds or a package fails again after its wheel was built (then it fails naming it). A package
+  with no sdist (`NO_SDIST`) or an install with building disabled (`UNKNOWN`) fails as before. The host
+  target never uses it (uv builds host sdists itself).
+- **Where:** `<package>/build/packpack/cross/<canonical target>/`, not `build/crossenv/<target>`: that
+  directory is `uv pip install --target` output and the `resource` bundle vendors it. It holds `env/` (the
+  environment), `sdists/` (downloaded sdists), `src/` (unpacked sources) and `wheels/` (the built wheels, the
+  `--find-links` directory). The host CPython (`installPython(<version>, <host target>)`, the pinned
+  python-build-standalone 3.15t) goes to `<package>/build/packpack/cross/host-python/` and is reused.
+- **The environment:** `uv venv --python <host python> env`. Inside it:
+  - `ppp-cross/prefix/` is a synthesized prefix of the target CPython: `include/python3.Xt` links to the target's
+    headers and `lib` to its library directory, the layout `sysconfig` expects. The target CPython comes from
+    `ppp python install <version> <target>` (`locateTargetPython`), as for the Cargo and Meson cross builds.
+  - `ppp-cross/sysconfig/` holds a copy of the target's `_sysconfigdata_*.py`.
+  - `ppp-cross/config.json` names the target: `_PYTHON_HOST_PLATFORM` (`android-24-arm64_v8a`,
+    `ios-13.0-arm64-iphoneos`, `manylinux_2_17_aarch64`, ...), `sys.platform`, the multiarch, the `os.uname()`
+    system and machine, and the Android API level.
+  - `site-packages/_ppp_cross.pth` imports `_ppp_cross`, which does nothing unless `PPP_CROSS_CONFIG` names
+    that file. When it does, it sets `_PYTHON_SYSCONFIGDATA_NAME` and `_PYTHON_HOST_PLATFORM`, puts
+    `ppp-cross/sysconfig` on `sys.path`, sets `sys.platform`, `sys.implementation._multiarch`,
+    `sys.cross_compiling`, `sys.base_prefix` / `sys.base_exec_prefix` (the synthesized prefix), `os.uname()`
+    and, for Android, `sys.getandroidapilevel()`, and makes `sysconfig` reload its variables.
+- **The build:** a PEP 517 frontend of pypackpack's own (`ppp-cross/pep517.py`, standard library only) runs
+  the sdist's backend (`[build-system].build-backend`, default `setuptools.build_meta:__legacy__`). First, in
+  host mode, uv installs `[build-system].requires` into the environment (`uv pip install --python`), then the
+  backend's `get_requires_for_build_wheel`. Then `build_wheel` runs in cross mode (`PPP_CROSS_CONFIG` set)
+  with `CC`, `CXX`, `AR`, `LDSHARED` (`$CC -shared`) and `LDFLAGS` (the target's link arguments) set to the
+  target toolchain the Meson cross build uses (`MesonCross.forTarget`: the NDK's clang for API 24, `zig cc`
+  for Linux cross targets, `xcrun --sdk ... clang` for iOS). uv's own frontend is not used because uv would
+  query the interpreter and see the faked platform. Backends that read `sysconfig` and these variables
+  (setuptools, and so most C sdists) build; a backend that needs its own cross file (meson-python,
+  scikit-build-core) is not handled yet.
+- **The sdist:** `name==version` from uv's message, fetched through PyPI's JSON API
+  (`https://pypi.org/pypi/<name>/<version>/json`), the `sdist` entry, its `sha256` checked.
+- **Recipes** (`pip-jit`, owner: "pypackpack 안에"): `[tool.ppp.recipes.<name>]` in the package's
+  `pyproject.toml`, keyed by the normalized distribution name: `patches = ["recipes/foo.patch", ...]` (paths
+  relative to the package, applied in order with `patch -p1 --forward --batch` in the unpacked source before
+  the build; `patch` must be on `PATH`) and `env = { KEY = "value" }` (added to the build's environment).
+  A patch that does not apply fails the build naming it. toolchain's `pip { jit }` is to drive these.
 
 #### Cleaning up subpackage build directories on `python use`
 
