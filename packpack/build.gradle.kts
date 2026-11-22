@@ -148,8 +148,8 @@ signing {
 // (#73; the CLI was a root `cli/` module from 488bac0 until then). `cliVersion` is the CLI's own
 // version, which `pypackpack version` prints and the PyPI wheel carries; publish-pypi.yml refuses
 // to publish unless it equals pyproject.toml's. The library keeps `version`, because toolchain
-// resolves `packpack:0.1.0`.
-val cliVersion = "0.4.1"
+// resolves `packpack:<packpackVersion>` (gradle.properties).
+val cliVersion = "1.0.0"
 val cliMainClass = "org.thisisthepy.python.multiplatform.packpack.utils.CommandLineKt"
 
 val cli: SourceSet by sourceSets.creating

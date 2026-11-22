@@ -3,7 +3,7 @@
 Python 프로젝트를 여러 플랫폼(데스크톱, Android, iOS, WASM)으로 배포하기 위한 빌드 도구.
 Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다. GraalVM 네이티브 CLI
 `pypackpack`(`ppp`) 이면서, `toolchain` 이 호출하는 JVM 라이브러리
-(`org.thisisthepy.python.multiplatform:packpack:0.1.0`) 이기도 하다.
+(`org.thisisthepy.python.multiplatform:packpack:1.0.0`) 이기도 하다.
 
 ## 사양의 출처
 
@@ -57,11 +57,12 @@ Python 확보, 의존성 해석(`uv`), 컴파일(Meson), 번들링을 맡는다.
 - `build` 가 의존성 확인을 하지 않음 (사양서의 오케스트레이션). `build <package> source` 의 기본 `binary` 번들은 미구현이라 거부
 - GraalVM 네이티브 이미지: 설정은 있으나 이를 빌드하는 테스트나 CI 가 없음
 
-**계획 (빈 파일이거나 없음)**
-- `native` / `mixed` 빌드 레벨, `binary` 번들
-- Clang/MSVC/NDK/XCode/Emscripten 백엔드, Nuitka/Cython/Lpython, 최소화(minification)
-- `deploy`: `code single|fat` 만 PyPI 로 (`uv publish`, `--publish-url`·`--dry-run`, 토큰 저장 없음, #90). `binary`·`patch` (FastTrack), `resource`, `weight` 는 서버가 없어 "not implemented" 로 실패
-- 패치 버전 추적, 코드 업데이트 fast track API
+**계획 (빈 파일이거나 없음)**: 아래 두 가지를 빼고 모두 1.0 범위 (오너, 2026-11-21 21:55, 팀 리드 전달: "전부 1.0에 넣어", 범위 축소 금지 22:05). 항목은 `docs/SPEC.md` *1.0 scope*
+- `binary` 번들, MSVC/XCode/Emscripten 백엔드
+- 컴파일은 TypedPython 이 맡음 (오너 2026-11-21: Nuitka·Cython·Lpython 은 빌드 백엔드가 아니라 벤치마크 비교로만 남김, "Lpython도 비교군으로만"; 비교는 python-multiplatform `benchmarks/typedpython/`). 빈 자리표시 파일은 삭제
+- `deploy`: `code single|fat` 만 PyPI 로 (`uv publish`, `--publish-url`·`--dry-run`, 토큰 저장 없음, #90). `resource`, `weight` 는 서버가 없어 "not implemented" 로 실패 (1.0 범위, 서버가 막고 있음)
+- 패치 버전 추적
+- 1.0 이후 (오너 결정): FastTrack 배포 (`binary`·`patch`), 코드 최소화(minification, SPEC *Code minification*)
 
 ## 구조
 
