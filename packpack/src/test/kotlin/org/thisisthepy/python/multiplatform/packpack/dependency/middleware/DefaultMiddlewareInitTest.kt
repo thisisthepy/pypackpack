@@ -41,13 +41,13 @@ class DefaultMiddlewareInitTest {
         val tempRoot = Files.createTempDirectory("ppp-init-targets-").toFile()
         try {
             DefaultMiddleware().withBackend(FakeBackend())
-                .initProject(path = tempRoot.absolutePath, targets = listOf("aarch64-apple-ios", "aarch64-linux-android"), extraArgs = null)
+                .initProject(path = tempRoot.absolutePath, targets = listOf("arm64-apple-ios", "aarch64-linux-android"), extraArgs = null)
                 .getOrThrow()
 
             val toml = File(tempRoot, "pyproject.toml").readText()
             assertTrue(Regex("""\[tool\.ppp\.dependencies]""").containsMatchIn(toml), toml)
             val platforms = Regex("""platforms\s*=\s*\[([^\]]*)]""").find(toml)?.groupValues?.get(1).orEmpty()
-            assertTrue("\"aarch64-linux-android\"" in platforms && "\"aarch64-apple-ios\"" in platforms, toml)
+            assertTrue("\"aarch64-linux-android\"" in platforms && "\"arm64-apple-ios\"" in platforms, toml)
         } finally {
             tempRoot.deleteRecursively()
         }
