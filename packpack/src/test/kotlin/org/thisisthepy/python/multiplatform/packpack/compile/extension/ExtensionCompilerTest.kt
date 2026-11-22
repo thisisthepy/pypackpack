@@ -225,6 +225,41 @@ class ExtensionCompilerTest {
         )
     }
 
+    /**
+     * The Windows 3.15t headers (python-build-standalone 20261013) leave `Py_GIL_DISABLED` to the build
+     * backend: `pyconfig.h` only tests it. The free-threaded import library `python3XYt.lib` is what marks
+     * the build, so Windows accepts those headers with it, passes `-DPy_GIL_DISABLED=1`, and still refuses
+     * the GIL build's `python3XY.lib` (#155, run 44945907832).
+     */
+    @Test
+    fun windowsTakesFreeThreadingFromItsImportLibraryAndDefinesPyGilDisabled() {
+        val headers = fakeHeaders(dir = File(tempDir, "win-include"), gilDisabled = false)
+        File(headers, "pyconfig.h").writeText("#ifdef Py_GIL_DISABLED\n#if Py_GIL_DISABLED == 0\n#undef Py_GIL_DISABLED\n#endif\n#endif\n")
+        val winLibs = File(tempDir, "win-libs").apply {
+            mkdirs()
+            File(this, "python315t.lib").writeText("lib")
+            File(this, "python315.lib").writeText("lib")
+        }
+        val onWindows = fakeCompiler(hostTarget = "x86_64-pc-windows-msvc", windowsMachine = "x86_64-pc-windows-msvc")
+        assertTrue(onWindows.checkSupport("x86_64-pc-windows-msvc", abi315, headers, winLibs, "python315t.lib").isSuccess)
+        val gil = onWindows.checkSupport("x86_64-pc-windows-msvc", abi315, headers, winLibs, "python315.lib").exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(gil)
+        assertTrue("Py_GIL_DISABLED" in gil.reason, gil.reason)
+
+        val calls = mutableListOf<RecordedCall>()
+        val pkg = File(tempDir, "pkg-win-ft").apply { mkdirs() }
+        val cFile = File(tempDir, "src/w.c").apply { parentFile.mkdirs(); writeText("#include <Python.h>\n") }
+        fakeCompiler(hostTarget = "x86_64-pc-windows-msvc", windowsMachine = "x86_64-pc-windows-msvc", calls = calls).compile(
+            ExtensionCompileRequest(
+                modules = listOf(ExtensionModuleSource("w", listOf(cFile))),
+                target = "x86_64-pc-windows-msvc", pythonAbi = abi315, buildType = "release", workingDir = pkg,
+                buildDir = File(pkg, "work"), outputDir = File(pkg, "out"), includeDir = headers,
+                extensionSuffix = ".cp315t-win_amd64.pyd", libDir = winLibs, libraryName = "python315t.lib",
+            ),
+        ).getOrThrow()
+        assertTrue("-DPy_GIL_DISABLED=1" in calls[0].command, calls[0].command.toString())
+    }
+
     /** The compile and link commands each new target gets (#155). */
     @Test
     fun compile_buildsEachNewTargetWithItsCompilerFlagsAndLink() {

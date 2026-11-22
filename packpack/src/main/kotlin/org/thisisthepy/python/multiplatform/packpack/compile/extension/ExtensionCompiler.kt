@@ -357,6 +357,9 @@ interface ExtensionCompilerInterface {
     }
 }
 
+/** The free-threaded Windows import library, `python3XYt.lib`; the GIL build ships `python3XY.lib`. */
+private val WINDOWS_FREE_THREADED_LIB = Regex("""python3\d+t\.lib""", RegexOption.IGNORE_CASE)
+
 /**
  * Default [ExtensionCompilerInterface] implementation (`docs/design/compile-slot.md` §7–§9, #20).
  *
@@ -815,7 +818,7 @@ class NativeExtensionCompiler(
                     )
             }
 
-        verifyHeaders(canonical, pythonAbi, resolved.toolchain, includeDir)
+        verifyHeaders(canonical, pythonAbi, resolved.toolchain, includeDir, family, libraryName)
         return resolved
     }
 
@@ -824,6 +827,8 @@ class NativeExtensionCompiler(
         pythonAbi: PythonAbi,
         toolchain: NativeToolchain,
         includeDir: File,
+        family: String,
+        libraryName: String?,
     ) {
         val pythonH = File(includeDir, "Python.h")
         if (!pythonH.isFile) {
@@ -857,15 +862,26 @@ class NativeExtensionCompiler(
             )
         }
         val pyconfig = File(includeDir, "pyconfig.h")
+        // Windows' pyconfig.h leaves Py_GIL_DISABLED to the build backend (python-build-standalone
+        // 3.15t only tests it), so there the free-threaded import library python3XYt.lib marks the
+        // build and Clang passes -DPy_GIL_DISABLED=1 (#155).
         val gilDisabled =
             pyconfig.isFile &&
-                Regex("""#\s*define\s+Py_GIL_DISABLED\s+1\b""").containsMatchIn(pyconfig.readText())
+                (
+                    Regex("""#\s*define\s+Py_GIL_DISABLED\s+1\b""").containsMatchIn(pyconfig.readText()) ||
+                        (family == "windows" && libraryName != null && WINDOWS_FREE_THREADED_LIB.matches(libraryName))
+                )
         if (!gilDisabled) {
             throw NoCompileBackendException(
                 target = canonicalTarget,
                 pythonAbi = pythonAbi,
                 toolchain = toolchain,
-                reason = "includeDir '${includeDir.path}' does not define Py_GIL_DISABLED 1 in pyconfig.h (free-threaded 3.15t headers required).",
+                reason =
+                    if (family == "windows") {
+                        "'${libraryName ?: "no library"}' is not a free-threaded import library (python3XYt.lib) and pyconfig.h does not define Py_GIL_DISABLED 1."
+                    } else {
+                        "includeDir '${includeDir.path}' does not define Py_GIL_DISABLED 1 in pyconfig.h (free-threaded 3.15t headers required)."
+                    },
             )
         }
     }
