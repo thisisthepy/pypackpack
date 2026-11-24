@@ -70,39 +70,75 @@ data class CrossRecipe(
     val env: Map<String, String>,
 )
 
+/** The keys a recipe has, in `[tool.ppp.recipes.<name>]` and in a recipe file alike. */
+private val RECIPE_KEYS = listOf("patches", "env")
+
+/** The spellings a recipe for [distribution] may be named by: the PEP 503 name, its `_` form and the name as uv printed it. */
+private fun recipeNames(distribution: String): List<String> {
+    val normalized = normalizeDistributionName(distribution)
+    return listOf(normalized, normalized.replace('-', '_'), distribution.trim()).distinct().filter { !it.contains('.') }
+}
+
 /**
- * [distribution]'s recipe in [packageDir]'s `pyproject.toml`, or `null`. The table is
- * `[tool.ppp.recipes.<name>]` with `<name>` the PEP 503 name (`foo-bar`), its `_` spelling or the name as
- * uv printed it. A listed patch that does not exist fails here, before anything is built.
+ * [distribution]'s recipe, or `null`. The package's own `pyproject.toml` is read first: the table
+ * `[tool.ppp.recipes.<name>]`, with patch paths relative to [packageDir]. Then each of [recipeDirs] in order:
+ * the file `<dir>/<name>.toml`, holding the same keys at its top level, with patch paths relative to that
+ * directory (#168; the recipe-directory format toolchain's `pip { jit { localRecipes } }` points at, approved
+ * by the leader on 2026-11-25). `<name>` is the PEP 503 name (`foo-bar`), its `_` spelling or the name as uv
+ * printed it. A listed patch that does not exist, or a key a recipe does not have, fails here, before
+ * anything is built.
  */
 fun readCrossRecipe(
     packageDir: File,
     distribution: String,
+    recipeDirs: List<File> = emptyList(),
 ): CrossRecipe? {
-    val pyproject = File(packageDir, "pyproject.toml").takeIf { it.isFile } ?: return null
-    val editor = TomlEditor(pyproject.readText())
-    val normalized = normalizeDistributionName(distribution)
-    val table = listOf(normalized, normalized.replace('-', '_'), distribution.trim())
-        .distinct()
-        .filter { !it.contains('.') }
-        .map { "tool.ppp.recipes.$it" }
-        .firstOrNull { editor.hasTable(it) }
-        ?: return null
+    val names = recipeNames(distribution)
+    File(packageDir, "pyproject.toml").takeIf { it.isFile }?.let { pyproject ->
+        val editor = TomlEditor(pyproject.readText())
+        names.map { "tool.ppp.recipes.$it" }.firstOrNull { editor.hasTable(it) }?.let { table ->
+            return parseRecipe(editor, table, packageDir, "[$table]")
+        }
+    }
+    for (dir in recipeDirs) {
+        val file = names.map { File(dir, "$it.toml") }.firstOrNull { it.isFile } ?: continue
+        val text = file.readText()
+        require(text.lines().none { Regex("""^\s*\[\[?[A-Za-z_"']""").containsMatchIn(it) }) {
+            "Recipe ${file.path} has a table; a recipe file holds only top-level keys (${RECIPE_KEYS.joinToString()})."
+        }
+        // The keys sit at the file's top level; TomlEditor reads tables, so they are read as one.
+        val editor = TomlEditor("[recipe]\n$text")
+        val unknown = editor.getTableKeys("recipe").filter { it !in RECIPE_KEYS }
+        require(unknown.isEmpty()) {
+            "Recipe ${file.path} has ${unknown.joinToString { "'$it'" }}; a recipe's keys are ${RECIPE_KEYS.joinToString()}."
+        }
+        return parseRecipe(editor, "recipe", dir, "Recipe ${file.path}")
+    }
+    return null
+}
+
+/** The recipe in [table] of [editor], its patch paths resolved against [base]. */
+private fun parseRecipe(
+    editor: TomlEditor,
+    table: String,
+    base: File,
+    where: String,
+): CrossRecipe {
     val patches =
         when (val value = editor.getValue(table, "patches")) {
             null -> emptyList()
             is TomlValue.Array -> value.items.map { path ->
-                File(packageDir, path).also { require(it.isFile) { "[$table] patch not found: ${it.path}" } }
+                File(base, path).also { require(it.isFile) { "$where: patch not found: ${it.path}" } }
             }
-            else -> throw IllegalArgumentException("[$table].patches must be an array of paths.")
+            else -> throw IllegalArgumentException("$where: patches must be an array of paths.")
         }
     val env =
         when (val value = editor.getValue(table, "env")) {
             null -> emptyMap()
             is TomlValue.InlineTable -> value.pairs.mapValues { (name, v) ->
-                (v as? TomlValue.String)?.value ?: throw IllegalArgumentException("[$table].env.$name must be a string.")
+                (v as? TomlValue.String)?.value ?: throw IllegalArgumentException("$where: env.$name must be a string.")
             }
-            else -> throw IllegalArgumentException("[$table].env must be an inline table of strings.")
+            else -> throw IllegalArgumentException("$where: env must be an inline table of strings.")
         }
     return CrossRecipe(patches, env)
 }
@@ -152,11 +188,15 @@ open class CrossSdistBuilder(
     /** The `--find-links` directory: the wheels built so far for [canonicalTarget]. */
     fun wheelsDir(packageDir: File, canonicalTarget: String): File = File(crossDir(packageDir, canonicalTarget), "wheels")
 
-    /** Fetches `name==version` from PyPI, builds it for [canonicalTarget] and returns the wheel. */
+    /**
+     * Fetches `name==version` from PyPI, builds it for [canonicalTarget] and returns the wheel. Its recipe comes
+     * from [packageDir]'s `pyproject.toml` or [recipeDirs] ([readCrossRecipe]).
+     */
     open fun buildFromPyPI(
         packageDir: File,
         canonicalTarget: String,
         packageSpec: String,
+        recipeDirs: List<File> = emptyList(),
     ): Result<File> =
         runCatching {
             val (name, version) = packageSpec.split("==", limit = 2).map { it.trim() }.takeIf { it.size == 2 && it.all(String::isNotEmpty) }
@@ -170,7 +210,7 @@ open class CrossSdistBuilder(
                 check(actual == source.sha256) { "The sdist of $packageSpec has SHA-256 $actual, PyPI says ${source.sha256}." }
                 sdist.writeBytes(bytes)
             }
-            buildSdist(packageDir, canonicalTarget, sdist, name).getOrThrow()
+            buildSdist(packageDir, canonicalTarget, sdist, name, recipeDirs).getOrThrow()
         }
 
     /** Unpacks [sdist] (a `.tar.gz` or `.zip`), applies [distribution]'s recipe and builds it for [canonicalTarget]. */
@@ -179,9 +219,10 @@ open class CrossSdistBuilder(
         canonicalTarget: String,
         sdist: File,
         distribution: String,
+        recipeDirs: List<File> = emptyList(),
     ): Result<File> =
         runCatching {
-            val recipe = readCrossRecipe(packageDir, distribution)
+            val recipe = readCrossRecipe(packageDir, distribution, recipeDirs)
             val src = File(crossDir(packageDir, canonicalTarget), "src/${sdist.name.removeSuffix(".tar.gz").removeSuffix(".zip")}")
             src.deleteWithoutFollowingLinks()
             src.mkdirs()
@@ -211,6 +252,7 @@ open class CrossSdistBuilder(
             installRequirements(env, MiniJson.parseStringList(scratch.readText()), src)
             exec(listOf(python, env.frontend.absolutePath, "backend", src.absolutePath, scratch.absolutePath), src, emptyMap(), "read the build backend")
             val backendName = MiniJson.parseStringList(scratch.readText()).single()
+            val backendEnv = if (isMaturin(backendName)) maturinBuildEnv(env, cross, canonicalTarget) else emptyMap()
             val settings = backendSettings(backendName, env, cross, canonicalTarget)
             // The backend's own requirements depend on the settings (scikit-build-core asks for CMake when the
             // build host's is older than cmake.version).
@@ -227,7 +269,7 @@ open class CrossSdistBuilder(
             val output = exec(
                 listOf(python, env.frontend.absolutePath, "build", src.absolutePath, out.absolutePath) + listOfNotNull(settings?.absolutePath),
                 src,
-                crossBuildEnv(env, cross) + extraEnv,
+                crossBuildEnv(env, cross) + backendEnv + extraEnv,
                 "build ${src.name} for $canonicalTarget",
             )
             val wheel = output.lineSequence().map { it.trim() }.lastOrNull { it.startsWith("PPP_WHEEL=") }?.removePrefix("PPP_WHEEL=")
@@ -384,6 +426,47 @@ open class CrossSdistBuilder(
         return File(dir, "settings.json").apply { writeText(MiniJson.write(settings)) }
     }
 
+    /**
+     * The variables a `maturin` sdist needs to cross-compile for an Android [canonicalTarget] (#168), as the Cargo
+     * backend's Android path sets them (`compile/backend/external/Cargo.kt`):
+     * - `MATURIN_PEP517_ARGS`: `--target <rust triple>` (pypackpack's Android triples are Rust's).
+     * - `PYO3_CROSS_LIB_DIR` / `PYO3_CROSS_PYTHON_VERSION` / `PYO3_CROSS_PYTHON_IMPLEMENTATION`: the target CPython,
+     *   whose `_sysconfigdata` tells PyO3 the ABI (free-threaded for 3.15t).
+     * - Cargo's linker and the `cc` crate's `CC_` / `CXX_` / `AR_` for the target: the target compilers, each behind
+     *   a one-line wrapper, because Cargo and `cc` take one executable.
+     * - `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`: the target's link arguments (Android links libpython), one
+     *   `-C link-arg=` each.
+     *
+     * Other cross targets are refused naming the target: their maturin cross builds are not wired here.
+     */
+    internal fun maturinBuildEnv(
+        env: Environment,
+        cross: MesonCross,
+        canonicalTarget: String,
+    ): Map<String, String> {
+        require(canonicalTarget in ANDROID_RUST_TARGETS) {
+            "pypackpack cross-builds maturin (Rust) sdists for Android only (${ANDROID_RUST_TARGETS.joinToString()}); " +
+                "$canonicalTarget is not one. Build that package for $canonicalTarget elsewhere and install its wheel."
+        }
+        val dir = env.config.parentFile
+        val cc = wrapper(File(dir, "bin/cc"), cross.c)
+        val cxx = wrapper(File(dir, "bin/c++"), cross.cpp)
+        val ar = wrapper(File(dir, "bin/ar"), cross.ar)
+        val lib = cross.target.libDir ?: throw IllegalStateException("The CPython for $canonicalTarget names no library directory.")
+        val key = canonicalTarget.replace('-', '_')
+        return linkedMapOf(
+            "MATURIN_PEP517_ARGS" to "--target $canonicalTarget",
+            "PYO3_CROSS_LIB_DIR" to lib.absolutePath,
+            "PYO3_CROSS_PYTHON_VERSION" to pythonVersion.removeSuffix("t"),
+            "PYO3_CROSS_PYTHON_IMPLEMENTATION" to "CPython",
+            "CARGO_TARGET_${key.uppercase()}_LINKER" to cc.absolutePath,
+            "CC_$key" to cc.absolutePath,
+            "CXX_$key" to cxx.absolutePath,
+            "AR_$key" to ar.absolutePath,
+            "CARGO_TARGET_${key.uppercase()}_RUSTFLAGS" to cross.target.linkArgs.joinToString(" ") { "-C link-arg=$it" },
+        )
+    }
+
     /** A `#!/bin/sh` script at [file] that runs [command] with its own arguments appended. */
     private fun wrapper(
         file: File,
@@ -395,13 +478,20 @@ open class CrossSdistBuilder(
             setExecutable(true)
         }
 
-    /** The cross-mode environment variables: the config and the target toolchain. */
+    /**
+     * The cross-mode environment variables: the environment's `bin` first on `PATH`, the config and the target
+     * toolchain. The frontend runs the environment's interpreter without activating it, so the build requirements'
+     * programs (Cython, meson, ninja, maturin's own binary) would otherwise be whatever the machine has first on
+     * `PATH`: a Homebrew Cython 0.29 made meson reject numpy's `cython` ("cannot compile programs"), and maturin's
+     * hooks found no `maturin` at all (#168). pypa's `build` puts its environment's scripts first the same way.
+     */
     internal fun crossBuildEnv(
         env: Environment,
         cross: MesonCross,
     ): Map<String, String> {
         val cc = cross.c.joinToString(" ") { shellWord(it) }
         return linkedMapOf(
+            "PATH" to env.interpreter.parentFile.absolutePath + File.pathSeparator + System.getenv("PATH").orEmpty(),
             "PPP_CROSS_CONFIG" to env.config.absolutePath,
             "CC" to cc,
             "CXX" to cross.cpp.joinToString(" ") { shellWord(it) },
@@ -444,6 +534,12 @@ open class CrossSdistBuilder(
     }
 
     internal companion object {
+        /** The Android targets a `maturin` sdist is cross-built for; pypackpack's triples are Rust's here. */
+        val ANDROID_RUST_TARGETS = listOf("aarch64-linux-android", "x86_64-linux-android")
+
+        /** Whether [backend] (`build-backend`) is maturin's PEP 517 backend. */
+        fun isMaturin(backend: String): Boolean = backend.substringBefore(':').trim().let { it == "maturin" || it.startsWith("maturin.") }
+
         fun venvInterpreter(envDir: File): File =
             if (System.getProperty("os.name").lowercase().contains("win")) File(envDir, "Scripts/python.exe") else File(envDir, "bin/python")
 

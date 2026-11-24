@@ -59,6 +59,40 @@ class CrossBuildTest {
         assertTrue("gone.patch" in missing.message.orEmpty(), missing.message)
     }
 
+    /**
+     * Recipe directories (#168, the format the leader approved on 2026-11-25): `<dir>/<name>.toml` with the keys of
+     * `[tool.ppp.recipes.<name>]`, patches relative to the file. The first directory that has one wins, and a table
+     * in the package's own `pyproject.toml` wins over every file.
+     */
+    @Test
+    fun aRecipeDirectoryHoldsOneTomlPerPackageAndThePackagesOwnTableWins() {
+        val pkg = File(tempDir, "pkg").apply { mkdirs() }
+        val first = File(tempDir, "recipes-a").apply { mkdirs() }
+        val second = File(tempDir, "recipes-b").apply { mkdirs() }
+        File(first, "patches").mkdirs()
+        File(first, "patches/fix.patch").writeText("--- a/x\n+++ b/x\n")
+        File(first, "foo_bar.toml").writeText("patches = [\"patches/fix.patch\"]\nenv = { FOO_NO_SIMD = \"1\" }\n")
+        File(second, "foo-bar.toml").writeText("env = { FROM = \"second\" }\n")
+        File(second, "only-here.toml").writeText("env = { FROM = \"second\" }\n")
+
+        val recipe = readCrossRecipe(pkg, "Foo.Bar", listOf(first, second))!!
+        assertEquals(listOf(File(first, "patches/fix.patch")), recipe.patches, "a patch path is relative to its recipe file")
+        assertEquals(mapOf("FOO_NO_SIMD" to "1"), recipe.env)
+        assertEquals(CrossRecipe(emptyList(), mapOf("FROM" to "second")), readCrossRecipe(pkg, "only_here", listOf(first, second)))
+        assertNull(readCrossRecipe(pkg, "other", listOf(first, second)))
+        assertNull(readCrossRecipe(pkg, "foo-bar"), "no directories, no pyproject.toml: no recipe")
+
+        File(pkg, "pyproject.toml").writeText("[project]\nname = \"core\"\n\n[tool.ppp.recipes.foo-bar]\nenv = { FROM = \"pyproject\" }\n")
+        assertEquals(mapOf("FROM" to "pyproject"), readCrossRecipe(pkg, "foo_bar", listOf(first, second))!!.env)
+
+        File(first, "gone.toml").writeText("patches = [\"patches/gone.patch\"]\n")
+        val missing = assertFailsWith<IllegalArgumentException> { readCrossRecipe(pkg, "gone", listOf(first)) }
+        assertTrue("gone.patch" in missing.message.orEmpty() && "gone.toml" in missing.message.orEmpty(), missing.message)
+        File(first, "typo.toml").writeText("patch = [\"patches/fix.patch\"]\n")
+        val typo = assertFailsWith<IllegalArgumentException> { readCrossRecipe(pkg, "typo", listOf(first)) }
+        assertTrue("'patch'" in typo.message.orEmpty() && "patches, env" in typo.message.orEmpty(), typo.message)
+    }
+
     @Test
     fun theSdistEntryIsTakenFromPyPIsJsonAndItsAbsenceIsNamed() {
         val json = """{"info": {"name": "markupsafe"}, "urls": [
@@ -149,6 +183,10 @@ class CrossBuildTest {
         assertEquals("build", build.command[2])
         assertEquals(5, build.command.size, "setuptools needs no config settings: ${build.command}")
         assertEquals(File(envDir, "ppp-cross/config.json").absolutePath, build.env["PPP_CROSS_CONFIG"])
+        assertTrue(
+            build.env["PATH"].orEmpty().startsWith(File(envDir, "bin").absolutePath + File.pathSeparator),
+            "the build requirements' programs come from the environment, not the machine (#168): ${build.env["PATH"]}",
+        )
         assertEquals("/ndk/bin/aarch64-linux-android24-clang", build.env["CC"])
         assertEquals("/ndk/bin/aarch64-linux-android24-clang -shared", build.env["LDSHARED"])
         assertTrue("-lpython3.15t" in build.env["LDFLAGS"].orEmpty(), build.env.toString())
@@ -262,6 +300,127 @@ class CrossBuildTest {
         val (refused, message) = emulate(File(tempDir, "a.out").absolutePath)
         assertEquals(1, refused)
         assertTrue("cannot run on the build host" in message, message)
+    }
+
+    /**
+     * maturin (#168): the Rust target through `MATURIN_PEP517_ARGS`, PyO3's cross variables naming the target CPython,
+     * and Cargo's linker, `CC`, `AR` and link arguments for the target, as the Cargo backend's Android path sets them.
+     * maturin is cross-built for Android only; another cross target is refused naming it.
+     */
+    @Test
+    fun maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly() {
+        val pkg = File(tempDir, "pkg").apply { mkdirs() }
+        val src = File(tempDir, "src/r-1.0").apply { mkdirs() }
+        fun builder(cross: MesonCross, calls: MutableList<Call>) = CrossSdistBuilder(
+            run = recordingRunner(calls, "maturin"),
+            fetch = { error("no network") },
+            installHostPython = { _, _, dir -> File(dir, "bin").mkdirs(); File(dir, "bin/python3").writeText(""); Result.success(Unit) },
+            crossFor = { _, _ -> cross },
+            hostTarget = { "aarch64-apple-darwin" },
+        )
+        val calls = mutableListOf<Call>()
+        val cross = fakeCross()
+        builder(cross, calls).buildSource(pkg, "aarch64-linux-android", src).getOrThrow()
+
+        val build = calls.single { it.command.getOrNull(2) == "build" }
+        assertEquals(5, build.command.size, "maturin takes its target from the environment, not config settings: ${build.command}")
+        val env = build.env
+        assertEquals("--target aarch64-linux-android", env["MATURIN_PEP517_ARGS"])
+        val envBin = File(pkg, "build/packpack/cross/aarch64-linux-android/env/bin").absolutePath
+        assertTrue(env["PATH"].orEmpty().startsWith(envBin + File.pathSeparator), "maturin's hooks run the env's maturin binary: ${env["PATH"]}")
+        assertEquals(cross.target.libDir!!.absolutePath, env["PYO3_CROSS_LIB_DIR"])
+        assertEquals("3.15", env["PYO3_CROSS_PYTHON_VERSION"])
+        assertEquals("CPython", env["PYO3_CROSS_PYTHON_IMPLEMENTATION"])
+        val crossFiles = File(pkg, "build/packpack/cross/aarch64-linux-android/env/ppp-cross")
+        val linker = File(crossFiles, "bin/cc")
+        assertEquals(linker.absolutePath, env["CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"])
+        assertEquals(linker.absolutePath, env["CC_aarch64_linux_android"])
+        assertEquals(File(crossFiles, "bin/c++").absolutePath, env["CXX_aarch64_linux_android"])
+        assertEquals(File(crossFiles, "bin/ar").absolutePath, env["AR_aarch64_linux_android"])
+        assertEquals("#!/bin/sh\nexec /ndk/bin/aarch64-linux-android24-clang \"\$@\"\n", linker.readText())
+        val rustflags = env["CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS"].orEmpty()
+        assertTrue("-C link-arg=-lpython3.15t" in rustflags && "-C link-arg=-L${cross.target.libDir!!.path}" in rustflags, rustflags)
+        assertEquals("/ndk/bin/aarch64-linux-android24-clang", env["CC"], "the setuptools variables stay for build scripts")
+
+        val ios = MesonCross(
+            TargetPython("arm64-apple-ios", File(tempDir, "h").apply { mkdirs() }, ".so", emptyList(), File(tempDir, "ioslib").apply { File(this, "lib-arm64").mkdirs(); File(this, "lib-arm64/_sysconfigdata_t_ios_arm64-iphoneos.py").writeText("") }),
+            listOf("xcrun", "clang"), listOf("xcrun", "clang++"), listOf("xcrun", "ar"), "darwin", "ios", "aarch64",
+        )
+        val refused = builder(ios, mutableListOf()).buildSource(pkg, "arm64-apple-ios", src)
+        val message = refused.exceptionOrNull()?.message.orEmpty()
+        assertTrue("maturin" in message && "arm64-apple-ios" in message && "Android" in message, message)
+    }
+
+    /**
+     * The backend-level install toolchain calls (#168): the requirements are pinned for the target with `uv pip
+     * compile`, the pins are installed with `--only-binary :all:`, and each pin uv reports as having no usable wheel
+     * is built in the cross environment with the recipe directories, then the install repeats with `--find-links`.
+     */
+    @Test
+    fun theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries() {
+        val project = File(tempDir, "project").apply { mkdirs() }
+        val targetDir = File(tempDir, "deps")
+        val work = File(tempDir, "work").apply { mkdirs() }
+        val recipes = listOf(File(tempDir, "recipes").apply { mkdirs() })
+        val calls = mutableListOf<Call>()
+        val built = mutableListOf<Pair<String, List<File>>>()
+        var installs = 0
+        val noWheel = { spec: String -> CompileProcessResult(1, "× No solution found\n╰─▶ Because $spec has no usable wheels and you require $spec, we can conclude\n") }
+        val builder = object : CrossSdistBuilder(run = { _, _, _ -> error("unused") }) {
+            override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String, recipeDirs: List<File>): Result<File> {
+                assertEquals(project, packageDir)
+                built += packageSpec to recipeDirs
+                return Result.success(File(wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }, "x.whl").apply { writeText("") })
+            }
+        }
+        val installer = CrossTargetInstaller(builder) { command, dir, env ->
+            calls += Call(command, dir, env)
+            when (command.getOrNull(2)) {
+                "compile" -> {
+                    File(command[command.indexOf("--output-file") + 1]).writeText("# pinned by uv\nnumpy==2.5.5\n    # via -r requirements.in\nregex==2026.11.23\n")
+                    CompileProcessResult(0, "Resolved 2 packages")
+                }
+                else -> when (++installs) {
+                    1 -> noWheel("numpy==2.5.5")
+                    2 -> noWheel("regex==2026.11.23")
+                    else -> CompileProcessResult(0, "Installed 2 packages")
+                }
+            }
+        }
+        val args = mapOf("python-version" to "3.15", "python" to "3.15t", "only-binary" to ":all:", "find-links" to "/repo/wheels", "default-index" to "https://idx")
+        installer.install(project, targetDir, "aarch64-linux-android", listOf("numpy", "regex>=2026"), args, work, recipes).getOrThrow()
+
+        val compile = calls[0].command
+        assertEquals(listOf("uv", "pip", "compile"), compile.take(3))
+        assertEquals("numpy\nregex>=2026\n", File(compile[3]).readText(), "the requirements go to compile as a file in the working directory")
+        assertEquals(work, File(compile[3]).parentFile)
+        assertTrue(compile.containsAll(listOf("--python-platform", "aarch64-linux-android", "--python-version", "3.15", "--default-index", "https://idx")), compile.toString())
+        assertTrue("--only-binary" !in compile, "compile must not refuse sdists: $compile")
+        assertEquals(listOf("numpy==2.5.5" to recipes, "regex==2026.11.23" to recipes), built)
+        val wheels = builder.wheelsDir(project, "aarch64-linux-android").absolutePath
+        val first = calls[1].command
+        assertEquals(listOf("uv", "pip", "install", "numpy==2.5.5", "regex==2026.11.23"), first.take(5))
+        assertTrue(first.containsAll(listOf("--target", targetDir.absolutePath, "--only-binary", ":all:", "--find-links", "/repo/wheels", "--no-deps")), first.toString())
+        assertTrue(wheels !in first, "nothing built yet: $first")
+        val last = calls.last().command
+        assertTrue(last.windowed(2).any { it == listOf("--find-links", wheels) } && last.windowed(2).any { it == listOf("--find-links", "/repo/wheels") }, last.toString())
+        assertEquals(4, calls.size)
+
+        // A pin that still has no wheel after it was built ends it, naming it; another failure passes through.
+        val again = CrossTargetInstaller(builder) { command, _, _ ->
+            if (command.getOrNull(2) == "compile") {
+                File(command[command.indexOf("--output-file") + 1]).writeText("numpy==2.5.5\n")
+                CompileProcessResult(0, "")
+            } else {
+                noWheel("numpy==2.5.5")
+            }
+        }.install(project, targetDir, "aarch64-linux-android", listOf("numpy"), emptyMap(), work, recipes)
+        assertTrue("numpy==2.5.5" in again.exceptionOrNull()?.message.orEmpty() && "still" in again.exceptionOrNull()?.message.orEmpty(), again.exceptionOrNull()?.message)
+        val other = CrossTargetInstaller(builder) { command, _, _ ->
+            if (command.getOrNull(2) == "compile") CompileProcessResult(2, "error: network down") else error("no install after a failed compile")
+        }.install(project, targetDir, "aarch64-linux-android", listOf("numpy"), emptyMap(), work, recipes)
+        assertTrue("network down" in other.exceptionOrNull()?.message.orEmpty(), other.exceptionOrNull()?.message)
+        assertEquals("No requirements to install", CrossTargetInstaller(builder) { _, _, _ -> error("no uv") }.install(project, targetDir, "aarch64-linux-android", emptyList(), emptyMap(), work, recipes).getOrThrow())
     }
 
     @Test

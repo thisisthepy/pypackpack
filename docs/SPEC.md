@@ -215,6 +215,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
           - MissingWheel.kt  # parses uv's "no wheel for this target" failure
           - CrossBuild.kt  # the cross build environment: builds sdist-only dependencies for a target (#159)
           - CrossBuildScripts.kt  # the environment's Python hook and PEP 517 frontend
+          - CrossTargetInstall.kt  # CrossTargetInstaller: pin, install wheels, build the missing ones (#168)
       - compile
         - frontend
           - FrontendInterface.kt  # factory pattern
@@ -893,7 +894,38 @@ macOS.
   `pyproject.toml`, keyed by the normalized distribution name: `patches = ["recipes/foo.patch", ...]` (paths
   relative to the package, applied in order with `patch -p1 --forward --batch` in the unpacked source before
   the build; `patch` must be on `PATH`) and `env = { KEY = "value" }` (added to the build's environment).
-  A patch that does not apply fails the build naming it. toolchain's `pip { jit }` is to drive these.
+  A patch that does not apply fails the build naming it.
+- **Recipe directories** (#168; format approved by the leader on 2026-11-25, Decision 16 in the toolchain report:
+  "`<name>.toml`, keys as `[tool.ppp.recipes.<name>]`"): `CrossSdistBuilder.buildFromPyPI` / `buildSdist` take
+  recipe directories. A recipe for `<name>` is the file `<dir>/<name>.toml` (the normalized name, its `_` spelling
+  or the name as uv printed it) holding `patches` and `env` at its top level. Its patch paths are relative to that
+  directory. The package's own `[tool.ppp.recipes.<name>]` wins over every file, then the first directory that
+  has one (agent proposal, not confirmed). A key other than `patches` and `env`, a table, or a missing patch fails
+  naming the file, before anything is built. toolchain's `pip { jit { localRecipes } }` passes these directories
+  (toolchain#152).
+- **`PATH`:** the build runs with the environment's `bin` first on `PATH`, so the build requirements' programs
+  (Cython, meson, ninja, maturin's binary) are the environment's, not the machine's (#168: a Homebrew Cython 0.29
+  made meson reject numpy's `cython`; maturin's hooks found no `maturin`).
+- **maturin** (#168): an sdist whose backend is `maturin` is cross-compiled by Cargo, for Android only
+  (`aarch64-linux-android`, `x86_64-linux-android`, which are also Rust's triples). The build adds
+  `MATURIN_PEP517_ARGS = "--target <triple>"`, `PYO3_CROSS_LIB_DIR` (the target CPython's library directory,
+  whose `_sysconfigdata` gives PyO3 the free-threaded ABI), `PYO3_CROSS_PYTHON_VERSION` (`3.15`),
+  `PYO3_CROSS_PYTHON_IMPLEMENTATION = CPython`, Cargo's `CARGO_TARGET_<TRIPLE>_LINKER` and the `cc` crate's
+  `CC_<triple>` / `CXX_<triple>` / `AR_<triple>` (the target compilers behind one-line wrappers), and
+  `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` with the target's link arguments (`-C link-arg=-lpython3.15t`), as the Cargo
+  backend's Android path sets them. The Rust target must be installed (`rustup target add <triple>`). Another
+  cross target is refused naming it. Status: unit test `CrossBuildTest.maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly`;
+  real build `CrossSdistRealBuildTest` (a PyO3 0.30 crate, wheel `cp315t-android_24_arm64_v8a`, aarch64 ELF).
+- **Installing for a target from the backend layer** (#168): `CrossTargetInstaller.install(packageDir, targetDir,
+  platform, requirements, uvOptions, workingDir, recipeDirs)`, for callers in a Gradle daemon (every directory is a
+  parameter). It pins the requirements for the target with `uv pip compile --python-platform` (which reads sdist
+  metadata and builds nothing), installs the pins with `--only-binary :all: --no-deps --target`, and for each pin uv
+  reports as having no usable wheel (`numpy==2.5.5 has no usable wheels`) builds it with `buildFromPyPI` and the
+  recipe directories, then repeats with `--find-links <the built wheels>` beside the caller's own `find-links`. A
+  pin that still has no wheel after it was built ends it, naming it. Unlike `sync`, nothing is first built with the
+  host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
+  `<packageDir>/build/packpack/cross/<target>/`. Status: unit test
+  `CrossBuildTest.theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries`.
 
 #### Cleaning up subpackage build directories on `python use`
 

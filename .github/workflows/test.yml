@@ -118,13 +118,16 @@ jobs:
           ./gradlew :packpack:test --tests '*.NativeSlotRealBuildTest' --rerun --console=plain
           grep -q 'tests="3" skipped="2" failures="0" errors="0"' packpack/build/test-results/test/TEST-*NativeSlotRealBuildTest.xml \
             || { echo "the Android build did not run and pass"; exit 1; }
-      - name: Cross build environment, sdist-only C packages for Android arm64 (three backends) and aarch64 Linux (#159)
+      # The maturin sdist (#168) cross-compiles with Cargo for the Rust target; the runner has rustup and the NDK.
+      - name: Rust target for Android arm64 (#168)
+        run: rustup target add aarch64-linux-android
+      - name: Cross build environment, sdist-only packages for Android arm64 (setuptools, meson-python, scikit-build-core, maturin) and aarch64 Linux (#159, #168)
         env:
           PPP_CROSS_SDIST_REAL_BUILD: "1"
         run: |
           rm -rf packpack/build/test-results/test
           ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
-          grep -q 'tests="5" skipped="1" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+          grep -q 'tests="6" skipped="1" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
             || { echo "CrossSdistRealBuildTest did not run and pass"; exit 1; }
 
   # The native slot's iOS (Xcode) and Windows (LLVM clang, own machine) builds need those hosts (#155).
@@ -164,7 +167,7 @@ jobs:
         run: |
           rm -rf packpack/build/test-results/test
           ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
-          grep -q 'tests="5" skipped="4" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+          grep -q 'tests="6" skipped="5" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
             || { echo "the iOS simulator cross sdist build did not run and pass"; exit 1; }
 
   # The GraalVM native binary on the four release platforms, run through every command group (#160): the

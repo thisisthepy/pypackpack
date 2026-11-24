@@ -148,4 +148,21 @@ class CrossSdistRealBuildTest {
             ),
         )
     }
+
+    /** #168: a maturin (PyO3) sdist, cross-compiled by Cargo for the Rust target with the NDK as linker. */
+    @Test
+    fun `a maturin sdist builds for aarch64 Android with the target's suffix`() {
+        setUpAndroid()
+        buildAndCheck(
+            "rsdemo",
+            mapOf(
+                "pyproject.toml" to "[build-system]\nrequires = [\"maturin>=1.9,<2\"]\nbuild-backend = \"maturin\"\n\n" +
+                    "[project]\nname = \"rsdemo\"\nversion = \"1.0\"\n\n[tool.maturin]\nmodule-name = \"rsdemo._fast\"\n",
+                "Cargo.toml" to "[package]\nname = \"rsdemo\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\n" +
+                    "[lib]\nname = \"_fast\"\ncrate-type = [\"cdylib\"]\n\n[dependencies]\npyo3 = \"0.30\"\n",
+                "src/lib.rs" to "use pyo3::prelude::*;\n\n" +
+                    "#[pymodule(gil_used = false)]\nfn _fast(_m: &Bound<'_, PyModule>) -> PyResult<()> { Ok(()) }\n",
+            ),
+        )
+    }
 }

@@ -260,7 +260,7 @@ class CrossEnvTest {
             )
             val builds = mutableListOf<Pair<String, String>>()
             val builder = object : CrossSdistBuilder() {
-                override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String): Result<File> {
+                override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String, recipeDirs: List<File>): Result<File> {
                     builds += canonicalTarget to packageSpec
                     return Result.success(File(wheelsDir(packageDir, canonicalTarget), "x.whl"))
                 }
