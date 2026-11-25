@@ -1,5 +1,8 @@
 package org.thisisthepy.python.multiplatform.packpack.dependency.backend
 
+import kotlinx.coroutines.runBlocking
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.findTargetPythonDir
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.targetPythonDirName
 import org.thisisthepy.python.multiplatform.packpack.compile.extension.CompileProcessResult
 import org.thisisthepy.python.multiplatform.packpack.compile.extension.runCompileProcess
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
@@ -16,11 +19,34 @@ import java.io.File
  * without a wheel exactly (`numpy==2.5.5 has no usable wheels`), and nothing is built with the host compiler
  * on the way: `CrossEnv` lets uv try an sdist on the host before it reports one, which for numpy or a Rust
  * package costs minutes.
+ *
+ * Before the first build, the target's free-threaded CPython (`<python-version>t`, 3.15t by default) is installed
+ * into `<packageDir>/<installDirName>` unless one is found at or above [install]'s package directory, because the
+ * build reads its headers and `EXT_SUFFIX` there (`locateTargetPython`, #170). An install that builds nothing
+ * fetches none.
  */
 class CrossTargetInstaller(
     private val crossBuilder: CrossSdistBuilder = CrossSdistBuilder(),
     private val run: (command: List<String>, workingDir: File, env: Map<String, String>) -> CompileProcessResult = ::runCompileProcess,
 ) {
+    /** `installPython(version, target, installDir)`; [UVBackend]'s by default (#170). */
+    private var installPython: (version: String, target: String, installDir: File) -> Result<String> = { version, target, dir ->
+        runBlocking { UVBackend().installPython(version, target, dir) }
+    }
+
+    /**
+     * With [installPython] in place of [UVBackend]'s (tests). A separate constructor, so the primary one keeps the
+     * signature toolchain was compiled against (`CrossTargetInstaller()`, AGENTS.md rule 14): adding a parameter
+     * to it changes its JVM default-arguments constructor and breaks a published plugin with NoSuchMethodError.
+     */
+    constructor(
+        crossBuilder: CrossSdistBuilder,
+        installPython: (version: String, target: String, installDir: File) -> Result<String>,
+        run: (command: List<String>, workingDir: File, env: Map<String, String>) -> CompileProcessResult,
+    ) : this(crossBuilder, run) {
+        this.installPython = installPython
+    }
+
     /**
      * Installs [requirements] (PEP 508) for [pythonPlatform] into [targetDir].
      *
@@ -77,6 +103,7 @@ class CrossTargetInstaller(
                     ?: throw IllegalStateException("uv could not install the pins for $target:\n${result.output}")
                 check(spec !in built) { "`$spec` was built for $target in the cross environment, but uv still finds no wheel for it:\n${result.output}" }
                 built += spec
+                ensureTargetPython(packageDir, target, extraArgs["python-version"])
                 crossBuilder.buildFromPyPI(packageDir, target, spec, recipeDirs).getOrElse {
                     throw IllegalStateException("`$spec` has no wheel for $target, and building its sdist in the cross environment failed: ${it.message}", it)
                 }
@@ -85,7 +112,18 @@ class CrossTargetInstaller(
             error("unreachable")
         }
 
+    /** Installs [target]'s CPython into `<packageDir>/<installDirName>` unless one is at or above [packageDir]. */
+    private fun ensureTargetPython(packageDir: File, target: String, pythonVersion: String?) {
+        if (findTargetPythonDir(packageDir, target) != null) return
+        val dirName = targetPythonDirName(target) ?: return // the build itself then fails naming the target
+        val version = (pythonVersion?.takeIf { it.isNotBlank() } ?: DEFAULT_PYTHON).let { if (it.endsWith("t")) it else "${it}t" }
+        installPython(version, target, File(packageDir, dirName)).getOrElse {
+            throw IllegalStateException("Could not install CPython $version for $target into ${File(packageDir, dirName)} for the cross build: ${it.message}", it)
+        }
+    }
+
     private companion object {
+        const val DEFAULT_PYTHON = "3.15t"
         val OWN_OPTIONS = setOf("target", "python-platform", "only-binary", "no-build", "no-deps")
     }
 }

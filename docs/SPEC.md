@@ -613,7 +613,13 @@ Limitation
 
 - Without `installDir`, the project root is located through `user.dir` (`findProjectRoot()`), not an
   explicit working directory.
-- `Downloader` holds the whole archive in memory before writing it.
+- (Fixed by #170.) `Downloader` used to hold the whole archive in memory; it now streams it to `<name>.part` with the
+  JDK's `java.net.http` client (redirects followed) and renames it into place when complete.
+- packpack runs inside Gradle (toolchain's plugin), where Gradle's embedded kotlin-stdlib wins (2.0.20 in Gradle
+  8.11). Nothing on packpack's runtime classpath may need a newer stdlib: packpack's own classes are capped at
+  `apiVersion` 1.9, and no library may reference `kotlin.coroutines.jvm.internal.SpillingKt` (stdlib 2.2+). ktor 3.4
+  did, which is why the downloader no longer uses ktor (#170). `GradleStdlibCompatTest` scans the runtime classpath;
+  `DownloaderTest` covers the redirect and an error status.
 - `utils/Archive.kt` has no `.tar.xz` support. It reads ustar names (100-byte name + 155-byte prefix) and takes a
   longer name or link target from a PAX `x` record (`path`, `linkpath`) or a GNU `L`/`K` record; PAX global (`g`)
   records are skipped. python-multiplatform's iOS XCframework archive needs this (its header paths pass 100 bytes;
@@ -847,7 +853,8 @@ macOS.
   target never uses it (uv builds host sdists itself).
 - **Where:** `<package>/build/packpack/cross/<canonical target>/`, not `build/crossenv/<target>`: that
   directory is `uv pip install --target` output and the `resource` bundle vendors it. It holds `env/` (the
-  environment), `sdists/` (downloaded sdists), `src/` (unpacked sources) and `wheels/` (the built wheels, the
+  environment), `sdists/` (downloaded sdists), `src/` (unpacked sources: deleted once their wheel is built, kept
+  when the build fails, #170) and `wheels/` (the built wheels, the
   `--find-links` directory). The host CPython (`installPython(<version>, <host target>)`, the pinned
   python-build-standalone 3.15t) goes to `<package>/build/packpack/cross/host-python/` and is reused.
 - **The environment:** `uv venv --python <host python> env`. Inside it:
@@ -924,8 +931,13 @@ macOS.
   recipe directories, then repeats with `--find-links <the built wheels>` beside the caller's own `find-links`. A
   pin that still has no wheel after it was built ends it, naming it. Unlike `sync`, nothing is first built with the
   host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
-  `<packageDir>/build/packpack/cross/<target>/`. Status: unit test
-  `CrossBuildTest.theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries`.
+  `<packageDir>/build/packpack/cross/<target>/`. Before its first build it installs the target's free-threaded
+  CPython (`<python-version>t` from the uv options, else 3.15t) into `<packageDir>/<installDirName>`
+  (`android_arm64`, ...) with `installPython`, unless one is found at or above `packageDir`, because the build
+  reads that CPython's headers and `EXT_SUFFIX` there (#170; toolchain's `pip { jit }` passes a fresh directory).
+  An install that builds nothing fetches no CPython; a failed CPython install fails naming the target. Status:
+  unit tests `CrossBuildTest.theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries` and
+  `theTargetInstallFetchesTheTargetsCPythonBeforeItsFirstBuildOnly`.
 
 #### Cleaning up subpackage build directories on `python use`
 

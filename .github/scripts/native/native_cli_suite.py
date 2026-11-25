@@ -4,7 +4,7 @@
     python3 .github/scripts/native/native_cli_suite.py packpack/build/native/nativeCompile/pypackpack[.exe]
 
 The JVM test suites (`:packpack:test`, `:packpack:cliTest`) cannot see what native-image leaves out
-(reflection, resources, the coroutine and Ktor paths), so this runs the real binary in a scratch
+(reflection, resources, the coroutine and HTTPS download paths), so this runs the real binary in a scratch
 project: version, help, init with targets, target list/add/remove, package add, root add/tree/sync/remove
 (uv and PyPI), python list/find, and build <package> resource. It fails (exit 1) on the first command
 that exits non-zero or does not print what it should, showing its output.

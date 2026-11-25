@@ -26,9 +26,7 @@ data class TargetPython(
  * prefix`, `linux_arm64`, `ios_arm64/Python.xcframework/<slice>`). Fails naming the install command.
  */
 fun locateTargetPython(packageDir: File, canonicalTarget: String): TargetPython {
-    val dirName = ANDROID_DIRS[canonicalTarget]
-        ?: IOS_TARGETS[canonicalTarget]?.installDirName
-        ?: LINUX_CROSS_TARGETS[canonicalTarget]?.installDirName
+    val dirName = targetPythonDirName(canonicalTarget)
         ?: throw IllegalStateException("pypackpack installs no CPython for $canonicalTarget, so it cannot cross-build C extensions for it.")
     val dir = findTargetDir(packageDir, dirName) ?: throw IllegalStateException(
         "No Python for $canonicalTarget under a '$dirName' directory above $packageDir. " +
@@ -95,3 +93,13 @@ private fun headerDir(include: File): File? =
 private fun extSuffix(lib: File): String =
     readSysconfigValue(lib, "EXT_SUFFIX")?.takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("The Python in $lib has no _sysconfigdata naming its EXT_SUFFIX.")
+
+/** The directory `installPython` lays [canonicalTarget]'s CPython out in (`android_arm64`, ...); null for a target it has none for. */
+fun targetPythonDirName(canonicalTarget: String): String? =
+    ANDROID_DIRS[canonicalTarget]
+        ?: IOS_TARGETS[canonicalTarget]?.installDirName
+        ?: LINUX_CROSS_TARGETS[canonicalTarget]?.installDirName
+
+/** The nearest `<targetPythonDirName>` at or above [packageDir] that holds [canonicalTarget]'s CPython, if any. */
+fun findTargetPythonDir(packageDir: File, canonicalTarget: String): File? =
+    targetPythonDirName(canonicalTarget)?.let { findTargetDir(packageDir, it) }
