@@ -242,6 +242,7 @@ Files marked *placeholder* hold a declaration with no behaviour, or a class that
         - extension
           - ExtensionCompiler.kt  # the native compile slot (#19, #20, #60; docs/design/compile-slot.md): ExtensionCompilerInterface, NativeExtensionCompiler, data types and exceptions
       - bundle
+        - AndroidRuntimeLibraries.kt  # DT_NEEDED reader; the NDK runtime libraries (libc++_shared.so) an Android payload needs (#172)
         - BundlerInterface.kt  # factory pattern; BundleType, BundleRequest, BundleResult
         - DefaultBundler.kt  # placeholder
         - GilCheck.kt  # build warning for extensions that run the app with the GIL
@@ -1365,6 +1366,41 @@ Limitation
 - Cross targets get the tag check only: their extensions cannot be imported on the host.
 - Untagged `name.so` files are neither probed nor warned about.
 - `single`, `fat` and `patch` do not run either check yet.
+
+##### Android runtime libraries
+
+Status: implemented. `packpack/.../bundle/AndroidRuntimeLibrariesTest.kt`.
+
+An extension that NDK clang builds with C++ lists `libc++_shared.so` in DT_NEEDED. Neither a wheel nor
+the Android CPython carries that library. An app that does not ship it gets whatever copy the device has:
+on a Galaxy Z Flip4 the loader picked an old `/vendor/lib64/libc++_shared.so` and failed on a missing
+symbol. The NDK's guidance is one shared libc++ per app. The leader approved packaging the NDK's copy per
+ABI into the APK's jniLibs on 2026-11-25 (Decision 20 (a), toolchain report). `toolchain` does the
+packaging; `bundle/AndroidRuntimeLibraries.kt` says what to package:
+
+- `elfNeededLibraries(file)` returns the DT_NEEDED entries of an ELF64 file in file order, or `null` for
+  a file that is not ELF. It reads the program headers, as the loader does, so a fully stripped file
+  reads the same.
+- `androidRuntimeLibraries(payloadDir, canonicalTarget, ndkRoot)` scans every `.so` under the payload.
+  For each library in `NDK_SHIPPED_RUNTIME_LIBRARIES` (only `libc++_shared.so`) that one of them needs and
+  that the payload does not carry, it returns the library with:
+  - its source: `<ndk>/toolchains/llvm/prebuilt/<host>/sysroot/usr/lib/<triple>/`;
+  - its ABI: `arm64-v8a` or `x86_64`;
+  - the payload paths that need it.
+- If nothing is needed, the result is empty and no NDK is required.
+- If something is needed but no NDK is found, or the NDK lacks the file, the result is a failed
+  `Result`. The message names the library, the `.so` that needs it and where it looked.
+- A non-Android target is refused.
+- `androidNdkRoot(environment)` finds the NDK the way the cross build does (`CargoEnvironment.locateNdk`):
+  `ANDROID_NDK_HOME`, else the newest `<ANDROID_HOME or ANDROID_SDK_ROOT>/ndk/<version>`. That is how the
+  shipped copy matches the NDK that the jit-built wheels were linked against.
+
+Limitation
+
+- Only 64-bit ELF is read, because both Android targets (`aarch64-linux-android`, `x86_64-linux-android`)
+  are 64-bit.
+- A prebuilt Android wheel linked against an older NDK gets the cross build's NDK copy. libc++ keeps
+  backward compatibility, but that copy is not the wheel's own.
 
 #### Code minification
 
