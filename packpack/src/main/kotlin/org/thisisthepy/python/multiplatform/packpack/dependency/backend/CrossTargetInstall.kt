@@ -27,12 +27,26 @@ import java.io.File
  */
 class CrossTargetInstaller(
     private val crossBuilder: CrossSdistBuilder = CrossSdistBuilder(),
-    /** `installPython(version, target, installDir)`; [UVBackend]'s by default (#170). */
-    private val installPython: (version: String, target: String, installDir: File) -> Result<String> = { version, target, dir ->
-        runBlocking { UVBackend().installPython(version, target, dir) }
-    },
     private val run: (command: List<String>, workingDir: File, env: Map<String, String>) -> CompileProcessResult = ::runCompileProcess,
 ) {
+    /** `installPython(version, target, installDir)`; [UVBackend]'s by default (#170). */
+    private var installPython: (version: String, target: String, installDir: File) -> Result<String> = { version, target, dir ->
+        runBlocking { UVBackend().installPython(version, target, dir) }
+    }
+
+    /**
+     * With [installPython] in place of [UVBackend]'s (tests). A separate constructor, so the primary one keeps the
+     * signature toolchain was compiled against (`CrossTargetInstaller()`, AGENTS.md rule 14): adding a parameter
+     * to it changes its JVM default-arguments constructor and breaks a published plugin with NoSuchMethodError.
+     */
+    constructor(
+        crossBuilder: CrossSdistBuilder,
+        installPython: (version: String, target: String, installDir: File) -> Result<String>,
+        run: (command: List<String>, workingDir: File, env: Map<String, String>) -> CompileProcessResult,
+    ) : this(crossBuilder, run) {
+        this.installPython = installPython
+    }
+
     /**
      * Installs [requirements] (PEP 508) for [pythonPlatform] into [targetDir].
      *
