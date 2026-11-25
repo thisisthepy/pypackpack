@@ -213,7 +213,11 @@ open class CrossSdistBuilder(
             buildSdist(packageDir, canonicalTarget, sdist, name, recipeDirs).getOrThrow()
         }
 
-    /** Unpacks [sdist] (a `.tar.gz` or `.zip`), applies [distribution]'s recipe and builds it for [canonicalTarget]. */
+    /**
+     * Unpacks [sdist] (a `.tar.gz` or `.zip`), applies [distribution]'s recipe and builds it for [canonicalTarget].
+     * The unpacked tree is deleted once the wheel is built (a Rust crate's `target/` reaches hundreds of MB, #170)
+     * and kept when the build fails, to read what went wrong; the next build unpacks afresh either way.
+     */
     fun buildSdist(
         packageDir: File,
         canonicalTarget: String,
@@ -232,6 +236,7 @@ open class CrossSdistBuilder(
                 check(result.exitCode == 0) { "Recipe patch ${patch.path} does not apply to $distribution:\n${result.output}" }
             }
             buildSource(packageDir, canonicalTarget, src, recipe?.env.orEmpty()).getOrThrow()
+                .also { src.deleteWithoutFollowingLinks() }
         }
 
     /** Builds the source tree [src] into a wheel for [canonicalTarget], in the target's wheels directory. */

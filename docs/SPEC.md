@@ -853,7 +853,8 @@ macOS.
   target never uses it (uv builds host sdists itself).
 - **Where:** `<package>/build/packpack/cross/<canonical target>/`, not `build/crossenv/<target>`: that
   directory is `uv pip install --target` output and the `resource` bundle vendors it. It holds `env/` (the
-  environment), `sdists/` (downloaded sdists), `src/` (unpacked sources) and `wheels/` (the built wheels, the
+  environment), `sdists/` (downloaded sdists), `src/` (unpacked sources: deleted once their wheel is built, kept
+  when the build fails, #170) and `wheels/` (the built wheels, the
   `--find-links` directory). The host CPython (`installPython(<version>, <host target>)`, the pinned
   python-build-standalone 3.15t) goes to `<package>/build/packpack/cross/host-python/` and is reused.
 - **The environment:** `uv venv --python <host python> env`. Inside it:

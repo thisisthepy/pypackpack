@@ -497,8 +497,12 @@ class CrossBuildTest {
         )
         val bytes = archive.readBytes()
         val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        var unpackedAtPatch = false
         fun builder(digest: String, calls: MutableList<Call>) = CrossSdistBuilder(
-            run = recordingRunner(calls),
+            run = { command, dir, env ->
+                if (command.firstOrNull() == "patch") unpackedAtPatch = File(dir, "setup.py").isFile
+                recordingRunner(calls)(command, dir, env)
+            },
             fetch = { url ->
                 when (url) {
                     "https://pypi.org/pypi/demo/1.0/json" ->
@@ -519,11 +523,25 @@ class CrossBuildTest {
         val wheel = builder(sha, calls).buildFromPyPI(pkg, "aarch64-linux-android", "demo==1.0").getOrThrow()
         assertTrue(wheel.isFile)
         val src = File(pkg, "build/packpack/cross/aarch64-linux-android/src/demo-1.0")
-        assertTrue(File(src, "setup.py").isFile, "the sdist is unpacked without its top directory")
+        assertTrue(unpackedAtPatch, "the sdist is unpacked without its top directory")
+        // #170: a built package's unpacked tree (a Rust crate's target/ reaches hundreds of MB) is not kept.
+        assertTrue(!src.exists(), "the source tree of a built sdist is deleted")
         assertEquals(listOf("patch", "-p1", "--forward", "--batch", "-i", File(pkg, "recipes/fix.patch").absolutePath), calls[0].command)
         assertEquals(src, calls[0].dir)
         assertEquals("on", calls.single { it.command.getOrNull(2) == "build" }.env["DEMO_FLAG"])
         assertFailsWith<IllegalArgumentException> { builder(sha, mutableListOf()).buildFromPyPI(pkg, "aarch64-linux-android", "demo").getOrThrow() }
+
+        // A failed build keeps its tree, to read what went wrong.
+        val failing = CrossSdistBuilder(
+            run = { command, dir, env ->
+                if (command.getOrNull(2) == "build") CompileProcessResult(1, "error: compiler said no") else recordingRunner(mutableListOf())(command, dir, env)
+            },
+            installHostPython = { _, _, dir -> File(dir, "bin").mkdirs(); File(dir, "bin/python3").writeText(""); Result.success(Unit) },
+            crossFor = { _, _ -> fakeCross() },
+            hostTarget = { "x86_64-unknown-linux-gnu" },
+        )
+        assertTrue(failing.buildSdist(pkg, "aarch64-linux-android", archive, "demo").isFailure)
+        assertTrue(File(src, "setup.py").isFile, "a failed build's source tree is kept")
     }
 
     private fun python3(args: List<String>, env: Map<String, String>, dir: File): Pair<Int, String> {
