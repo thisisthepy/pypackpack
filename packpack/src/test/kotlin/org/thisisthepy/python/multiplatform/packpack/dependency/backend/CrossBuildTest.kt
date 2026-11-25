@@ -356,6 +356,66 @@ class CrossBuildTest {
      * compile`, the pins are installed with `--only-binary :all:`, and each pin uv reports as having no usable wheel
      * is built in the cross environment with the recipe directories, then the install repeats with `--find-links`.
      */
+    /** An `installPython` that records the call and lays out the directory, as the real one does. */
+    private val pythonInstalls = mutableListOf<Triple<String, String, File>>()
+    private val fakePython: (String, String, File) -> Result<String> = { version, target, dir ->
+        pythonInstalls += Triple(version, target, dir)
+        dir.mkdirs()
+        Result.success("installed")
+    }
+
+    /**
+     * #170: the cross build reads the target's CPython from a `<installDirName>` at or above the package directory
+     * (`locateTargetPython`), and toolchain's `pip { jit }` hands over a fresh `build/pythonCross`. The installer
+     * puts it there before its first build, as `<python-version>t`; an install that builds nothing fetches none.
+     */
+    @Test
+    fun theTargetInstallFetchesTheTargetsCPythonBeforeItsFirstBuildOnly() {
+        val project = File(tempDir, "cross").apply { mkdirs() }
+        val work = File(tempDir, "work-python").apply { mkdirs() }
+        val order = mutableListOf<String>()
+        val builder = object : CrossSdistBuilder(run = { _, _, _ -> error("unused") }) {
+            override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String, recipeDirs: List<File>): Result<File> {
+                order += "build $packageSpec"
+                return Result.success(File(wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }, "x.whl").apply { writeText("") })
+            }
+        }
+        val recording: (String, String, File) -> Result<String> = { v, t, d -> order += "python $v"; fakePython(v, t, d) }
+        fun uv(missing: List<String>): (List<String>, File, Map<String, String>) -> CompileProcessResult {
+            var installs = 0
+            return { command, _, _ ->
+                if (command.getOrNull(2) == "compile") {
+                    File(command[command.indexOf("--output-file") + 1]).writeText("numpy==2.5.5\nregex==2026.11.23\n")
+                    CompileProcessResult(0, "")
+                } else {
+                    missing.getOrNull(installs++)?.let { CompileProcessResult(1, "Because $it has no usable wheels and you require $it, we can conclude\n") }
+                        ?: CompileProcessResult(0, "Installed")
+                }
+            }
+        }
+        val args = mapOf("python-version" to "3.15")
+
+        CrossTargetInstaller(builder, recording, uv(emptyList()))
+            .install(project, File(tempDir, "d0"), "aarch64-linux-android", listOf("numpy"), args, work, emptyList()).getOrThrow()
+        assertEquals(emptyList(), order, "every pin had a wheel, so no CPython is fetched")
+
+        CrossTargetInstaller(builder, recording, uv(listOf("numpy==2.5.5", "regex==2026.11.23")))
+            .install(project, File(tempDir, "d1"), "aarch64-linux-android", listOf("numpy"), args, work, emptyList()).getOrThrow()
+        assertEquals(listOf("python 3.15t", "build numpy==2.5.5", "build regex==2026.11.23"), order)
+        assertEquals(Triple("3.15t", "aarch64-linux-android", File(project, "android_arm64")), pythonInstalls.last())
+
+        // Found at or above the package directory (the CLI's project-relative install, or the earlier run): kept.
+        order.clear()
+        CrossTargetInstaller(builder, recording, uv(listOf("numpy==2.5.5")))
+            .install(File(project, "nested").apply { mkdirs() }, File(tempDir, "d2"), "aarch64-linux-android", listOf("numpy"), args, work, emptyList()).getOrThrow()
+        assertEquals(listOf("build numpy==2.5.5"), order)
+
+        val failed = CrossTargetInstaller(builder, { _, _, _ -> Result.failure(IllegalStateException("no network")) }, uv(listOf("numpy==2.5.5")))
+            .install(File(tempDir, "fresh").apply { mkdirs() }, File(tempDir, "d3"), "x86_64-linux-android", listOf("numpy"), emptyMap(), work, emptyList())
+        val message = failed.exceptionOrNull()?.message.orEmpty()
+        assertTrue("x86_64-linux-android" in message && "no network" in message && "3.15t" in message, message)
+    }
+
     @Test
     fun theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries() {
         val project = File(tempDir, "project").apply { mkdirs() }
@@ -373,7 +433,7 @@ class CrossBuildTest {
                 return Result.success(File(wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }, "x.whl").apply { writeText("") })
             }
         }
-        val installer = CrossTargetInstaller(builder) { command, dir, env ->
+        val installer = CrossTargetInstaller(builder, fakePython) { command, dir, env ->
             calls += Call(command, dir, env)
             when (command.getOrNull(2)) {
                 "compile" -> {
@@ -407,7 +467,7 @@ class CrossBuildTest {
         assertEquals(4, calls.size)
 
         // A pin that still has no wheel after it was built ends it, naming it; another failure passes through.
-        val again = CrossTargetInstaller(builder) { command, _, _ ->
+        val again = CrossTargetInstaller(builder, fakePython) { command, _, _ ->
             if (command.getOrNull(2) == "compile") {
                 File(command[command.indexOf("--output-file") + 1]).writeText("numpy==2.5.5\n")
                 CompileProcessResult(0, "")

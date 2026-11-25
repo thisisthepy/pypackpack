@@ -924,8 +924,13 @@ macOS.
   recipe directories, then repeats with `--find-links <the built wheels>` beside the caller's own `find-links`. A
   pin that still has no wheel after it was built ends it, naming it. Unlike `sync`, nothing is first built with the
   host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
-  `<packageDir>/build/packpack/cross/<target>/`. Status: unit test
-  `CrossBuildTest.theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries`.
+  `<packageDir>/build/packpack/cross/<target>/`. Before its first build it installs the target's free-threaded
+  CPython (`<python-version>t` from the uv options, else 3.15t) into `<packageDir>/<installDirName>`
+  (`android_arm64`, ...) with `installPython`, unless one is found at or above `packageDir`, because the build
+  reads that CPython's headers and `EXT_SUFFIX` there (#170; toolchain's `pip { jit }` passes a fresh directory).
+  An install that builds nothing fetches no CPython; a failed CPython install fails naming the target. Status:
+  unit tests `CrossBuildTest.theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries` and
+  `theTargetInstallFetchesTheTargetsCPythonBeforeItsFirstBuildOnly`.
 
 #### Cleaning up subpackage build directories on `python use`
 
