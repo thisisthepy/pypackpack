@@ -24,10 +24,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation("com.akuleshov7:ktoml-core:0.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
     implementation("com.github.luben:zstd-jni:1.5.7-9")
-    runtimeOnly("org.slf4j:slf4j-nop:2.0.17")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
@@ -46,6 +43,10 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    // GradleStdlibCompatTest scans what a consumer runs: the main classes and their runtime libraries.
+    val runtimeClasspath = sourceSets.main.get().runtimeClasspath
+    inputs.files(runtimeClasspath).withPropertyName("packpackRuntimeClasspath").withNormalizer(ClasspathNormalizer::class.java)
+    doFirst { systemProperty("packpack.runtimeClasspath", runtimeClasspath.asPath) }
 }
 
 // A failing test prints its message and stack in the CI log, not only the exception's class (#155:
@@ -71,9 +72,9 @@ tasks.withType<Test>().configureEach {
 // runtime jar on the consumer's compile classpath.
 //
 // Clikt (and the rest of the CLI's own dependencies) never reach a consumer of this artifact: the
-// CLI is the `cli` source set, which depends on `main` and is not part of components["java"]. Ktor and
-// zstd-jni stay here because the library itself uses them (`utils/Downloader.kt`,
-// `utils/Archive.kt`), not just the CLI, so they are still `implementation` (POM scope `runtime`)
+// CLI is the `cli` source set, which depends on `main` and is not part of components["java"]. zstd-jni
+// stays here because the library itself uses it
+// (`utils/Archive.kt`), not just the CLI, so it is still `implementation` (POM scope `runtime`)
 // and still visible to a consumer -- that part of the leak was never CLI-specific and is unchanged
 // by this split.
 //
@@ -254,8 +255,9 @@ graalvmNative {
                 "--install-exit-handlers",
                 // Baseline ISA so distributed binaries run on older CPUs and Windows ARM64 x64 emulation (#147).
                 "-march=compatibility",
-                // io.ktor reaches org.slf4j (slf4j-nop: no I/O at init); GraalVM 21 refuses it at run time.
-                "--initialize-at-build-time=kotlin,kotlinx.coroutines,io.ktor,kotlinx.io,org.slf4j",
+                "--initialize-at-build-time=kotlin,kotlinx.coroutines",
+                // Downloader uses java.net.http over HTTPS.
+                "--enable-https",
                 "-H:+ReportExceptionStackTraces",
                 "-H:+AddAllCharsets",
                 "--gc=serial",

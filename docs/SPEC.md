@@ -613,7 +613,13 @@ Limitation
 
 - Without `installDir`, the project root is located through `user.dir` (`findProjectRoot()`), not an
   explicit working directory.
-- `Downloader` holds the whole archive in memory before writing it.
+- (Fixed by #170.) `Downloader` used to hold the whole archive in memory; it now streams it to `<name>.part` with the
+  JDK's `java.net.http` client (redirects followed) and renames it into place when complete.
+- packpack runs inside Gradle (toolchain's plugin), where Gradle's embedded kotlin-stdlib wins (2.0.20 in Gradle
+  8.11). Nothing on packpack's runtime classpath may need a newer stdlib: packpack's own classes are capped at
+  `apiVersion` 1.9, and no library may reference `kotlin.coroutines.jvm.internal.SpillingKt` (stdlib 2.2+). ktor 3.4
+  did, which is why the downloader no longer uses ktor (#170). `GradleStdlibCompatTest` scans the runtime classpath;
+  `DownloaderTest` covers the redirect and an error status.
 - `utils/Archive.kt` has no `.tar.xz` support. It reads ustar names (100-byte name + 155-byte prefix) and takes a
   longer name or link target from a PAX `x` record (`path`, `linkpath`) or a GNU `L`/`K` record; PAX global (`g`)
   records are skipped. python-multiplatform's iOS XCframework archive needs this (its header paths pass 100 bytes;
