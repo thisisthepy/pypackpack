@@ -58,7 +58,7 @@ jobs:
       DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # A release builds the tag's own gradle.properties, not the branch it was cut from.
           ref: ${{ (github.event_name == 'push' || inputs.dry_run == false) && (github.event.inputs.tag || github.ref) || github.ref }}
@@ -79,12 +79,12 @@ jobs:
             echo "::warning::$group:packpack:$version is already on Maven Central; bump packpackVersion before tagging"
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: The signing key (throwaway for a dry run, the release key otherwise)
         env:
@@ -127,7 +127,7 @@ jobs:
           echo "$n signed files verified"
           [ "$fail" = 0 ] && [ "$n" -gt 0 ]
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: central-bundle
           path: packpack/build/central/central-bundle-${{ env.VERSION }}.zip
@@ -145,7 +145,7 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
           sparse-checkout: |
@@ -153,7 +153,7 @@ jobs:
             gradle.properties
           sparse-checkout-cone-mode: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: central-bundle
           path: ${{ runner.temp }}

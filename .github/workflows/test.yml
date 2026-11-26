@@ -31,20 +31,20 @@ jobs:
           - { name: packpack, task: test }
           - { name: cli, task: cliTest }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: "0.13.6"
 
@@ -75,7 +75,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}-test-reports
           path: packpack/build/reports/tests/${{ matrix.task }}/
@@ -87,13 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: "0.13.6"
       # The Meson backend runs a meson and ninja the user installed (docs/SPEC.md); the runner has neither.
@@ -143,13 +143,13 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: "0.13.6"
       - name: Native slot real build on this host
@@ -184,19 +184,19 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: "21"
           distribution: graalvm-community
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: "0.13.6"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Native image
         run: ./gradlew --no-daemon :packpack:nativeCompile
       - name: Every command group against the native binary
@@ -208,5 +208,5 @@ jobs:
   guide:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 docs/guide/check_guide.py
