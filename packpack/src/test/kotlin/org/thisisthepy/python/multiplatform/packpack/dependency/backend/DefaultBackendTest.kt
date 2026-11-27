@@ -311,6 +311,60 @@ class DefaultBackendTest {
             assertFalse(File(tempDir, "project").exists())
         }
 
+    /**
+     * #82 (c), team lead 2026-11-27: until python-multiplatform publishes a `cpython-3.15.0t-wasm` release asset, the
+     * wasm 3.15t runtime is an archive packed from a python-multiplatform checkout's build output
+     * (`.github/scripts/wasm/pack_pmp_runtime.py`), pinned by the SHA-256 in its manifest. It installs like any
+     * pinned distribution, from a `file:` URL, into `wasm32_emscripten`, where the cross build finds its headers and
+     * `EXT_SUFFIX`. A manifest whose digest does not match the archive is refused, and without a manifest the
+     * install fails naming how to make one.
+     */
+    @Test
+    fun installPython_wasmComesFromTheManifestsLocalArchive() =
+        runBlocking {
+            val archive = File(tempDir, "python-3.15.0t-wasm32-emscripten.tar.gz")
+            java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
+                gzip.write(tarHeader("python/", 0, '5'))
+                gzip.write(tarFile("python/include/python3.15t/Python.h", "/* headers */".toByteArray()))
+                gzip.write(tarFile("python/lib/libpython3.15t.a", "archive".toByteArray()))
+                gzip.write(
+                    tarFile(
+                        "python/lib/python3.15t/_sysconfigdata_t_emscripten_wasm32-emscripten.py",
+                        "build_time_vars = {'EXT_SUFFIX': '.cpython-315t-wasm32-emscripten.so'}\n".toByteArray(),
+                    ),
+                )
+                gzip.write(tarFile("python/runtime/python.wasm", "wasm".toByteArray()))
+                gzip.write(ByteArray(1024))
+            }
+            fun manifest(sha256: String) = File(tempDir, "wasm-runtime-${sha256.take(4)}.json").apply {
+                writeText("""{"archive": "${archive.absolutePath}", "sha256": "$sha256", "source": "test"}""")
+            }
+            val project = File(tempDir, "wasm-project")
+            fun install(manifestFile: File?): Result<String> {
+                if (manifestFile == null) System.clearProperty(PythonDistributions.WASM_RUNTIME_MANIFEST_PROPERTY)
+                else System.setProperty(PythonDistributions.WASM_RUNTIME_MANIFEST_PROPERTY, manifestFile.absolutePath)
+                return try {
+                    runBlocking { TestDefaultBackend(File(tempDir, "wasm-registry"), projectRoot = project).installPython("3.15t", "wasm32-emscripten") }
+                } finally {
+                    System.clearProperty(PythonDistributions.WASM_RUNTIME_MANIFEST_PROPERTY)
+                }
+            }
+
+            val none = install(null).exceptionOrNull()?.message.orEmpty()
+            assertTrue(PythonDistributions.WASM_RUNTIME_MANIFEST_ENV in none && "pack_pmp_runtime.py" in none, none)
+
+            val wrong = install(manifest("0".repeat(64)))
+            assertIs<ChecksumMismatchException>(wrong.exceptionOrNull(), wrong.toString())
+
+            val result = install(manifest(sha256Hex(archive)))
+            assertTrue(result.isSuccess, result.exceptionOrNull()?.toString())
+            val installDir = File(project, "wasm32_emscripten")
+            val target = org.thisisthepy.python.multiplatform.packpack.compile.backend.external.locateTargetPython(project, "wasm32-emscripten")
+            assertEquals(File(installDir, "include/python3.15t").canonicalFile, target.includeDir.canonicalFile)
+            assertEquals(".cpython-315t-wasm32-emscripten.so", target.extensionSuffix)
+            assertTrue(File(installDir, "runtime/python.wasm").isFile)
+        }
+
     private fun fakePbsArchive(archive: File): File {
         java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
             gzip.write(tarHeader("python/", 0, '5'))
@@ -469,6 +523,8 @@ class DefaultBackendTest {
         ): Result<File> {
             downloads++
             lastUrl = url
+            // A local pinned archive (the interim wasm runtime) goes through the real copy; the network never.
+            if (fakeArchive == null && url.startsWith("file:")) return super.downloadArchive(url, fileName, destDir)
             val archive = fakeArchive ?: return Result.failure(IllegalStateException("tests never download"))
             destDir.mkdirs()
             return Result.success(archive.copyTo(File(destDir, fileName), overwrite = true))

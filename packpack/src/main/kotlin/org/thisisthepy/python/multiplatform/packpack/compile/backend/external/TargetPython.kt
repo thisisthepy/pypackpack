@@ -99,6 +99,7 @@ fun targetPythonDirName(canonicalTarget: String): String? =
     ANDROID_DIRS[canonicalTarget]
         ?: IOS_TARGETS[canonicalTarget]?.installDirName
         ?: LINUX_CROSS_TARGETS[canonicalTarget]?.installDirName
+        ?: "wasm32_emscripten".takeIf { canonicalTarget == "wasm32-emscripten" }
 
 /** The nearest `<targetPythonDirName>` at or above [packageDir] that holds [canonicalTarget]'s CPython, if any. */
 fun findTargetPythonDir(packageDir: File, canonicalTarget: String): File? =

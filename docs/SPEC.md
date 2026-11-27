@@ -89,7 +89,7 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     re-enable the GIL when it is imported. The build warns, naming the module and saying that it
     re-enables the GIL, because the app would otherwise silently run with the GIL. Implemented for the
     `resource` bundle (see *GIL warning*).
-- WASM (`wasm32-emscripten`, wheels tagged `cp315-cp315t-pyemscripten_2026_0_wasm32`, PEP 783's platform tag that python-multiplatform's 3.15t runtime reports from its sysconfig, built with Emscripten 5.0.3 (#82; team lead 2026-11-27)) is in the first release's scope. Nothing installs or compiles for it yet;
+- WASM (`wasm32-emscripten`, wheels tagged `cp315-cp315t-pyemscripten_2026_0_wasm32`, PEP 783's platform tag that python-multiplatform's 3.15t runtime reports from its sysconfig, built with Emscripten 5.0.3 (#82; team lead 2026-11-27)) is in the first release's scope. `python install 3.15t wasm32-emscripten` installs the interim runtime (see *Installing a ppp Python distribution*); nothing compiles for it yet;
   the target's ABI follows our own 3.15t pthreads build from python-multiplatform #175.
 - `build` bundles: it takes the bundle as an argument (see *Package build*; #81). There is no `bundle`
   command.
@@ -522,6 +522,7 @@ and digest, the supported list, refusals, aliases) and `DefaultBackendTest.kt`
 | 3.15.0t | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | python-build-standalone `20261013`, `cpython-3.15.0+20261013-<triple>-freethreaded-install_only.tar.gz` | `shasum -a 256` of the download, equal to the release's `SHA256SUMS` |
 | 3.15.0t | `aarch64-linux-android`, `x86_64-linux-android` | `thisisthepy/python-multiplatform` release `cpython-3.15.0t-mobile`, `python-3.15.0t-<target>.tar.gz` | `thisisthepy/python-multiplatform` `cpython-3.15.0t-mobile` `SHA256SUMS` |
 | 3.15.0t | `arm64-apple-ios`, `arm64-apple-ios-simulator`, `x86_64-apple-ios-simulator` | `thisisthepy/python-multiplatform` release `cpython-3.15.0t-mobile`, `python-3.15.0t-iOS-XCframework.tar.gz` (one XCframework for all three) | `thisisthepy/python-multiplatform` `cpython-3.15.0t-mobile` `SHA256SUMS` |
+| 3.15.0t | `wasm32-emscripten` | **Interim (#82 (c), team lead 2026-11-27):** `python-3.15.0t-wasm32-emscripten.tar.gz` packed from a python-multiplatform checkout's build output (its `scripts/wasm/build-cpython.sh`, Emscripten 5.0.3) by `.github/scripts/wasm/pack_pmp_runtime.py`, installed from its `file:` URL into `wasm32_emscripten/` (`include/python3.15t`, `lib/libpython3.15t.a`, `lib/python3.15t/_sysconfigdata*`, `runtime/`). Its release asset `cpython-3.15.0t-wasm` (design (a)) waits for the owner's OK; switching replaces `PythonDistributions.wasm315`'s body | the manifest the script writes (`{archive, sha256, source}`), named by `PPP_WASM_RUNTIME_MANIFEST` (or `-Dppp.wasmRuntimeManifest`); without one the install fails naming the script. `DefaultBackendTest.installPython_wasmComesFromTheManifestsLocalArchive`, `PythonDistributionsTest.wasm315tNeedsTheInterimRuntimeManifest` |
 
 - A pair not in the table fails with `Python <version> is not available for <target>. Supported: <version/target, ...>`.
 - Every row carries a pin: `PythonDistribution.sha256` is not nullable, so an unpinned archive cannot be

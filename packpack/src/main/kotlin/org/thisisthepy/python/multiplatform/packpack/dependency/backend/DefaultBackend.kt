@@ -91,6 +91,14 @@ abstract class DefaultBackend : BackendInterface {
         fileName: String,
         destDir: File,
     ): Result<File> {
+        // A pinned local archive (the interim wasm runtime, #82 (c)) is copied; its digest is still checked by the caller.
+        if (url.startsWith("file:")) {
+            return runCatching {
+                val source = File(java.net.URI(url))
+                check(source.isFile) { "Download of $url failed: no such file" }
+                source.copyTo(File(destDir.apply { mkdirs() }, fileName), overwrite = true)
+            }
+        }
         val result = Downloader().use { downloader -> downloader.download(DownloadSpec(url, fileName, destDir)) }
         return if (result.success) {
             Result.success(File(result.filePath))
@@ -278,6 +286,7 @@ abstract class DefaultBackend : BackendInterface {
             "arm64-apple-ios" -> "ios_arm64"
             "arm64-apple-ios-simulator" -> "ios_simulator_arm64"
             "x86_64-apple-ios-simulator" -> "ios_simulator_x86_64"
+            "wasm32-emscripten" -> "wasm32_emscripten"
             else -> null
         }
 
