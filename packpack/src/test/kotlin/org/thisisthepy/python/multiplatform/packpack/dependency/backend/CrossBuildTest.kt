@@ -36,6 +36,11 @@ class CrossBuildTest {
         assertEquals("manylinux_2_17_aarch64", linux.hostPlatform)
         assertEquals("linux", linux.sysPlatform)
         assertEquals("manylinux_2_28_x86_64", crossTargetIdentity("x86_64-manylinux_2_28").hostPlatform)
+        // #82: the wheel platform the 3.15t wasm runtime's own sysconfig gives (PEP 783), so a backend names the wheel with it
+        val wasm = crossTargetIdentity("wasm32-emscripten")
+        assertEquals("pyemscripten_2026_0_wasm32", wasm.hostPlatform)
+        assertEquals("emscripten", wasm.sysPlatform)
+        assertEquals("wasm32", wasm.unameMachine)
         assertFailsWith<IllegalArgumentException> { crossTargetIdentity("aarch64-apple-darwin") }
         assertFailsWith<IllegalArgumentException> { crossTargetIdentity("x86_64-pc-windows-msvc") }
     }

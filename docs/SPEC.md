@@ -950,7 +950,17 @@ macOS.
   path when uv supports `pyemscripten_2026_0`.** `WheelInstallTest` (a wheel installed with `.data/` mapped and RECORD
   and INSTALLER written; a corrupted RECORD hash, a file RECORD does not list, another target's tags and a path outside
   the target each refused); `CrossBuildTest.aWasmPinBuiltHereIsInstalledByPypackpackAndTheRestByUv`. Building wasm
-  sdists in the cross environment is not implemented yet: `crossTargetIdentity` refuses `wasm32-emscripten`. Unlike `sync`, nothing is first built with the
+  sdists in the cross environment: `crossTargetIdentity("wasm32-emscripten")` reports the wheel platform
+  `pyemscripten_2026_0_wasm32` (the runtime's own sysconfig tag), `sys.platform` `emscripten` and machine `wasm32`;
+  `MesonCross` names Emscripten 5.0.3's `emcc`/`em++`/`emar` with the runtime's ABI flags in the compiler commands
+  (`-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -pthread -fPIC`, so setuptools' `CC`/`LDSHARED` carry them as Meson's
+  binaries do), `system = 'emscripten'`, `cpu_family = 'wasm32'`, and the wasm `TargetPython`'s link argument
+  `-sSIDE_MODULE=1`; another Emscripten is refused naming both versions. `MesonCrossTest.aWasmCrossBuildUsesEmccWithTheRuntimesAbiAndLinksASideModule`,
+  `CrossBuildTest.eachCrossTargetReportsItsWheelPlatformAndTheHostIsRefused`; real builds in `CrossSdistRealBuildTest`
+  (setuptools and meson-python, with `PPP_WASM_REAL_BUILD=1`, `EMSDK` and `PPP_WASM_RUNTIME_MANIFEST` besides
+  `PPP_CROSS_SDIST_REAL_BUILD`; off in CI until the runtime is published). Run locally (2026-11-27, Emscripten 5.0.3,
+  runtime from python-multiplatform e5c4a058): both built `*-cp315-cp315t-pyemscripten_2026_0_wasm32.whl` whose
+  extension is a side module, and both extensions imported in that runtime (its build tree's python.sh). Unlike `sync`, nothing is first built with the
   host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
   `<packageDir>/build/packpack/cross/<target>/`. Before its first build it installs the target's free-threaded
   CPython (`<python-version>t` from the uv options, else 3.15t) into `<packageDir>/<installDirName>`

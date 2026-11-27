@@ -1,5 +1,6 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.backend.external
 
+import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import java.io.File
 
 /**
@@ -49,6 +50,7 @@ data class MesonCross(
             canonicalTarget: String,
             hostTarget: String,
             ndk: NDK = NDK(),
+            emscripten: Emscripten = Emscripten(),
         ): MesonCross? {
             if (canonicalTarget == hostTarget) return null
             require(!canonicalTarget.endsWith("-pc-windows-msvc")) {
@@ -57,6 +59,24 @@ data class MesonCross(
             val python = locateTargetPython(packageDir, canonicalTarget)
             val cpu = if (canonicalTarget.startsWith("x86_64")) "x86_64" else "aarch64"
             return when {
+                canonicalTarget == "wasm32-emscripten" -> {
+                    // #82: Emscripten [Platforms.EMSDK_VERSION] with the runtime's ABI flags in the compiler commands
+                    // themselves, so setuptools' CC/LDSHARED carry them as Meson's binaries do; the side-module link
+                    // argument comes from the target Python (targetPythonIn).
+                    val emcc = emscripten.emcc() ?: throw IllegalStateException(
+                        "No emcc for $canonicalTarget: install Emscripten ${Platforms.EMSDK_VERSION} and set EMSDK, or put emcc on PATH.",
+                    )
+                    val line = emscripten.versionOf(emcc).orEmpty()
+                    val version = emscripten.emscriptenVersion(line)
+                    check(version == Platforms.EMSDK_VERSION) {
+                        "$canonicalTarget packages are built with Emscripten ${Platforms.EMSDK_VERSION}, the SDK python-multiplatform's " +
+                            "3.15t runtime is built with, but ${emcc.joinToString(" ")} is ${version ?: "'$line'"}."
+                    }
+                    val flags = Emscripten.ABI_FLAGS + listOf("-pthread", "-fPIC")
+                    val dir = File(emcc.last()).parentFile
+                    fun tool(name: String) = emcc.dropLast(1) + (if (dir != null) File(dir, name).path else name)
+                    MesonCross(python, emcc + flags, tool("em++") + flags, tool("emar"), "emscripten", null, "wasm32")
+                }
                 canonicalTarget in ANDROID_DIRS -> {
                     val root = ndk.ndkRoot() ?: throw IllegalStateException(
                         "No Android NDK found for $canonicalTarget. Set ANDROID_NDK_HOME, or install one under ANDROID_HOME's ndk directory.",

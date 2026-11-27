@@ -116,6 +116,51 @@ class CrossSdistRealBuildTest {
         }
     }
 
+    /**
+     * #82: a setuptools sdist builds for wasm32-emscripten in the cross environment with Emscripten 5.0.3, tagged as
+     * the 3.15t wasm runtime's sysconfig is (`pyemscripten_2026_0_wasm32`), its extension a wasm side module. Needs
+     * emsdk and the runtime (interim: `PPP_WASM_RUNTIME_MANIFEST`), so besides `PPP_CROSS_SDIST_REAL_BUILD` it runs only
+     * with `PPP_WASM_REAL_BUILD=1`, which CI does not set until the runtime is published (team lead 2026-11-27).
+     */
+    @Test
+    fun `a setuptools sdist builds for wasm32-emscripten with emcc as a pyemscripten side module`() {
+        assumeTrue(System.getenv("PPP_WASM_REAL_BUILD") == "1", "set PPP_WASM_REAL_BUILD=1 (with EMSDK and PPP_WASM_RUNTIME_MANIFEST) to build for wasm")
+        assumeTrue(!System.getenv(PythonDistributions.WASM_RUNTIME_MANIFEST_ENV).isNullOrBlank(), "needs ${PythonDistributions.WASM_RUNTIME_MANIFEST_ENV}")
+        setUp("wasm32-emscripten", "wasm32_emscripten", Platforms.getPlatformFamily(Platforms.detectHostTarget()))
+        buildAndCheck(
+            "wsdemo", setuptoolsProject("wsdemo"), target = "wasm32-emscripten",
+            tagSuffix = "-cp315t-pyemscripten_2026_0_wasm32.whl", extSuffix = ".cpython-315t-wasm32-emscripten.so",
+        ) { header ->
+            assertEquals(listOf(0, 'a'.code, 's'.code, 'm'.code), header.take(4).map { it.toInt() and 0xff }, "wasm magic")
+        }
+        val so = File(root, "unpacked-wsdemo.so").readBytes()
+        assertTrue(String(so, Charsets.ISO_8859_1).contains("dylink.0"), "not a side module: no dylink.0 section")
+    }
+
+    /** #82: the same through meson-python and the Meson cross file (emcc, `system = 'emscripten'`, `-sSIDE_MODULE=1`). */
+    @Test
+    fun `a meson-python sdist builds for wasm32-emscripten through the Meson cross file`() {
+        assumeTrue(System.getenv("PPP_WASM_REAL_BUILD") == "1", "set PPP_WASM_REAL_BUILD=1 (with EMSDK and PPP_WASM_RUNTIME_MANIFEST) to build for wasm")
+        assumeTrue(!System.getenv(PythonDistributions.WASM_RUNTIME_MANIFEST_ENV).isNullOrBlank(), "needs ${PythonDistributions.WASM_RUNTIME_MANIFEST_ENV}")
+        setUp("wasm32-emscripten", "wasm32_emscripten", Platforms.getPlatformFamily(Platforms.detectHostTarget()))
+        buildAndCheck(
+            "wmdemo",
+            mapOf(
+                "pyproject.toml" to "[build-system]\nrequires = [\"meson-python>=0.16\"]\nbuild-backend = \"mesonpy\"\n\n" +
+                    "[project]\nname = \"wmdemo\"\nversion = \"1.0\"\n",
+                "meson.build" to "project('wmdemo', 'c', version: '1.0')\n" +
+                    "py = import('python').find_installation(pure: false)\n" +
+                    "py.extension_module('_fast', 'src/fast.c', install: true, subdir: 'wmdemo')\n" +
+                    "py.install_sources('wmdemo/__init__.py', subdir: 'wmdemo')\n",
+            ),
+            target = "wasm32-emscripten",
+            tagSuffix = "-cp315t-pyemscripten_2026_0_wasm32.whl", extSuffix = ".cpython-315t-wasm32-emscripten.so",
+        ) { header ->
+            assertEquals(listOf(0, 'a'.code, 's'.code, 'm'.code), header.take(4).map { it.toInt() and 0xff }, "wasm magic")
+        }
+        assertTrue(String(File(root, "unpacked-wmdemo.so").readBytes(), Charsets.ISO_8859_1).contains("dylink.0"), "not a side module")
+    }
+
     @Test
     fun `a meson-python sdist builds for aarch64 Android with the target's suffix`() {
         setUpAndroid()

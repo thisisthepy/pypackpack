@@ -125,6 +125,36 @@ class MesonCrossTest {
         assertTrue("owner decision 2026-11-19" in windows.exceptionOrNull()?.message.orEmpty())
     }
 
+    /**
+     * #82: a wasm cross build compiles with Emscripten 5.0.3 and the runtime's ABI flags in the compiler commands
+     * themselves (so a setuptools build's CC and LDSHARED carry them too), and links every extension as a side module.
+     */
+    @Test
+    fun aWasmCrossBuildUsesEmccWithTheRuntimesAbiAndLinksASideModule() {
+        val pkg = pkg()
+        val wasm = File(root, "project/wasm32_emscripten")
+        headers(File(wasm, "include/python3.15t"))
+        sysconfig(File(wasm, "lib"), "EXT_SUFFIX" to ".cpython-315t-wasm32-emscripten.so")
+        val emscripten = Emscripten(locateEmcc = { listOf("/emsdk/upstream/emscripten/emcc") }, versionProbe = { "emcc (Emscripten) 5.0.3 (x)" })
+
+        val cross = MesonCross.forTarget(pkg, "wasm32-emscripten", hostTarget = "aarch64-apple-darwin", emscripten = emscripten)!!
+        val text = cross.crossFileText()
+
+        val flags = "'-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm', '-pthread', '-fPIC'"
+        assertTrue("c = ['/emsdk/upstream/emscripten/emcc', $flags]" in text, text)
+        assertTrue("cpp = ['/emsdk/upstream/emscripten/em++', $flags]" in text, text)
+        assertTrue("ar = ['/emsdk/upstream/emscripten/emar']" in text, text)
+        assertTrue("system = 'emscripten'" in text && "cpu_family = 'wasm32'" in text, text)
+        assertEquals(listOf("-sSIDE_MODULE=1"), cross.target.linkArgs)
+        assertEquals(".cpython-315t-wasm32-emscripten.so", cross.target.extensionSuffix)
+
+        val old = runCatching {
+            MesonCross.forTarget(pkg, "wasm32-emscripten", hostTarget = "aarch64-apple-darwin",
+                emscripten = Emscripten(locateEmcc = { listOf("/old/emcc") }, versionProbe = { "emcc (Emscripten) 4.0.19 (x)" }))
+        }.exceptionOrNull()?.message.orEmpty()
+        assertTrue("5.0.3" in old && "4.0.19" in old, old)
+    }
+
     @Test
     fun crossMesonBuildUsesTheTargetHeadersAndSuffixWithoutThePythonModule() {
         val project = File(root, "cross-project").apply { mkdirs() }
