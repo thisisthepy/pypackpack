@@ -3,6 +3,9 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 import org.thisisthepy.python.multiplatform.packpack.utils.deleteWithoutFollowingLinks
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.CrossSdistBuilder
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.NoWheelForTargetException
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.SdistAvailability
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
@@ -13,7 +16,10 @@ import java.io.File
 
 private const val PYPROJECT_FILE = "pyproject.toml"
 
-class CrossEnv {
+class CrossEnv(
+    /** Builds sdist-only dependencies for a cross target (docs/SPEC.md *Cross build environment*); a test seam. */
+    private val crossBuilder: CrossSdistBuilder = CrossSdistBuilder(),
+) {
     private lateinit var backend: BackendInterface
 
     private data class PackageSpec(
@@ -232,18 +238,43 @@ class CrossEnv {
                 // implemented (target)" list ("A feature to preserve per-target install results in
                 // separate environments during the sync step").
                 val targetDir = crossEnvTargetDir(packageSpec.directory, target)
-                runBlocking {
-                    backend.installDependenciesToTarget(
-                        targetDir.absolutePath,
-                        target,
-                        installArgs,
-                        packageSpec.directory,
-                    )
-                }.getOrThrow()
+                installTargetBuildingSdists(packageSpec.directory, targetDir, target, installArgs)
             }
 
             "Synchronized package '${packageSpec.input}' for targets: ${normalizedTargets.joinToString(", ")}"
         }
+
+    /**
+     * Installs [target]'s dependencies into [targetDir]. A dependency with only an sdist is built for the
+     * target in the cross environment and the install is repeated with `--find-links` to the built wheels;
+     * a package that fails again after its wheel was built ends it (docs/SPEC.md *Cross build environment*).
+     */
+    private fun installTargetBuildingSdists(
+        packageDir: File,
+        targetDir: File,
+        target: String,
+        installArgs: Map<String, String>,
+    ) {
+        val built = mutableSetOf<String>()
+        while (true) {
+            val args =
+                if (built.isEmpty()) installArgs
+                else installArgs + ("find-links" to crossBuilder.wheelsDir(packageDir, target).absolutePath)
+            val result = runBlocking { backend.installDependenciesToTarget(targetDir.absolutePath, target, args, packageDir) }
+            val failure = result.exceptionOrNull() ?: return
+            val missing = (failure as? NoWheelForTargetException)?.missing
+            if (missing == null || missing.sdist != SdistAvailability.ONLY_SDIST || target == Platforms.detectHostTarget()) throw failure
+            if (!built.add(missing.packageSpec)) {
+                throw IllegalStateException(
+                    "`${missing.packageSpec}` was built for $target in the cross environment, but uv still finds no wheel for it.",
+                    failure,
+                )
+            }
+            crossBuilder.buildFromPyPI(packageDir, target, missing.packageSpec).getOrElse {
+                throw IllegalStateException("`${missing.packageSpec}` has only an sdist and building it for $target failed: ${it.message}", it)
+            }
+        }
+    }
 
     fun showDependencyTree(
         packageName: String,

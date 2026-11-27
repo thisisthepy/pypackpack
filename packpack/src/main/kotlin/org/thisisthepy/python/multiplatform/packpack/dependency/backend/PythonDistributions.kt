@@ -45,6 +45,49 @@ object PythonDistributions {
 
     private const val SUMS_3_15_0 = "python-build-standalone $PBS_RELEASE_3_15_0 SHA256SUMS"
 
+    /** The system property naming the interim wasm runtime manifest (#82 (c)); wins over [WASM_RUNTIME_MANIFEST_ENV]. */
+    const val WASM_RUNTIME_MANIFEST_PROPERTY: String = "ppp.wasmRuntimeManifest"
+
+    /** The environment variable naming the interim wasm runtime manifest (#82 (c)). */
+    const val WASM_RUNTIME_MANIFEST_ENV: String = "PPP_WASM_RUNTIME_MANIFEST"
+
+    /**
+     * 3.15.0t for `wasm32-emscripten` (#82): python-multiplatform's free-threaded pthreads build on Emscripten
+     * 5.0.3, laid out as `python/{include/python3.15t, lib/libpython3.15t.a, lib/python3.15t/_sysconfigdata*.py,
+     * runtime/}`.
+     *
+     * Interim (c), team lead 2026-11-27: python-multiplatform does not publish it yet. Its release asset
+     * (`cpython-3.15.0t-wasm`, design (a)) waits for the owner's OK. Until then the archive is packed from a
+     * python-multiplatform checkout's build output by `.github/scripts/wasm/pack_pmp_runtime.py`, which writes a
+     * manifest `{"archive", "sha256", "source"}`; [WASM_RUNTIME_MANIFEST_PROPERTY] or [WASM_RUNTIME_MANIFEST_ENV]
+     * names it, and the archive is installed from its `file:` URL only if it matches that digest. Switching to (a)
+     * replaces this function's body with the release URL and digest.
+     */
+    fun wasm315(): Result<PythonDistribution> = runCatching {
+        val path = System.getProperty(WASM_RUNTIME_MANIFEST_PROPERTY)?.takeIf { it.isNotBlank() }
+            ?: System.getenv(WASM_RUNTIME_MANIFEST_ENV)?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException(
+                "Python 3.15.0t for wasm32-emscripten is not published yet (python-multiplatform's cpython-3.15.0t-wasm " +
+                    "release, #82). Pack it from a python-multiplatform checkout with " +
+                    "`.github/scripts/wasm/pack_pmp_runtime.py <checkout> <out dir>` and set $WASM_RUNTIME_MANIFEST_ENV " +
+                    "to the manifest it writes.",
+            )
+        val text = java.io.File(path).takeIf { it.isFile }?.readText()
+            ?: throw IllegalArgumentException("$WASM_RUNTIME_MANIFEST_ENV names $path, which is not a file.")
+        fun field(name: String): String = Regex("\"$name\"\\s*:\\s*\"([^\"]*)\"").find(text)?.groupValues?.get(1)
+            ?: throw IllegalArgumentException("The wasm runtime manifest $path has no \"$name\".")
+        val archive = java.io.File(field("archive"))
+        PythonDistribution(
+            version = "3.15.0t",
+            target = "wasm32-emscripten",
+            url = archive.toURI().toString(),
+            sha256 = field("sha256").lowercase(),
+            provenance = "wasm runtime manifest $path (${field("source")})",
+            stripComponents = 1,
+            prefixFilter = "python/",
+        )
+    }
+
     /** `X.Y` shorthands accepted on the command line; both name the free-threaded build. */
     val VERSION_ALIASES: Map<String, String> = mapOf(
             "3.15" to "3.15.0t",
@@ -138,6 +181,7 @@ object PythonDistributions {
         canonicalTarget: String,
     ): Result<PythonDistribution> {
         val exact = canonicalVersion(version)
+        if (exact == "3.15.0t" && canonicalTarget == "wasm32-emscripten") return wasm315()
         val known = ALL.firstOrNull { it.version == exact && it.target == canonicalTarget }
         return known?.let { Result.success(it) }
             ?: Result.failure(

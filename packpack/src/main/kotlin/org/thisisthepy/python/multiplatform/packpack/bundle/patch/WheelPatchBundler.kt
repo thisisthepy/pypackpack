@@ -371,7 +371,7 @@ class WheelPatchBundler : BundlerInterface {
         if (suffix != "emscripten") {
             throw IllegalArgumentException("Unsupported wasm target (expected 'wasm32-emscripten'): $canonicalTarget")
         }
-        return "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_${rawArch(canonicalTarget)}"
+        return Platforms.wasmPlatformTag(rawArch(canonicalTarget))
     }
 
     private fun linuxPlatformTag(canonicalTarget: String): String {

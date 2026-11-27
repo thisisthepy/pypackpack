@@ -2,6 +2,10 @@ package org.thisisthepy.python.multiplatform.packpack.dependency.middleware.envi
 
 import kotlinx.coroutines.runBlocking
 import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendInterface
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.CrossSdistBuilder
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.MissingWheel
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.NoWheelForTargetException
+import org.thisisthepy.python.multiplatform.packpack.dependency.backend.SdistAvailability
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.nio.file.Files
@@ -232,6 +236,67 @@ class CrossEnvTest {
         }
     }
 
+    /**
+     * docs/SPEC.md *Cross build environment*: uv reports an sdist-only dependency, `sync` builds it in the
+     * cross environment and repeats the install with `--find-links` to the built wheels. A package that fails
+     * again after its wheel was built ends the sync naming it; a package with no sdist fails as before.
+     */
+    @Test
+    fun syncBuildsAnSdistOnlyDependencyInTheCrossEnvironmentAndRetries() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val target = "aarch64-linux-android"
+            fun onlySdist(spec: String) = Result.failure<String>(
+                NoWheelForTargetException(MissingWheel(spec, target, SdistAvailability.ONLY_SDIST), IllegalStateException("uv")),
+            )
+            val builds = mutableListOf<Pair<String, String>>()
+            val builder = object : CrossSdistBuilder() {
+                override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String, recipeDirs: List<File>): Result<File> {
+                    builds += canonicalTarget to packageSpec
+                    return Result.success(File(wheelsDir(packageDir, canonicalTarget), "x.whl"))
+                }
+            }
+
+            val backend = FakeBackend()
+            backend.targetInstallResults += onlySdist("pkg-a==1.0")
+            backend.targetInstallResults += onlySdist("pkg-b==2.0")
+            val crossEnv = CrossEnv(builder)
+            crossEnv.initialize(backend)
+            crossEnv.syncDependencies("core", listOf(target), null).getOrThrow()
+
+            assertEquals(listOf(target to "pkg-a==1.0", target to "pkg-b==2.0"), builds)
+            assertEquals(3, backend.targetInstallCalls.size)
+            assertEquals(null, backend.targetInstallCalls[0].extraArgs["find-links"])
+            val wheels = File(workspaceRoot, "src/core/build/packpack/cross/$target/wheels").absolutePath
+            assertEquals(wheels, backend.targetInstallCalls[1].extraArgs["find-links"]?.let { File(it).absolutePath })
+            assertEquals(wheels, backend.targetInstallCalls[2].extraArgs["find-links"]?.let { File(it).absolutePath })
+
+            val again = FakeBackend()
+            again.targetInstallResults += onlySdist("pkg-a==1.0")
+            again.targetInstallResults += onlySdist("pkg-a==1.0")
+            val stuck = CrossEnv(builder).apply { initialize(again) }.syncDependencies("core", listOf(target), null)
+            assertTrue("still finds no wheel" in stuck.exceptionOrNull()?.message.orEmpty(), stuck.exceptionOrNull()?.message)
+
+            val noSdist = FakeBackend()
+            noSdist.targetInstallResults += Result.failure(
+                NoWheelForTargetException(MissingWheel("pkg-c==1.0", target, SdistAvailability.NO_SDIST), IllegalStateException("uv")),
+            )
+            builds.clear()
+            val refused = CrossEnv(builder).apply { initialize(noSdist) }.syncDependencies("core", listOf(target), null)
+            assertTrue(refused.exceptionOrNull() is NoWheelForTargetException)
+            assertTrue(builds.isEmpty(), "no sdist: nothing to build")
+        }
+    }
+
     @Test
     fun syncDependenciesRefusesUvOlderThan0136ForX8664Windows() {
         withWorkspace(
@@ -409,6 +474,142 @@ class CrossEnvTest {
         }
     }
 
+    // docs/SPEC.md *Per-package target dependency management*: `<package> add` runs `uv add --package
+    // <name> --marker <marker>` once per target, with each target's marker, at the workspace root.
+    @Test
+    fun addDependenciesRunsUvAddOncePerTargetWithThatTargetsMarker() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText(
+                "[project]\nname = \"core\"\n\n[tool.ppp.dependencies]\nplatforms = [\"x86_64-pc-windows-msvc\", \"aarch64-linux-android\"]\n",
+            )
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            // No --target: the package's platforms.
+            crossEnv.addDependencies("core", listOf("numpy"), null, mapOf("index-url" to "https://example.com/simple")).getOrThrow()
+
+            assertEquals(
+                listOf("x86_64-pc-windows-msvc", "aarch64-linux-android").map { target ->
+                    FakeBackend.AddCall(
+                        "core",
+                        listOf("numpy"),
+                        mapOf("index-url" to "https://example.com/simple", "marker" to org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy.markerForTarget(target)),
+                        File(workspaceRoot.absolutePath),
+                    )
+                }.map { it.copy(workingDir = it.workingDir?.canonicalFile) },
+                backend.addCalls.map { it.copy(workingDir = it.workingDir?.canonicalFile) },
+            )
+
+            // An explicit --target replaces the defaults.
+            backend.addCalls.clear()
+            crossEnv.addDependencies("core", listOf("six"), listOf("linux"), null).getOrThrow()
+            assertEquals(
+                listOf(org.thisisthepy.python.multiplatform.packpack.dependency.middleware.MarkerPolicy.markerForTarget("x86_64-unknown-linux-gnu")),
+                backend.addCalls.map { it.extraArgs["marker"] },
+            )
+        }
+    }
+
+    @Test
+    fun addDependenciesWithoutTargetsOrPlatformsOrWithAMarkerIsRefusedBeforeUv() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val noTargets = crossEnv.addDependencies("core", listOf("numpy"), null, null).exceptionOrNull()?.message.orEmpty()
+            assertTrue("No targets provided" in noTargets, noTargets)
+            val marker = crossEnv.addDependencies("core", listOf("numpy; sys_platform == 'linux'"), listOf("linux"), null)
+                .exceptionOrNull()?.message.orEmpty()
+            assertTrue("--target" in marker, marker)
+            assertTrue(backend.addCalls.isEmpty())
+        }
+    }
+
+    // docs/SPEC.md *Adding/removing packages*: `package remove` deletes the directory and its workspace member.
+    @Test
+    fun removePackageDeletesItsDirectoryAndWorkspaceMember() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["packages/core", "packages/utils"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "packages/core/src/main").mkdirs()
+            File(workspaceRoot, "packages/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            File(workspaceRoot, "packages/utils").mkdirs()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(FakeBackend())
+
+            crossEnv.removePackage("packages/core", null).getOrThrow()
+
+            assertFalse(File(workspaceRoot, "packages/core").exists())
+            assertTrue(File(workspaceRoot, "packages/utils").exists())
+            assertEquals(
+                listOf("packages/utils"),
+                TomlEditor(File(workspaceRoot, "pyproject.toml").readText()).getArray("tool.uv.workspace", "members"),
+            )
+
+            val missing = crossEnv.removePackage("packages/core", null).exceptionOrNull()?.message.orEmpty()
+            assertTrue("not found" in missing, missing)
+        }
+    }
+
+    // docs/SPEC.md *Per-package target dependency management*, `tree`: one `uv tree --package <name>
+    // --python-platform <target>` per target, outputs in order; the host when no target is given.
+    @Test
+    fun showDependencyTreeRunsUvTreePerTargetAndDefaultsToTheHost() {
+        withWorkspace(
+            """
+            [project]
+            name = "root"
+
+            [tool.uv.workspace]
+            members = ["src/core"]
+            """.trimIndent(),
+        ) { workspaceRoot ->
+            File(workspaceRoot, "src/core").mkdirs()
+            File(workspaceRoot, "src/core/pyproject.toml").writeText("[project]\nname = \"core\"\n")
+            val backend = FakeBackend()
+            val crossEnv = CrossEnv()
+            crossEnv.initialize(backend)
+
+            val output = crossEnv.showDependencyTree("core", listOf("linux", "aarch64-linux-android"), null).getOrThrow()
+            assertEquals("tree:x86_64-unknown-linux-gnu\ntree:aarch64-linux-android", output)
+            assertEquals<List<String?>>(listOf("core", "core"), backend.treePackages)
+
+            backend.treeArgs.clear()
+            crossEnv.showDependencyTree("core", null, null).getOrThrow()
+            assertEquals(
+                listOf(org.thisisthepy.python.multiplatform.packpack.utils.Platforms.detectHostTarget()),
+                backend.treeArgs.map { it["python-platform"] },
+            )
+        }
+    }
+
     private fun readTargets(pyproject: File): List<String> {
         return TomlEditor(pyproject.readText()).getArray("tool.ppp.dependencies", "platforms")
     }
@@ -439,6 +640,9 @@ class CrossEnvTest {
             var lastInitExtraArgs: Map<String, String> = emptyMap()
         }
 
+        /** Results the next `installDependenciesToTarget` calls return, in order; success once empty. */
+        val targetInstallResults = ArrayDeque<Result<String>>()
+
         data class TargetInstallCall(
             val targetDir: String,
             val pythonPlatform: String,
@@ -446,6 +650,15 @@ class CrossEnvTest {
             val extraArgs: Map<String, String> = emptyMap(),
         )
 
+        data class AddCall(
+            val packageName: String?,
+            val dependencies: List<String>,
+            val extraArgs: Map<String, String>,
+            val workingDir: File?,
+        )
+
+        val addCalls = mutableListOf<AddCall>()
+        val treePackages = mutableListOf<String?>()
         val targetInstallCalls = mutableListOf<TargetInstallCall>()
         val syncArgs = mutableListOf<Map<String, String>>()
         val treeArgs = mutableListOf<Map<String, String>>()
@@ -491,7 +704,10 @@ class CrossEnvTest {
             dependencies: List<String>,
             extraArgs: Map<String, String>?,
             workingDir: File?,
-        ): Result<String> = Result.success("ok")
+        ): Result<String> {
+            addCalls += AddCall(packageName, dependencies, extraArgs.orEmpty(), workingDir)
+            return Result.success("ok")
+        }
 
         override suspend fun removeDependencies(
             packageName: String?,
@@ -517,7 +733,7 @@ class CrossEnvTest {
             requirements: List<String>?,
         ): Result<String> {
             targetInstallCalls += TargetInstallCall(targetDir, pythonPlatform, workingDir, extraArgs.orEmpty())
-            return Result.success("ok")
+            return targetInstallResults.removeFirstOrNull() ?: Result.success("ok")
         }
 
         override suspend fun showDependencyTree(
@@ -526,7 +742,8 @@ class CrossEnvTest {
             workingDir: File?,
         ): Result<String> {
             treeArgs += extraArgs.orEmpty()
-            return Result.success("ok")
+            treePackages += packageName
+            return Result.success("tree:${extraArgs?.get("python-platform")}")
         }
 
         override suspend fun lockDependencies(projectRoot: String): Result<String> = Result.success("ok")

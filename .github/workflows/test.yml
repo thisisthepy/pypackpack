@@ -31,20 +31,20 @@ jobs:
           - { name: packpack, task: test }
           - { name: cli, task: cliTest }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: "0.13.6"
 
@@ -75,13 +75,142 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}-test-reports
           path: packpack/build/reports/tests/${{ matrix.task }}/
 
+  # Opt-in real builds (team lead 2026-11-21 22:55, Decision 8: inside this workflow, no new one). Each test
+  # skips itself without its variable; here the variable is set, and the step fails if the test was skipped.
+  real-builds:
+    name: real builds (Meson cross, Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.13.6"
+      # The Meson backend runs a meson and ninja the user installed (docs/SPEC.md); the runner has neither.
+      - name: Install meson and ninja
+        run: |
+          uv tool install meson
+          uv tool install ninja
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+      - name: Meson cross build for aarch64 Linux (#155)
+        env:
+          PPP_MESON_CROSS_REAL_BUILD: "1"
+        run: |
+          rm -rf packpack/build/test-results/test
+          ./gradlew :packpack:test --tests '*.MesonCrossRealBuildTest' --rerun --console=plain
+          grep -q 'tests="1" skipped="0" failures="0" errors="0"' packpack/build/test-results/test/TEST-*MesonCrossRealBuildTest.xml \
+            || { echo "MesonCrossRealBuildTest did not run and pass"; exit 1; }
+      - name: Native slot, Android arm64 with the runner's NDK (#155)
+        env:
+          PPP_NATIVE_SLOT_REAL_BUILD: "1"
+        run: |
+          rm -rf packpack/build/test-results/test
+          ./gradlew :packpack:test --tests '*.NativeSlotRealBuildTest' --rerun --console=plain
+          grep -q 'tests="3" skipped="2" failures="0" errors="0"' packpack/build/test-results/test/TEST-*NativeSlotRealBuildTest.xml \
+            || { echo "the Android build did not run and pass"; exit 1; }
+      # The maturin sdist (#168) cross-compiles with Cargo for the Rust target; the runner has rustup and the NDK.
+      - name: Rust target for Android arm64 (#168)
+        run: rustup target add aarch64-linux-android
+      - name: Cross build environment, sdist-only packages for Android arm64 (setuptools, meson-python, scikit-build-core, maturin) and aarch64 Linux (#159, #168)
+        env:
+          PPP_CROSS_SDIST_REAL_BUILD: "1"
+        run: |
+          rm -rf packpack/build/test-results/test
+          ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
+          grep -q 'tests="10" skipped="5" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+            || { echo "CrossSdistRealBuildTest did not run and pass"; exit 1; }
+
+  # The native slot's iOS (Xcode) and Windows (LLVM clang, own machine) builds need those hosts (#155).
+  real-builds-host:
+    name: real builds (native slot, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.13.6"
+      - name: Native slot real build on this host
+        env:
+          PPP_NATIVE_SLOT_REAL_BUILD: "1"
+        run: |
+          rm -rf packpack/build/test-results/test
+          ./gradlew :packpack:test --tests '*.NativeSlotRealBuildTest' --rerun --console=plain
+          grep -q 'tests="3" skipped="2" failures="0" errors="0"' packpack/build/test-results/test/TEST-*NativeSlotRealBuildTest.xml \
+            || { echo "this host's native slot build did not run and pass"; exit 1; }
+      # The maturin sdist for the iOS simulator (#182) cross-compiles with stable Rust's aarch64-apple-ios-sim target.
+      - name: Rust target for the iOS simulator
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-ios-sim
+      - name: Cross build environment, sdists (setuptools, maturin) for the arm64 iOS simulator (#159, #182)
+        if: runner.os == 'macOS'
+        env:
+          PPP_CROSS_SDIST_REAL_BUILD: "1"
+        run: |
+          rm -rf packpack/build/test-results/test
+          ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
+          grep -q 'tests="10" skipped="8" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+            || { echo "the iOS simulator cross sdist builds did not run and pass"; exit 1; }
+
+  # The GraalVM native binary on the four release platforms, run through every command group (#160): the
+  # JVM suites cannot see what native-image leaves out. Same matrix and setup as publish-pypi.yml.
+  native:
+    name: native binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.13.6"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Native image
+        run: ./gradlew --no-daemon :packpack:nativeCompile
+      - name: Every command group against the native binary
+        run: |
+          exe=packpack/build/native/nativeCompile/pypackpack
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          python .github/scripts/native/native_cli_suite.py "$exe"
+
   guide:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 docs/guide/check_guide.py

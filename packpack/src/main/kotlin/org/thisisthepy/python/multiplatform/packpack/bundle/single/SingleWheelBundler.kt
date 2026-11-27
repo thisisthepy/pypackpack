@@ -100,9 +100,9 @@ import java.util.zip.ZipOutputStream
  *   example tag, and `SUPPORTED_TARGETS` carries no iOS version of its own -- except the arm64
  *   simulator, `14.0`: Rust's `aarch64-apple-ios-sim` cannot target lower, so the Cargo backend's
  *   extensions for it are 14.0 binaries (#118).
- * - **wasm** (`wasm32-emscripten`, CPython `sysconfig.get_platform()` / PEP 783 spelling, #82):
- *   `emscripten_<pin>_wasm32`, with the Emscripten SDK version pinned in [Platforms.EMSCRIPTEN_VERSION_TAG]
- *   (`4_0_19`).
+ * - **wasm** (`wasm32-emscripten`, #82): PEP 783's `pyemscripten_2026_0_wasm32`
+ *   ([Platforms.wasmPlatformTag]), the platform tag python-multiplatform's 3.15t runtime reports from its own
+ *   sysconfig; `cp315t` keeps it apart from Pyodide's GIL wheels (team lead 2026-11-27).
  *
  * ### 3. What goes in the archive
  *
@@ -359,7 +359,7 @@ class SingleWheelBundler : BundlerInterface {
         if (suffix != "emscripten") {
             throw IllegalArgumentException("Unsupported wasm target (expected 'wasm32-emscripten'): $canonicalTarget")
         }
-        return "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_${rawArch(canonicalTarget)}"
+        return Platforms.wasmPlatformTag(rawArch(canonicalTarget))
     }
 
     private fun linuxPlatformTag(canonicalTarget: String): String {

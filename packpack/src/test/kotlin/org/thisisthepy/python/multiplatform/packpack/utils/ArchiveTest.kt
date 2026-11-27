@@ -20,6 +20,42 @@ class ArchiveTest {
     @TempDir
     lateinit var tempDir: File
 
+    /**
+     * A PAX (POSIX.1-2001) tar keeps a name longer than 100 bytes, or a long link target, only in its `x`
+     * record; the ustar field holds a truncated name. python-multiplatform's iOS XCframework archive is one
+     * (`.../Headers/internal/mimalloc/mimalloc/atomic.h`, 108 bytes; run 44973431802). A GNU tar's `L`/`K`
+     * records carry the same. Written by the host `python3`'s tarfile.
+     */
+    @Test
+    fun extractArchive_takesLongNamesAndLinksFromPaxAndGnuRecords() {
+        val deep = "Python.xcframework/ios-arm64_x86_64-simulator/Python.framework/Headers/internal/mimalloc/mimalloc"
+        for (format in listOf("PAX_FORMAT", "GNU_FORMAT")) {
+            val archive = File(tempDir, "long-$format.tar.gz")
+            val script =
+                "import io, sys, tarfile\n" +
+                    "deep = sys.argv[2]\n" +
+                    "with tarfile.open(sys.argv[1], 'w:gz', format=tarfile.$format) as t:\n" +
+                    "    d = tarfile.TarInfo('./' + deep); d.type = tarfile.DIRTYPE; t.addfile(d)\n" +
+                    "    data = b'atomic'\n" +
+                    "    f = tarfile.TarInfo('./' + deep + '/atomic.h'); f.size = len(data); t.addfile(f, io.BytesIO(data))\n" +
+                    "    l = tarfile.TarInfo('./' + deep + '/link.h'); l.type = tarfile.SYMTYPE\n" +
+                    "    l.linkname = 'a' * 120 + '/../atomic.h'; t.addfile(l)\n" +
+                    "    s = tarfile.TarInfo('./short.txt'); s.size = 2; t.addfile(s, io.BytesIO(b'ok'))\n"
+            val process = ProcessBuilder("python3", "-c", script, archive.path, deep).redirectErrorStream(true).start()
+            val out = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), out)
+
+            val dest = File(tempDir, "out-$format")
+            extractArchive(archive, dest)
+
+            assertEquals("atomic", File(dest, "$deep/atomic.h").readText(), format)
+            val link = File(dest, "$deep/link.h").toPath()
+            assertTrue(Files.isSymbolicLink(link), format)
+            assertEquals("a".repeat(120) + "/../atomic.h", Files.readSymbolicLink(link).toString(), format)
+            assertEquals("ok", File(dest, "short.txt").readText(), "the record applies to one entry only ($format)")
+        }
+    }
+
     @Test
     fun extractArchive_extractsZipArchive() {
         val archive = File(tempDir, "python.zip")

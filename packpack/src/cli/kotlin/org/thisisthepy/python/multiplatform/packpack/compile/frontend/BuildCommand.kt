@@ -15,6 +15,8 @@ import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findWorkspaceRoot
 import org.thisisthepy.python.multiplatform.packpack.utils.resolveWorkspacePackageDir
 import org.thisisthepy.python.multiplatform.packpack.utils.runBooleanCommand
+import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
+import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlValue
 import java.io.File
 
 /**
@@ -66,12 +68,14 @@ class BuildCommand(
     }
 
     private fun buildSource() {
-        val bundle = (bundleType ?: BundleType.BINARY.id).let { id ->
+        val packageDir = packageDir()
+        // The bundle on the command line, else the package's [tool.ppp].bundle (docs/SPEC.md *Package
+        // build*, #159), else binary.
+        val bundle = (bundleType ?: readBundlePreference(packageDir) ?: BundleType.BINARY.id).let { id ->
             BundleType.fromId(id)?.takeIf { it != BundleType.RESOURCE }
                 ?: fail("Unknown source bundle type '$id'. Use binary, fat, single or patch.")
         }
         val canonical = canonicalTarget()
-        val packageDir = packageDir()
         if (!compile(packageName, compileArgs(canonical))) fail("Build failed for package: $packageName (compile)")
         bundle(bundle, packageDir, canonical)
     }
@@ -109,6 +113,16 @@ class BuildCommand(
 
     private fun compileArgs(compileTarget: String): Map<String, String> =
         mapOf("overwrite" to overwrite.toString(), "type" to type, "level" to level, "target" to compileTarget)
+
+    /** `[tool.ppp].bundle` in the package's `pyproject.toml`, the sheet's "single file or separate" metadata. */
+    private fun readBundlePreference(packageDir: File): String? {
+        val pyproject = File(packageDir, "pyproject.toml").takeIf { it.isFile } ?: return null
+        return when (val value = TomlEditor(pyproject.readText()).getValue("tool.ppp", "bundle")) {
+            null -> null
+            is TomlValue.String -> value.value
+            else -> fail("[tool.ppp].bundle must be a string (binary, fat, single or patch), got $value")
+        }
+    }
 
     private fun fail(message: String): Nothing = throw PrintMessage(message, statusCode = 1, printError = true)
 

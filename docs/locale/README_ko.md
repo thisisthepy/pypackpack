@@ -49,7 +49,7 @@ pypackpack 은 그 위에 타깃, 타깃별 마커, 타깃별 설치 디렉터�
 
 ```shell
 uv tool install pypackpack    # PATH 에 pypackpack 과 ppp 를 둠
-ppp --version                 # 0.3.0 부터; 0.2.0 에서는 `ppp version`
+ppp --version                 # pypackpack 버전; `ppp version` 은 uv 버전도 출력
 pypackpack --help             # 별칭: ppp
 uvx pypackpack --help         # 설치 없이 실행
 ```
@@ -87,7 +87,7 @@ ppp core add six --target arm64-apple-ios                 # 한 타깃에만
 ppp core sync --target aarch64-linux-android arm64-apple-ios \
     --python-version 3.15 --only-binary :all:          # → packages/core/build/crossenv/<triple>/
 
-ppp build core --target aarch64-apple-darwin              # Meson. 지금은 호스트만
+ppp build core --target aarch64-linux-android             # Meson. 교차 타깃은 먼저 `ppp python install 3.15t <target>`
 ```
 
 `--target` 이 없으면 `sync` 와 `tree` 는 호스트 타깃만 씁니다. 모듈은 `packages/core/src/main/core/` 같은 패키지 디렉터리에 두세요. 플랫폼 전용 코드는
@@ -97,7 +97,7 @@ ppp build core --target aarch64-apple-darwin              # Meson. 지금은 호
 
 ```kotlin
 repositories { mavenLocal() }    // ./gradlew :packpack:publishToMavenLocal
-dependencies { implementation("org.thisisthepy.python.multiplatform:packpack:0.1.0") }
+dependencies { implementation("org.thisisthepy.python.multiplatform:packpack:1.0.0") }
 ```
 
 ```kotlin
@@ -126,7 +126,7 @@ BundlerInterface.create(BundleType.RESOURCE).bundle(
 |---|---|
 | Python 배포판 (install, list, find, uninstall, 고정 SHA-256) | ✅ 구현 |
 | 타깃과 타깃별 의존성 (`add`, `remove`, `sync`, `tree`) | 🟡 동작함. 일부는 아직 테스트 없음 |
-| Meson 을 통한 C/C++ 확장 | 🟡 호스트만, 크로스 컴파일은 아직 |
+| Meson 을 통한 C/C++ 확장 | 🟡 호스트, 그리고 Linux·Android·iOS 교차 빌드 (#155). aarch64 Linux 실제 교차 빌드는 CI 에서 확인 |
 | 번들: `resource`, `single`, `fat`, `patch` | ✅ 구현 |
 | 빌드 레벨: `instant` / `bytecode` | ✅ / 🟡 (`resource` 만) |
 | 빌드 레벨: `native` / `mixed` | 🟡 `resource` 번들만 (macOS, Linux 호스트, Android arm64) |

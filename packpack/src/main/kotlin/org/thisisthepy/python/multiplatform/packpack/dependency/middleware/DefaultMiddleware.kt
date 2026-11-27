@@ -6,6 +6,7 @@ import org.thisisthepy.python.multiplatform.packpack.dependency.backend.BackendT
 import org.thisisthepy.python.multiplatform.packpack.dependency.middleware.environment.CrossEnv
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.findProjectRoot
+import org.thisisthepy.python.multiplatform.packpack.utils.readWorkspaceMembers
 import org.thisisthepy.python.multiplatform.packpack.utils.toml.TomlEditor
 import java.io.File
 import java.time.Year
@@ -41,6 +42,14 @@ class DefaultMiddleware : MiddlewareInterface {
         targets: List<String>?,
         extraArgs: Map<String, String>?,
     ): Result<String> {
+        // An unknown target is refused before uv creates anything (docs/SPEC.md *Project creation*).
+        if (!targets.isNullOrEmpty()) {
+            runCatching { Platforms.normalizeTargetsOrThrow(targets, label = "platform") }
+                .onFailure { return Result.failure(it) }
+        }
+        val targetDir = path?.let { File(it) } ?: File(System.getProperty("user.dir"))
+        existingProjectRejection(targetDir)?.let { return Result.failure(IllegalStateException(it)) }
+        val otherTools = otherPackagingToolFiles(targetDir)
         val uvArgs =
             (extraArgs?.toMutableMap() ?: mutableMapOf()).apply {
                 putIfAbsent("bare", "")
@@ -69,7 +78,9 @@ class DefaultMiddleware : MiddlewareInterface {
             pythonVersion = uvArgs["python"].takeUnless { it.isNullOrBlank() },
         )
 
-        return result
+        if (otherTools.isEmpty()) return result
+        val warning = otherPackagingToolsWarning(otherTools)
+        return result.map { output -> listOf(output.trim(), warning).filter { it.isNotEmpty() }.joinToString("\n") }
     }
 
     /**
@@ -256,6 +267,16 @@ class DefaultMiddleware : MiddlewareInterface {
                     println("Project root not found. Please initialize a project first.")
                     return false
                 }
+
+        // docs/SPEC.md *Cleaning up subpackage build directories on `python use`* (#159): each package's
+        // Meson trees were configured against the old interpreter. Before the .venv goes, so a failure
+        // leaves the project as it was.
+        for (tree in compileTreesFor(projectRoot)) {
+            if (tree.exists() && !tree.deleteWithoutFollowingLinks()) {
+                println("Failed to remove the stale build directory ${tree.path}")
+                return false
+            }
+        }
 
         val venvDir = File(projectRoot, VENV_DIR)
 
@@ -590,3 +611,48 @@ internal object MarkerPolicy {
         }
     }
 }
+
+/** Where `pypackpack build` keeps a package's Meson trees (`compile/backend/DefaultBackend.compile`). */
+private const val COMPILE_TREE_DIR = "build/packpack"
+
+/**
+ * The compile trees `python use` deletes (docs/SPEC.md *Cleaning up subpackage build directories on
+ * `python use`*): `build/packpack` in each listed workspace member that exists inside [projectRoot], or in
+ * [projectRoot] itself when it lists none. Glob members are not expanded.
+ */
+internal fun compileTreesFor(projectRoot: File): List<File> {
+    val root = projectRoot.canonicalFile
+    val members = readWorkspaceMembers(root)
+    if (members.isEmpty()) return listOf(File(root, COMPILE_TREE_DIR))
+    return members
+        .filterNot { it.contains('*') }
+        .map { File(root, it).canonicalFile }
+        .filter { it.isDirectory && it.toPath().startsWith(root.toPath()) }
+        .map { File(it, COMPILE_TREE_DIR) }
+}
+
+/** Files that show another packaging tool manages [dir] (docs/SPEC.md *Project creation*). */
+private val OTHER_PACKAGING_TOOL_FILES = listOf("setup.py", "setup.cfg", "Pipfile", "poetry.lock", "pdm.lock", "environment.yml")
+
+/**
+ * `init` into a directory that already has a `pyproject.toml` is refused before uv runs, naming
+ * whether it is already a ppp project (`[tool.ppp]`) or another tool's (`[tool.poetry]`, ...).
+ */
+internal fun existingProjectRejection(dir: File): String? {
+    val pyproject = File(dir, "pyproject.toml")
+    if (!pyproject.isFile) return null
+    val text = pyproject.readText()
+    val owner = when {
+        Regex("""(?m)^\s*\[tool\.ppp[.\]]""").containsMatchIn(text) -> "it is already a pypackpack project"
+        else -> Regex("""(?m)^\s*\[tool\.(poetry|pdm|hatch|flit|setuptools)[.\]]""").find(text)
+            ?.let { "it is configured for ${it.groupValues[1]}" }
+            ?: "a Python project already exists there"
+    }
+    return "${pyproject.path} exists: $owner. init creates a new project only; use target add / add in an existing pypackpack project."
+}
+
+internal fun otherPackagingToolFiles(dir: File): List<String> = OTHER_PACKAGING_TOOL_FILES.filter { File(dir, it).exists() }
+
+internal fun otherPackagingToolsWarning(files: List<String>): String =
+    "Warning: ${files.joinToString(", ")} in this directory belong to another packaging tool; pypackpack " +
+        "uses pyproject.toml and uv and does not read them."

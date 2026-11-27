@@ -58,15 +58,24 @@ open class Meson(
         options: List<String>?,
         workingDir: File? = null,
         overwrite: Boolean = false,
+        cross: MesonCross? = null,
     ): Result<String> =
         runCatching {
             if (!isMesonInstalled()) {
                 installMeson().getOrThrow()
             }
             val projectDir = workingDir ?: File(System.getProperty("user.dir"))
-            makeMesonBuild(projectDir.absolutePath, overwrite).getOrThrow()
-            val interpreter = pythonNativeFile(projectDir)?.let { listOf("--native-file", it.path) }.orEmpty()
-            executeCommand(listOf("setup", buildDir) + interpreter + options.orEmpty(), projectDir).getOrThrow()
+            makeMesonBuild(projectDir.absolutePath, overwrite, cross).getOrThrow()
+            val machineFiles =
+                if (cross != null) {
+                    val crossFile = File(projectDir, "build/packpack/meson-cross-${cross.target.canonicalTarget}.ini")
+                    crossFile.parentFile.mkdirs()
+                    crossFile.writeText(cross.crossFileText())
+                    listOf("--cross-file", crossFile.path)
+                } else {
+                    pythonNativeFile(projectDir)?.let { listOf("--native-file", it.path) }.orEmpty()
+                }
+            executeCommand(listOf("setup", buildDir) + machineFiles + options.orEmpty(), projectDir).getOrThrow()
         }
 
     open suspend fun compile(
@@ -107,6 +116,7 @@ open class Meson(
     internal fun makeMesonBuild(
         projectDir: String = System.getProperty("user.dir"),
         overwrite: Boolean = false,
+        cross: MesonCross? = null,
     ): Result<String> =
         runCatching {
             val project = File(projectDir).absoluteFile
@@ -120,7 +130,7 @@ open class Meson(
                 "meson.build already exists: ${mesonBuild.absolutePath}. Use --overwrite to regenerate it."
             }
 
-            val content = buildMesonBuildContent(project, pyproject)
+            val content = buildMesonBuildContent(project, pyproject, cross)
             mesonBuild.writeText(content)
             content
         }
@@ -128,6 +138,7 @@ open class Meson(
     private fun buildMesonBuildContent(
         project: File,
         pyproject: File,
+        cross: MesonCross? = null,
     ): String {
         val editor = TomlEditor(pyproject.readText())
         val projectName = (editor.getValue("project", "name") as? TomlValue.String)?.value ?: project.name
@@ -158,6 +169,10 @@ open class Meson(
             // 1.3.0 is the first Meson with py.extension_module(limited_api:).
             appendLine("  meson_version: '>=1.3.0',")
             appendLine(")")
+            if (cross != null) {
+                appendCrossBody(cross, extensionModules, installSources)
+                return@buildString
+            }
             appendLine()
             appendLine("python = import('python')")
             appendLine("py = python.find_installation()")
@@ -186,6 +201,44 @@ open class Meson(
                 appendLine("  subdir: ${group.subdir.toMesonString()},")
                 appendLine(")")
             }
+        }
+    }
+
+    /**
+     * The cross build's body (#155): no `import('python')` (Meson cannot run the target interpreter), so each
+     * extension is a `shared_module` against [MesonCross.target]'s headers with its `EXT_SUFFIX`, and the
+     * sources go into `lib/python3/site-packages/<subdir>` like `py.install_sources` would.
+     */
+    private fun StringBuilder.appendCrossBody(
+        cross: MesonCross,
+        extensionModules: List<ExtensionModule>,
+        installSources: List<InstallSourceGroup>,
+    ) {
+        fun installDir(subdir: String) = ("lib/python3/site-packages/" + subdir).trimEnd('/').toMesonString()
+        appendLine()
+        appendLine("target_python_include = include_directories(${cross.target.includeDir.absolutePath.toMesonString()})")
+        val suffix = cross.target.extensionSuffix.removePrefix(".")
+        extensionModules.forEach { extension ->
+            appendLine()
+            appendLine("shared_module(")
+            appendLine("  ${extension.name.toMesonString()},")
+            appendLine("  files(${extension.path.toMesonString()}),")
+            appendLine("  include_directories: target_python_include,")
+            appendLine("  name_prefix: '',")
+            appendLine("  name_suffix: ${suffix.toMesonString()},")
+            appendLine("  link_args: [${cross.target.linkArgs.joinToString(", ") { it.toMesonString() }}],")
+            appendLine("  install: true,")
+            appendLine("  install_dir: ${installDir(extension.subdir)},")
+            appendLine(")")
+        }
+        installSources.forEach { group ->
+            appendLine()
+            appendLine("install_data(")
+            appendLine("  files(")
+            group.paths.forEach { path -> appendLine("    ${path.toMesonString()},") }
+            appendLine("  ),")
+            appendLine("  install_dir: ${installDir(group.subdir)},")
+            appendLine(")")
         }
     }
 

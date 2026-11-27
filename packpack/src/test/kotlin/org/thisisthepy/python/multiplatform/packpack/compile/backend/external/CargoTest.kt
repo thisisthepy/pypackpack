@@ -141,7 +141,8 @@ class CargoTest {
             ),
         ndk: File? = null,
         xcode: Boolean = true,
-    ) = CargoEnvironment(cargo = cargo, uv = uv, rustTargets = rustTargets, ndk = ndk, xcode = xcode)
+        windowsMachine: String? = null,
+    ) = CargoEnvironment(cargo = cargo, uv = uv, rustTargets = rustTargets, ndk = ndk, xcode = xcode, windowsMachine = windowsMachine)
 
     private fun venv() = write(".venv/bin/python3")
 
@@ -256,7 +257,7 @@ class CargoTest {
 
         val windows = if (host == "x86_64-pc-windows-msvc") "aarch64-pc-windows-msvc" else "x86_64-pc-windows-msvc"
         val other = Cargo(run = maturin, environment = available()).build(pkg, windows, "debug", destdir).exceptionOrNull()?.message.orEmpty()
-        assertTrue(windows in other && "not yet" in other, other)
+        assertTrue(windows in other && "only on a $windows machine" in other, other)
 
         assertTrue(calls.isEmpty(), "$calls")
     }
@@ -741,5 +742,78 @@ class CargoTest {
         assertTrue(installDirName in noPython && "python install 3.15t $rustTriple" in noPython, noPython)
 
         assertTrue(calls.isEmpty(), "$calls")
+    }
+
+    // Windows on its own machine (#150)
+
+    /** A Windows target other than the JVM's host: on Windows on ARM the CLI runs as x64 under emulation. */
+    private val windowsTarget = if (host == "aarch64-pc-windows-msvc") "x86_64-pc-windows-msvc" else "aarch64-pc-windows-msvc"
+    private val windowsDir = if (windowsTarget == "aarch64-pc-windows-msvc") "windows_arm64" else "windows_amd64"
+
+    @Test
+    fun `a Windows target that is the machine's own builds with maturin against the target Python`() {
+        pyproject()
+        write("src/main/core/__init__.py")
+        crate("src/main/core/_fast")
+        sitePackages.mkdirs()
+        val python = write("$windowsDir/python.exe")
+        val calls = mutableListOf<List<String>>()
+        val envs = mutableListOf<Map<String, String>>()
+
+        val placed = Cargo(
+            run = fakeMaturin("_fast/_fast.pyd", calls = calls, envs = envs),
+            environment = available(rustTargets = setOf(windowsTarget), windowsMachine = windowsTarget),
+        ).build(pkg, windowsTarget, "release", destdir).getOrThrow()
+
+        val cmd = calls.single()
+        assertEquals(listOf("--target", windowsTarget), cmd.subList(cmd.indexOf("--target"), cmd.indexOf("--target") + 2))
+        assertEquals(listOf("--interpreter", python.path), cmd.subList(cmd.indexOf("--interpreter"), cmd.indexOf("--interpreter") + 2))
+        assertFalse("--zig" in cmd, "$cmd")
+        assertEquals(File(pkg, "build/packpack/cargo/$windowsTarget/core._fast").path, cmd[cmd.indexOf("--out") + 1])
+        assertTrue(envs.single().isEmpty(), "${envs.single()}")
+        assertEquals(listOf(File(sitePackages, "core/_fast.pyd")), placed)
+    }
+
+    @Test
+    fun `a Windows target on another machine, or without its Rust target or target Python, is refused before maturin runs`() {
+        pyproject()
+        write("src/main/core/__init__.py")
+        crate("src/main/core/_fast")
+        sitePackages.mkdirs()
+        val calls = mutableListOf<List<String>>()
+        val maturin = fakeMaturin("_fast/_fast.pyd", calls = calls)
+        val other = if (windowsTarget == "aarch64-pc-windows-msvc") "x86_64-pc-windows-msvc" else "aarch64-pc-windows-msvc"
+
+        val otherMachine = Cargo(run = maturin, environment = available(rustTargets = setOf(windowsTarget), windowsMachine = other))
+            .build(pkg, windowsTarget, "debug", destdir).exceptionOrNull()?.message.orEmpty()
+        assertTrue("only on a $windowsTarget machine" in otherMachine && other in otherMachine, otherMachine)
+
+        val noTarget = Cargo(run = maturin, environment = available(rustTargets = emptySet(), windowsMachine = windowsTarget))
+            .build(pkg, windowsTarget, "debug", destdir).exceptionOrNull()?.message.orEmpty()
+        assertTrue("rustup target add $windowsTarget" in noTarget, noTarget)
+
+        val noPython = Cargo(run = maturin, environment = available(rustTargets = setOf(windowsTarget), windowsMachine = windowsTarget))
+            .build(pkg, windowsTarget, "debug", destdir).exceptionOrNull()?.message.orEmpty()
+        assertTrue(windowsDir in noPython && "python install 3.15t $windowsTarget" in noPython, noPython)
+
+        assertTrue(calls.isEmpty(), "$calls")
+    }
+
+    @Test
+    fun `the Windows machine is read from the environment an emulated process still sees`() {
+        fun machine(vararg env: Pair<String, String>, os: String = "Windows 11") = CargoEnvironment.windowsMachineTarget(os, env.toMap())
+
+        // x64 native image under emulation on Windows on ARM.
+        assertEquals("aarch64-pc-windows-msvc", machine("PROCESSOR_ARCHITECTURE" to "AMD64", "PROCESSOR_ARCHITEW6432" to "ARM64"))
+        assertEquals(
+            "aarch64-pc-windows-msvc",
+            machine("PROCESSOR_ARCHITECTURE" to "AMD64", "PROCESSOR_IDENTIFIER" to "ARMv8 (64-bit) Family 8 Model D4B Revision   0, Ampere(R)"),
+        )
+        assertEquals("aarch64-pc-windows-msvc", machine("PROCESSOR_ARCHITECTURE" to "ARM64"))
+        assertEquals(
+            "x86_64-pc-windows-msvc",
+            machine("PROCESSOR_ARCHITECTURE" to "AMD64", "PROCESSOR_IDENTIFIER" to "Intel64 Family 6 Model 85 Stepping 7, GenuineIntel"),
+        )
+        assertEquals(null, machine("PROCESSOR_ARCHITECTURE" to "ARM64", os = "Mac OS X"))
     }
 }

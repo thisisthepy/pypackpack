@@ -1,6 +1,7 @@
 package org.thisisthepy.python.multiplatform.packpack.compile.middleware
 
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.DefaultBackend
 
 /**
@@ -18,7 +19,8 @@ class DefaultMiddleware : MiddlewareInterface {
         val backend = DefaultBackend()
 
         return runBlocking {
-            backend.compile(packageName, extraArgs)
+            // The CLI layer finds the workspace from user.dir (AGENTS.md rule 13); the backend takes it explicitly.
+            backend.compile(packageName, extraArgs, File(System.getProperty("user.dir")))
         }.onFailure {
             val target = packageName.takeIf { it.isNotBlank() } ?: "current project"
             println("Failed to compile $target: ${it.message}")
