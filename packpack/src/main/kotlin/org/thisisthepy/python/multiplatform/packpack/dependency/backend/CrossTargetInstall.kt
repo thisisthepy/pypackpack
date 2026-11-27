@@ -90,7 +90,10 @@ class CrossTargetInstaller(
                 val command = listOf("uv", "pip", "install") + pins +
                     listOf("--target", targetDir.absolutePath, "--python-platform", platform, "--only-binary", ":all:", "--no-deps") +
                     options +
-                    (if (built.isEmpty()) emptyList() else listOf("--find-links", wheels.absolutePath))
+                    (if (built.isEmpty()) emptyList() else listOf("--find-links", wheels.absolutePath)) +
+                    // A rebuilt package keeps its wheel's file name (same version), and uv would take the wheel it saw
+                    // before from its cache, so a changed recipe never reached the target (toolchain team, 2026-11-27).
+                    built.flatMap { listOf("--reinstall-package", it.substringBefore("==").trim()) }
                 val result = run(command, workingDir, emptyMap())
                 if (result.exitCode == 0) {
                     return Result.success(
