@@ -925,6 +925,24 @@ macOS.
   backend's Android path sets them. The Rust target must be installed (`rustup target add <triple>`). Another
   cross target is refused naming it. Status: unit test `CrossBuildTest.maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly`;
   real build `CrossSdistRealBuildTest` (a PyO3 0.30 crate, wheel `cp315t-android_24_arm64_v8a`, aarch64 ELF).
+  **iOS** (#182; team lead 2026-11-27; stable Rust): `arm64-apple-ios`, `arm64-apple-ios-simulator` and
+  `x86_64-apple-ios-simulator` too, with Rust's triples (`aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios`).
+  `PYO3_CROSS_LIB_DIR` is the slice's own architecture directory (`lib-arm64`; a simulator slice holds two),
+  `IPHONEOS_DEPLOYMENT_TARGET` is 13.0 (the `ios_13_0_*` tag), and the link arguments name Python.framework
+  (`-F<slice> -framework Python`). `CrossBuildTest.maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly` (its iOS
+  half), `maturinForTheIosSimulatorUsesItsRustTriple`; real build `CrossSdistRealBuildTest` on a macOS host (CI's
+  `real-builds-host`, which adds the `aarch64-apple-ios-sim` target): wheel `cp315t-ios_13_0_arm64_iphonesimulator`, an
+  arm64 Mach-O. Run locally (2026-11-27): passed.
+- **iOS compiler shims** (#182): meson-python adds its own iOS cross file naming CPython's iOS compiler shims
+  (`<target>-clang`, `-clang++`, `-cpp`, `-ar`, `-strip`, which CPython's Apple build puts on `PATH`), so the cross
+  environment writes them into its `bin` (first on `PATH`), running the cross build's `xcrun` commands. Without them
+  numpy 2.5.5 stopped with "Unknown compiler(s): [['arm64-apple-ios-simulator-clang']]". `CrossBuildTest.anIosSimulatorTargetTakesItsOwnArchitecturesSysconfigData`.
+  numpy 2.5.5 from PyPI then builds for the arm64 simulator with a recipe defaulting `longdouble_format` to
+  `IEEE_DOUBLE_LE` (Apple arm64's long double is a double; Android's recipe is `IEEE_QUAD_LE`): `CrossSdistRealBuildTest`
+  (`PPP_NUMPY_IOS_REAL_BUILD=1`, not run in CI: numpy is long). Run locally (2026-11-27): without the recipe the build
+  stops at numpy's long double probe ("Can not run test applications in this cross environment"); with it the wheel is
+  `numpy-2.5.5-cp315-cp315t-ios_13_0_arm64_iphonesimulator.whl` with an arm64 `_multiarray_umath`. Not yet imported on a
+  simulator.
 - **Installing for a target from the backend layer** (#168): `CrossTargetInstaller.install(packageDir, targetDir,
   platform, requirements, uvOptions, workingDir, recipeDirs)`, for callers in a Gradle daemon (every directory is a
   parameter). It pins the requirements for the target with `uv pip compile --python-platform` (which reads sdist

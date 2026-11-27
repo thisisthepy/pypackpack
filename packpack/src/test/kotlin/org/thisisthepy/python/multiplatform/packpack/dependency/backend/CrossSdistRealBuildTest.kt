@@ -165,4 +165,68 @@ class CrossSdistRealBuildTest {
             ),
         )
     }
+
+    /**
+     * #182: a maturin (Rust, stable) sdist builds for the arm64 iOS simulator on a macOS host: Cargo's
+     * `aarch64-apple-ios-sim` target (`rustup target add aarch64-apple-ios-sim`), Xcode's clang, PyO3 reading the slice's
+     * lib-arm64, and the link naming Python.framework. Tagged `ios_13_0_arm64_iphonesimulator`; an arm64 Mach-O.
+     */
+    @Test
+    fun `a maturin sdist builds for the arm64 iOS simulator with stable Rust`() {
+        setUp("arm64-apple-ios-simulator", "ios_simulator_arm64", "macos")
+        buildAndCheck(
+            "rsios",
+            mapOf(
+                "pyproject.toml" to "[build-system]\nrequires = [\"maturin>=1.9,<2\"]\nbuild-backend = \"maturin\"\n\n" +
+                    "[project]\nname = \"rsios\"\nversion = \"1.0\"\n\n[tool.maturin]\nmodule-name = \"rsios._fast\"\n",
+                "Cargo.toml" to "[package]\nname = \"rsios\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\n" +
+                    "[lib]\nname = \"_fast\"\ncrate-type = [\"cdylib\"]\n\n[dependencies]\npyo3 = \"0.30\"\n",
+                "src/lib.rs" to "use pyo3::prelude::*;\n\n" +
+                    "#[pymodule(gil_used = false)]\nfn _fast(_m: &Bound<'_, PyModule>) -> PyResult<()> { Ok(()) }\n",
+            ),
+            target = "arm64-apple-ios-simulator",
+            tagSuffix = "-ios_13_0_arm64_iphonesimulator.whl", extSuffix = ".cpython-315t-iphonesimulator.so",
+        ) { header ->
+            assertEquals(listOf(0xcf, 0xfa, 0xed, 0xfe), header.take(4).map { it.toInt() and 0xff }, "MH_MAGIC_64")
+            val cpu = (header[4].toInt() and 0xff) or ((header[5].toInt() and 0xff) shl 8) or ((header[6].toInt() and 0xff) shl 16) or ((header[7].toInt() and 0xff) shl 24)
+            assertEquals(0x0100000c, cpu, "CPU_TYPE_ARM64")
+        }
+    }
+
+    /**
+     * #182 (team lead 2026-11-27): numpy 2.5.5 from PyPI (meson-python) builds for the arm64 iOS simulator through the
+     * Meson cross file with a recipe. A cross build cannot run numpy's long double probe, and Apple arm64's long double
+     * is an IEEE double, so the recipe's patch defaults `longdouble_format` to `IEEE_DOUBLE_LE` (Android's is
+     * `IEEE_QUAD_LE`). Long (numpy and its build requirements) and on the network, so it also needs
+     * `PPP_NUMPY_IOS_REAL_BUILD=1`; `PPP_NUMPY_IOS_NO_RECIPE=1` runs it without the recipe (the red run).
+     */
+    @Test
+    fun `numpy builds for the arm64 iOS simulator with a long double recipe`() {
+        assumeTrue(System.getenv("PPP_NUMPY_IOS_REAL_BUILD") == "1", "set PPP_NUMPY_IOS_REAL_BUILD=1 to build numpy for iOS")
+        setUp("arm64-apple-ios-simulator", "ios_simulator_arm64", "macos")
+        val recipes = File(root, "numpy-ios-recipes").apply { deleteRecursively(); mkdirs() }
+        File(recipes, "patches").mkdirs()
+        File(recipes, "numpy.toml").writeText("patches = [\"patches/numpy-ios-longdouble.patch\"]\n")
+        val q = "'''"
+        File(recipes, "patches/numpy-ios-longdouble.patch").writeText(
+            "--- a/numpy/_core/meson.build\n+++ b/numpy/_core/meson.build\n@@ -502,7 +502,7 @@\n" +
+                " # https://github.com/numpy/numpy/blob/eead09a3d02c09374942cdc787c0b5e4fe9e7472/numpy/core/setup_common.py#L264-L434\n" +
+                " # This port is in service of solving gh-23972\n" +
+                " # as well as https://github.com/mesonbuild/meson/issues/11068\n" +
+                "-longdouble_format = meson.get_external_property('longdouble_format', 'UNKNOWN')\n" +
+                "+longdouble_format = meson.get_external_property('longdouble_format', 'IEEE_DOUBLE_LE')\n" +
+                " if longdouble_format == 'UNKNOWN'\n   longdouble_format = meson.get_compiler('c').run(\n $q\n",
+        )
+        val recipeDirs = if (System.getenv("PPP_NUMPY_IOS_NO_RECIPE") == "1") emptyList() else listOf(recipes)
+
+        val wheel = CrossSdistBuilder().buildFromPyPI(pkg, "arm64-apple-ios-simulator", "numpy==2.5.5", recipeDirs).getOrThrow()
+
+        assertTrue(wheel.name.startsWith("numpy-2.5.5-cp315-cp315t-ios_13_0_arm64_iphonesimulator"), wheel.name)
+        ZipFile(wheel).use { zip ->
+            val entry = zip.getEntry("numpy/_core/_multiarray_umath.cpython-315t-iphonesimulator.so")
+            assertTrue(entry != null, "no numpy/_core/_multiarray_umath.cpython-315t-iphonesimulator.so in ${wheel.name}")
+            val header = zip.getInputStream(entry).use { it.readNBytes(8) }
+            assertEquals(listOf(0xcf, 0xfa, 0xed, 0xfe), header.take(4).map { it.toInt() and 0xff }, "MH_MAGIC_64")
+        }
+    }
 }
