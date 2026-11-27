@@ -930,7 +930,12 @@ macOS.
   metadata and builds nothing), installs the pins with `--only-binary :all: --no-deps --target`, and for each pin uv
   reports as having no usable wheel (`numpy==2.5.5 has no usable wheels`) builds it with `buildFromPyPI` and the
   recipe directories, then repeats with `--find-links <the built wheels>` beside the caller's own `find-links`. A
-  pin that still has no wheel after it was built ends it, naming it. Unlike `sync`, nothing is first built with the
+  pin that still has no wheel after it was built ends it, naming it. Every package built here is named with
+  `--reinstall-package` on that retry: a rebuild (after a recipe change) keeps the version and so the wheel's file
+  name, and uv otherwise installs the `--find-links` wheel it saw before from its cache, even into a cleared target
+  (toolchain team, 2026-11-27; leader-approved fix). `CrossBuildTest.aPackageBuiltInTheCrossEnvironmentIsReinstalledNotTakenFromUvsCache`;
+  checked through toolchain's `pip { jit }` with a pyyaml 6.0.4 recipe: after its marker went from A to B, develop
+  installed A again although the rebuilt wheel held B; with this change the next edit (C) was installed. Unlike `sync`, nothing is first built with the
   host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
   `<packageDir>/build/packpack/cross/<target>/`. Before its first build it installs the target's free-threaded
   CPython (`<python-version>t` from the uv options, else 3.15t) into `<packageDir>/<installDirName>`

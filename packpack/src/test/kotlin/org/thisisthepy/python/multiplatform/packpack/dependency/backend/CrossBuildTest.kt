@@ -416,6 +416,45 @@ class CrossBuildTest {
         assertTrue("x86_64-linux-android" in message && "no network" in message && "3.15t" in message, message)
     }
 
+    /**
+     * A package rebuilt in the cross environment (after a recipe change, the same version and so the same wheel
+     * file name) must reach the target. uv otherwise takes a `--find-links` wheel it has seen before from its cache,
+     * by file name, even into a cleared target (checked with uv 0.12.3 on two `demo_pkg-1.0-py3-none-any.whl` of
+     * different content: the plain install gave the old one, `--reinstall-package demo-pkg` the new). So the retry
+     * names every package built here with `--reinstall-package`, and the first pass, which built nothing, names none.
+     */
+    @Test
+    fun aPackageBuiltInTheCrossEnvironmentIsReinstalledNotTakenFromUvsCache() {
+        val project = File(tempDir, "reinstall").apply { mkdirs() }
+        val calls = mutableListOf<List<String>>()
+        var installs = 0
+        val builder = object : CrossSdistBuilder(run = { _, _, _ -> error("unused") }) {
+            override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String, recipeDirs: List<File>): Result<File> =
+                Result.success(File(wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }, "x.whl").apply { writeText("") })
+        }
+        val installer = CrossTargetInstaller(builder, fakePython) { command, _, _ ->
+            calls += command
+            when (command.getOrNull(2)) {
+                "compile" -> {
+                    File(command[command.indexOf("--output-file") + 1]).writeText("hf-xet==1.8.0\nregex==2026.11.23\niniconfig==2.3.1\n")
+                    CompileProcessResult(0, "")
+                }
+                else -> when (++installs) {
+                    1 -> CompileProcessResult(1, "Because hf-xet==1.8.0 has no usable wheels and you require hf-xet==1.8.0, we can conclude\n")
+                    2 -> CompileProcessResult(1, "Because regex==2026.11.23 has no usable wheels and you require regex==2026.11.23, we can conclude\n")
+                    else -> CompileProcessResult(0, "Installed 3 packages")
+                }
+            }
+        }
+        installer.install(project, File(tempDir, "reinstall-deps"), "aarch64-linux-android", listOf("hf-xet"), mapOf("python-version" to "3.15"), File(tempDir, "reinstall-work"), emptyList()).getOrThrow()
+
+        val installCommands = calls.filter { it.getOrNull(2) == "install" }
+        fun reinstalled(command: List<String>) = command.windowed(2).filter { it[0] == "--reinstall-package" }.map { it[1] }
+        assertEquals(emptyList(), reinstalled(installCommands.first()), "nothing built yet: ${installCommands.first()}")
+        assertEquals(listOf("hf-xet"), reinstalled(installCommands[1]), installCommands[1].toString())
+        assertEquals(listOf("hf-xet", "regex"), reinstalled(installCommands.last()), "a package from PyPI (iniconfig) is not named: ${installCommands.last()}")
+    }
+
     @Test
     fun theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries() {
         val project = File(tempDir, "project").apply { mkdirs() }
