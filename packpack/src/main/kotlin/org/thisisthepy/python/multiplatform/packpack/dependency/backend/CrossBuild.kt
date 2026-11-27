@@ -350,6 +350,15 @@ open class CrossSdistBuilder(
                 ),
             ),
         )
+        if (canonicalTarget in IOS_TARGETS) {
+            // #182: meson-python adds its own iOS cross file naming CPython's iOS compiler shims, `<target>-clang` and
+            // friends, which CPython's Apple build puts on PATH (numpy 2.5.5: "Unknown compiler(s):
+            // [['arm64-apple-ios-simulator-clang']]"). The environment's bin is first on PATH, so they live there.
+            val bin = interpreter.parentFile
+            val strip = cross.ar.dropLast(1) + "strip"
+            mapOf("clang" to cross.c, "clang++" to cross.cpp, "cpp" to cross.c + "-E", "ar" to cross.ar, "strip" to strip)
+                .forEach { (tool, command) -> wrapper(File(bin, "$canonicalTarget-$tool"), command) }
+        }
         File(sitePackages, "_ppp_cross.pth").writeText(CrossBuildScripts.PTH)
         File(sitePackages, "_ppp_cross.py").writeText(CrossBuildScripts.HOOK)
         val frontend = File(crossFiles, "pep517.py").apply { writeText(CrossBuildScripts.PEP517) }
@@ -453,19 +462,24 @@ open class CrossSdistBuilder(
         cross: MesonCross,
         canonicalTarget: String,
     ): Map<String, String> {
-        require(canonicalTarget in ANDROID_RUST_TARGETS) {
-            "pypackpack cross-builds maturin (Rust) sdists for Android only (${ANDROID_RUST_TARGETS.joinToString()}); " +
-                "$canonicalTarget is not one. Build that package for $canonicalTarget elsewhere and install its wheel."
+        val ios = IOS_TARGETS[canonicalTarget]
+        require(canonicalTarget in ANDROID_RUST_TARGETS || ios != null) {
+            "pypackpack cross-builds maturin (Rust) sdists for Android (${ANDROID_RUST_TARGETS.joinToString()}) and iOS " +
+                "(${IOS_TARGETS.keys.joinToString()}); $canonicalTarget is neither. Build that package for $canonicalTarget elsewhere and install its wheel."
         }
         val dir = env.config.parentFile
         val cc = wrapper(File(dir, "bin/cc"), cross.c)
         val cxx = wrapper(File(dir, "bin/c++"), cross.cpp)
         val ar = wrapper(File(dir, "bin/ar"), cross.ar)
         val lib = cross.target.libDir ?: throw IllegalStateException("The CPython for $canonicalTarget names no library directory.")
-        val key = canonicalTarget.replace('-', '_')
+        // #182: Rust's iOS triples differ from pypackpack's (aarch64-apple-ios-sim), and a simulator slice holds lib-arm64
+        // and lib-x86_64, so PyO3 reads the target architecture's own directory.
+        val rustTriple = ios?.rustTriple ?: canonicalTarget
+        val pyo3Lib = ios?.let { File(lib, it.libDir) } ?: lib
+        val key = rustTriple.replace('-', '_')
         return linkedMapOf(
-            "MATURIN_PEP517_ARGS" to "--target $canonicalTarget",
-            "PYO3_CROSS_LIB_DIR" to lib.absolutePath,
+            "MATURIN_PEP517_ARGS" to "--target $rustTriple",
+            "PYO3_CROSS_LIB_DIR" to pyo3Lib.absolutePath,
             "PYO3_CROSS_PYTHON_VERSION" to pythonVersion.removeSuffix("t"),
             "PYO3_CROSS_PYTHON_IMPLEMENTATION" to "CPython",
             "CARGO_TARGET_${key.uppercase()}_LINKER" to cc.absolutePath,
@@ -473,7 +487,10 @@ open class CrossSdistBuilder(
             "CXX_$key" to cxx.absolutePath,
             "AR_$key" to ar.absolutePath,
             "CARGO_TARGET_${key.uppercase()}_RUSTFLAGS" to cross.target.linkArgs.joinToString(" ") { "-C link-arg=$it" },
-        )
+        ).apply {
+            // rustc and the cc crate read the deployment target the wheels are tagged with (ios_13_0_*).
+            if (ios != null) put("IPHONEOS_DEPLOYMENT_TARGET", IOS_MIN_VERSION)
+        }
     }
 
     /** A `#!/bin/sh` script at [file] that runs [command] with its own arguments appended. */

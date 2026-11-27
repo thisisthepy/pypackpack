@@ -245,6 +245,17 @@ class CrossBuildTest {
         assertEquals("ios-13.0-arm64-iphonesimulator", config["host_platform"])
         assertEquals("13.0", config["uname_release"], "platform.ios_ver() answers the deployment target")
         assertEquals("xcrun --sdk iphonesimulator clang -shared", calls.single { it.command.getOrNull(2) == "build" }.env["LDSHARED"])
+
+        // #182: meson-python adds its own iOS cross file naming CPython's iOS compiler shims (`<target>-clang`, as
+        // CPython's Apple build provides them on PATH), and numpy 2.5.5 failed with "Unknown compiler(s):
+        // [['arm64-apple-ios-simulator-clang']]". The environment's bin, first on PATH, holds them, running the cross's tools.
+        val bin = File(pkg, "build/packpack/cross/arm64-apple-ios-simulator/env/bin")
+        mapOf("clang" to "xcrun --sdk iphonesimulator clang", "clang++" to "xcrun --sdk iphonesimulator clang++",
+            "cpp" to "xcrun --sdk iphonesimulator clang -E", "ar" to "xcrun --sdk iphonesimulator ar").forEach { (tool, command) ->
+            val shim = File(bin, "arm64-apple-ios-simulator-$tool")
+            assertTrue(shim.canExecute(), "no executable $shim")
+            assertEquals("#!/bin/sh\nexec $command \"\$@\"\n", shim.readText())
+        }
     }
 
     /** meson-python gets the Meson cross file through `setup-args`; scikit-build-core gets a CMake toolchain file. */
@@ -310,7 +321,7 @@ class CrossBuildTest {
     /**
      * maturin (#168): the Rust target through `MATURIN_PEP517_ARGS`, PyO3's cross variables naming the target CPython,
      * and Cargo's linker, `CC`, `AR` and link arguments for the target, as the Cargo backend's Android path sets them.
-     * maturin is cross-built for Android only; another cross target is refused naming it.
+     * maturin is cross-built for Android and, since #182, iOS.
      */
     @Test
     fun maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly() {
@@ -347,13 +358,48 @@ class CrossBuildTest {
         assertTrue("-C link-arg=-lpython3.15t" in rustflags && "-C link-arg=-L${cross.target.libDir!!.path}" in rustflags, rustflags)
         assertEquals("/ndk/bin/aarch64-linux-android24-clang", env["CC"], "the setuptools variables stay for build scripts")
 
+        // #182: iOS (stable Rust) too. PyO3 reads the slice's own architecture directory, because a simulator slice
+        // holds lib-arm64 and lib-x86_64; rustc gets the deployment target; the link names Python.framework.
+        val slice = File(tempDir, "ioslib").apply { File(this, "lib-arm64").mkdirs(); File(this, "lib-arm64/_sysconfigdata_t_ios_arm64-iphoneos.py").writeText("") }
         val ios = MesonCross(
-            TargetPython("arm64-apple-ios", File(tempDir, "h").apply { mkdirs() }, ".so", emptyList(), File(tempDir, "ioslib").apply { File(this, "lib-arm64").mkdirs(); File(this, "lib-arm64/_sysconfigdata_t_ios_arm64-iphoneos.py").writeText("") }),
-            listOf("xcrun", "clang"), listOf("xcrun", "clang++"), listOf("xcrun", "ar"), "darwin", "ios", "aarch64",
+            TargetPython("arm64-apple-ios", File(tempDir, "h").apply { mkdirs() }, ".so", listOf("-F${slice.path}", "-framework", "Python"), slice),
+            listOf("xcrun", "--sdk", "iphoneos", "clang", "-target", "arm64-apple-ios13.0"), listOf("xcrun", "clang++"), listOf("xcrun", "ar"), "darwin", "ios", "aarch64",
         )
-        val refused = builder(ios, mutableListOf()).buildSource(pkg, "arm64-apple-ios", src)
-        val message = refused.exceptionOrNull()?.message.orEmpty()
-        assertTrue("maturin" in message && "arm64-apple-ios" in message && "Android" in message, message)
+        val iosCalls = mutableListOf<Call>()
+        builder(ios, iosCalls).buildSource(pkg, "arm64-apple-ios", src).getOrThrow()
+        val iosEnv = iosCalls.single { it.command.getOrNull(2) == "build" }.env
+        assertEquals("--target aarch64-apple-ios", iosEnv["MATURIN_PEP517_ARGS"])
+        assertEquals(File(slice, "lib-arm64").absolutePath, iosEnv["PYO3_CROSS_LIB_DIR"])
+        assertEquals("13.0", iosEnv["IPHONEOS_DEPLOYMENT_TARGET"])
+        val iosCross = File(pkg, "build/packpack/cross/arm64-apple-ios/env/ppp-cross")
+        assertEquals(File(iosCross, "bin/cc").absolutePath, iosEnv["CARGO_TARGET_AARCH64_APPLE_IOS_LINKER"])
+        assertEquals(File(iosCross, "bin/cc").absolutePath, iosEnv["CC_aarch64_apple_ios"])
+        val iosFlags = iosEnv["CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS"].orEmpty()
+        assertTrue("-C link-arg=-F${slice.path} -C link-arg=-framework -C link-arg=Python" in iosFlags, iosFlags)
+    }
+
+    /** #182: the arm64 simulator's Rust triple is `aarch64-apple-ios-sim`, not the canonical target's spelling. */
+    @Test
+    fun maturinForTheIosSimulatorUsesItsRustTriple() {
+        val pkg = File(tempDir, "pkg-sim").apply { mkdirs() }
+        val src = File(tempDir, "src-sim/r-1.0").apply { mkdirs() }
+        val slice = File(tempDir, "simslice").apply { File(this, "lib-arm64").mkdirs(); File(this, "lib-arm64/_sysconfigdata_t_ios_arm64-iphonesimulator.py").writeText("") }
+        val cross = MesonCross(
+            TargetPython("arm64-apple-ios-simulator", File(tempDir, "hs").apply { mkdirs() }, ".so", listOf("-F${slice.path}", "-framework", "Python"), slice),
+            listOf("xcrun", "clang"), listOf("xcrun", "clang++"), listOf("xcrun", "ar"), "darwin", "ios-simulator", "aarch64",
+        )
+        val calls = mutableListOf<Call>()
+        CrossSdistBuilder(
+            run = recordingRunner(calls, "maturin"),
+            fetch = { error("no network") },
+            installHostPython = { _, _, dir -> File(dir, "bin").mkdirs(); File(dir, "bin/python3").writeText(""); Result.success(Unit) },
+            crossFor = { _, _ -> cross },
+            hostTarget = { "aarch64-apple-darwin" },
+        ).buildSource(pkg, "arm64-apple-ios-simulator", src).getOrThrow()
+
+        val env = calls.single { it.command.getOrNull(2) == "build" }.env
+        assertEquals("--target aarch64-apple-ios-sim", env["MATURIN_PEP517_ARGS"])
+        assertTrue(env.containsKey("CARGO_TARGET_AARCH64_APPLE_IOS_SIM_LINKER") && env.containsKey("CC_aarch64_apple_ios_sim"), "$env")
     }
 
     /**
