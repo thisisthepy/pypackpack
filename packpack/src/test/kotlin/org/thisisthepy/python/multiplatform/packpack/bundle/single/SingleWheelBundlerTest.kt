@@ -361,13 +361,15 @@ class SingleWheelBundlerTest {
     /**
      * Platform tag per target family. Standards-based where a standard exists (PEP 425/600/656 for
      * Windows/macOS/manylinux/musllinux); PEP 730/738 for iOS/Android (accepted PEPs, not our
-     * invention); CPython sysconfig / PEP 783 spelling for wasm (`emscripten_<pin>_wasm32`,
-     * matching this project's `wasm32-emscripten` target spelling, #82). See `SingleWheelBundler`
+     * invention); for wasm, PEP 783's `pyemscripten_2026_0_wasm32`, the platform tag python-multiplatform's
+     * 3.15t runtime reports from its own sysconfig (its build-cpython.sh, built on that unwinding ABI); `cp315t`
+     * keeps the wheel apart from Pyodide's GIL wheels (#82; team lead 2026-11-27). See `SingleWheelBundler`
      * KDoc for the citations and the floor-version assumptions spelled out per family.
      */
     @Test
     fun bundle_platformTagPerFamily() {
-        assertEquals("emscripten_4_0_19_wasm32", "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_wasm32")
+        assertEquals("pyemscripten_2026_0_wasm32", Platforms.wasmPlatformTag("wasm32"))
+        assertEquals("5.0.3", Platforms.EMSDK_VERSION)
         val cases =
             mapOf(
                 "x86_64-pc-windows-msvc" to "win_amd64",
@@ -388,7 +390,7 @@ class SingleWheelBundlerTest {
                 "arm64-apple-ios" to "ios_13_0_arm64_iphoneos",
                 "arm64-apple-ios-simulator" to "ios_14_0_arm64_iphonesimulator",
                 "x86_64-apple-ios-simulator" to "ios_13_0_x86_64_iphonesimulator",
-                "wasm32-emscripten" to "emscripten_${Platforms.EMSCRIPTEN_VERSION_TAG}_wasm32",
+                "wasm32-emscripten" to "pyemscripten_2026_0_wasm32",
             )
 
         cases.forEach { (target, expectedTag) ->

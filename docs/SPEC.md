@@ -89,7 +89,7 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     re-enable the GIL when it is imported. The build warns, naming the module and saying that it
     re-enables the GIL, because the app would otherwise silently run with the GIL. Implemented for the
     `resource` bundle (see *GIL warning*).
-- WASM (`wasm32-emscripten`, tag `emscripten_<emsdk>_wasm32`, pinned to `4.0.19` (#82)) is in the first release's scope. Nothing installs or compiles for it yet;
+- WASM (`wasm32-emscripten`, wheels tagged `cp315-cp315t-pyemscripten_2026_0_wasm32`, PEP 783's platform tag that python-multiplatform's 3.15t runtime reports from its sysconfig, built with Emscripten 5.0.3 (#82; team lead 2026-11-27)) is in the first release's scope. Nothing installs or compiles for it yet;
   the target's ABI follows our own 3.15t pthreads build from python-multiplatform #175.
 - `build` bundles: it takes the bundle as an argument (see *Package build*; #81). There is no `bundle`
   command.

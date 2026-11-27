@@ -9,12 +9,21 @@ package org.thisisthepy.python.multiplatform.packpack.utils
  */
 object Platforms {
     /**
-     * The Emscripten SDK version CPython 3.15.0 pins in `Platforms/emscripten/config.toml` and
-     * `python-multiplatform` #175 builds with, formatted with underscores for PEP 783's
-     * `emscripten_<emsdk>_wasm32` wheel platform tag (#82). Kept in one place so a pin change in
-     * `python-multiplatform` #175 updates every wheel bundler together.
+     * The Emscripten SDK python-multiplatform builds its 3.15t wasm runtime with (its `scripts/wasm/build-cpython.sh`,
+     * Decision 10 b1: "one Emscripten 5.0.3 for PMP wasm and pypackpack #82"). A compiled wasm extension is built with
+     * the same SDK (#82).
      */
-    const val EMSCRIPTEN_VERSION_TAG: String = "4_0_19"
+    const val EMSDK_VERSION: String = "5.0.3"
+
+    /**
+     * PEP 783's platform ABI version that runtime is built on and reports from its own sysconfig
+     * (`PYEMSCRIPTEN_PLATFORM_VERSION`, which build-cpython.sh keeps a string). The wheel tag follows it; `cp315t`
+     * keeps the wheels apart from Pyodide's GIL builds (#82; team lead 2026-11-27).
+     */
+    const val PYEMSCRIPTEN_PLATFORM_VERSION: String = "2026_0"
+
+    /** The wheel platform tag for wasm [arch] (`wasm32`): `pyemscripten_2026_0_wasm32`. */
+    fun wasmPlatformTag(arch: String): String = "pyemscripten_${PYEMSCRIPTEN_PLATFORM_VERSION}_$arch"
 
     /**
      * `uv`'s `--python-platform` enum does not accept `wasm32-emscripten` yet; its only Emscripten
