@@ -76,9 +76,20 @@ class PythonDistributionsTest {
         }
     }
 
+    /**
+     * #82 (c): wasm 3.15t is not a static pin yet. Without a runtime manifest it is refused, naming the packing
+     * script and the variable (the install from a manifest is `DefaultBackendTest.installPython_wasmComesFromTheManifestsLocalArchive`).
+     */
+    @Test
+    fun wasm315tNeedsTheInterimRuntimeManifest() {
+        System.clearProperty(PythonDistributions.WASM_RUNTIME_MANIFEST_PROPERTY)
+        val message = PythonDistributions.resolve("3.15t", "wasm32-emscripten").exceptionOrNull()?.message.orEmpty()
+        assertTrue("pack_pmp_runtime.py" in message && PythonDistributions.WASM_RUNTIME_MANIFEST_ENV in message, message)
+    }
+
     @Test
     fun anUnknownPairIsRefusedWithTheSupportedList() {
-        for ((version, target) in listOf("3.12.0" to "aarch64-apple-darwin", "3.15.0t" to "wasm32-emscripten", "3.15.0" to "aarch64-linux-android")) {
+        for ((version, target) in listOf("3.12.0" to "aarch64-apple-darwin", "3.15.0" to "aarch64-linux-android")) {
             val result = PythonDistributions.resolve(version, target)
             assertTrue(result.isFailure, "$version/$target")
             assertEquals(
