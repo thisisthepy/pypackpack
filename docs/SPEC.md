@@ -89,7 +89,7 @@ Recorded 2026-10-04 (#70); `docs/INTENT.md` §4 has the sources.
     re-enable the GIL when it is imported. The build warns, naming the module and saying that it
     re-enables the GIL, because the app would otherwise silently run with the GIL. Implemented for the
     `resource` bundle (see *GIL warning*).
-- WASM (`wasm32-emscripten`, wheels tagged `cp315-cp315t-pyemscripten_2026_0_wasm32`, PEP 783's platform tag that python-multiplatform's 3.15t runtime reports from its sysconfig, built with Emscripten 5.0.3 (#82; team lead 2026-11-27)) is in the first release's scope. `python install 3.15t wasm32-emscripten` installs the interim runtime (see *Installing a ppp Python distribution*); nothing compiles for it yet;
+- WASM (`wasm32-emscripten`, wheels tagged `cp315-cp315t-pyemscripten_2026_0_wasm32`, PEP 783's platform tag that python-multiplatform's 3.15t runtime reports from its sysconfig, built with Emscripten 5.0.3 (#82; team lead 2026-11-27)) is in the first release's scope. `python install 3.15t wasm32-emscripten` installs the interim runtime (see *Installing a ppp Python distribution*). C extensions compile for it with Emscripten 5.0.3 (the native compile slot's `EMSCRIPTEN` toolchain, below); Rust crates do not yet (#82);
   the target's ABI follows our own 3.15t pthreads build from python-multiplatform #175.
 - `build` bundles: it takes the bundle as an argument (see *Package build*; #81). There is no `bundle`
   command.
@@ -1255,6 +1255,18 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
   warns, naming the module and the reason (`NotNativeModule`: `NOT_MARKED` or `NOTHING_COMPILED`).
   C that fails to compile fails the build (`ModuleCompileException`). Libraries ship their prebuilt
   native wheels.
+  - wasm (`wasm32-emscripten`, #82): `compile/backend/external/Emscripten.kt`. An extension is an Emscripten side
+    module for python-multiplatform's 3.15t runtime: `emcc` compiles and links with that runtime's ABI flags
+    (`-fwasm-exceptions -sSUPPORT_LONGJMP=wasm`, PEP 783 pyemscripten_2026_0's unwinding ABI) and `-pthread`, `-fPIC`, and
+    links `-sSIDE_MODULE=1` without libpython (python.wasm provides it when the module loads). `emcc` is
+    `$EMSDK/upstream/emscripten/emcc`, else on `PATH`, and must be Emscripten 5.0.3 (`Platforms.EMSDK_VERSION`), the SDK the
+    runtime is built with; otherwise the target is refused naming both versions. The headers come from the installed
+    runtime (`wasm32_emscripten/include/python3.15t`). `ExtensionCompilerTest.compile_wasmBuildsAnEmscriptenSideModuleWithTheRuntimesAbiFlags`,
+    `checkSupport_wasmNeedsEmccAndTheRuntimesEmscriptenVersion`; the real build `EmscriptenRealBuildTest`
+    (`PPP_WASM_REAL_BUILD=1` with `EMSDK` and `PPP_WASM_RUNTIME_MANIFEST`; off in CI until python-multiplatform publishes
+    the runtime, team lead 2026-11-27): a `PyInit_` module is a wasm side module (`dylink.0`) and bundles as
+    `cp315-cp315t-pyemscripten_2026_0_wasm32`. Run locally (2026-11-27, Emscripten 5.0.3, runtime from python-multiplatform
+    e5c4a058): passed. Loading it into the runtime is python-multiplatform's `WasmCompiledWheelTest`.
   - Status: partial. Implemented for bundle type `resource` on macOS (`aarch64-apple-darwin`,
     `x86_64-apple-darwin` via `Clang.kt`), Linux host architecture (`x86_64-unknown-linux-gnu`,
     `aarch64-unknown-linux-gnu` via `Clang.kt`), and Android `aarch64-linux-android` (via `NDK.kt`)

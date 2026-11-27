@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Clang
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.NDK
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Emscripten
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.ndkHostTag
 import java.io.File
 import kotlin.test.Test
@@ -73,6 +74,8 @@ class ExtensionCompilerTest {
         stripBin: List<String>? = listOf("/usr/bin/strip"),
         compilerVersion: String = "Apple clang version 17.0.0",
         ndkDir: File? = null,
+        emcc: List<String>? = listOf("/emsdk/upstream/emscripten/emcc"),
+        emccVersion: String = "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 5.0.3 (abcdef)",
         hostTarget: String = "aarch64-apple-darwin",
         windowsMachine: String? = null,
         targetCompiler: (String) -> List<String>? = { t ->
@@ -124,6 +127,11 @@ class ExtensionCompilerTest {
                 versionProbe = { "Android clang version 18.0.0" },
                 run = runner,
             ),
+            emscripten = Emscripten(
+                locateEmcc = { emcc },
+                versionProbe = { emccVersion },
+                run = runner,
+            ),
             hostTarget = { hostTarget },
             windowsMachine = { windowsMachine },
         )
@@ -137,8 +145,9 @@ class ExtensionCompilerTest {
         assertTrue(compiler.checkSupport("aarch64-apple-darwin", abi315, headers).isSuccess)
         assertTrue(compiler.checkSupport("x86_64-apple-darwin", abi315, headers).isSuccess)
 
-        // wasm waits for #82; Windows off its own machine, and iOS without Python.framework, are refused (#155)
-        for (unsupported in listOf("wasm32-emscripten", "x86_64-pc-windows-msvc", "arm64-apple-ios")) {
+        // Windows off its own machine, and iOS without Python.framework, are refused (#155); wasm builds with emcc (#82)
+        assertTrue(compiler.checkSupport("wasm32-emscripten", abi315, headers).isSuccess)
+        for (unsupported in listOf("x86_64-pc-windows-msvc", "arm64-apple-ios")) {
             val ex = compiler.checkSupport(unsupported, abi315, headers).exceptionOrNull() as? NoCompileBackendException
             assertNotNull(ex, "expected NoCompileBackendException for $unsupported")
             assertEquals(unsupported, ex.target)
@@ -447,6 +456,64 @@ class ExtensionCompilerTest {
         assertTrue(calls[0].command.first().endsWith("aarch64-linux-android28-clang"), "${calls[0].command}")
         assertTrue(calls[0].command.containsAll(listOf("-O0", "-g", "-ffp-contract=off", "-fno-fast-math", "-fPIC")), "${calls[0].command}")
         assertTrue(calls[1].command.containsAll(listOf("-shared", "-fPIC", "-L${androidLib.canonicalFile.path}", "-lpython3.15t")), "${calls[1].command}")
+    }
+
+    /**
+     * #82: a wasm extension is an Emscripten side module built against the runtime python-multiplatform ships
+     * (3.15t, Emscripten 5.0.3, PEP 783's pyemscripten_2026_0 unwinding ABI). Its build-cpython.sh compiles and links
+     * with `-fwasm-exceptions -sSUPPORT_LONGJMP=wasm` and `-pthread`, and python.wasm exports the `__cpp_exception`
+     * and `__c_longjmp` tags a side module imports, so the extension takes the same flags at both steps and links
+     * with `-sSIDE_MODULE=1`. Nothing links libpython: the side module resolves it from python.wasm when loaded.
+     */
+    @Test
+    fun compile_wasmBuildsAnEmscriptenSideModuleWithTheRuntimesAbiFlags() {
+        val headers = fakeHeaders()
+        val pkgDir = File(tempDir, "pkg-wasm").apply { mkdirs() }
+        val cFile = File(tempDir, "wmod.c").apply { writeText("int x;\n") }
+        val calls = mutableListOf<RecordedCall>()
+
+        val result =
+            fakeCompiler(calls = calls).compile(
+                ExtensionCompileRequest(
+                    modules = listOf(ExtensionModuleSource("app.wmod", listOf(cFile))),
+                    target = "wasm32-emscripten",
+                    pythonAbi = abi315,
+                    buildType = "release",
+                    workingDir = pkgDir,
+                    buildDir = File(pkgDir, "build/work"),
+                    outputDir = File(pkgDir, "build/out"),
+                    includeDir = headers,
+                    extensionSuffix = ".cpython-315t-wasm32-emscripten.so",
+                ),
+            ).getOrThrow()
+
+        assertEquals(NativeToolchain.EMSCRIPTEN, result.toolchain)
+        assertEquals(2, calls.size, "compile + link; a side module is not stripped separately")
+        val (compile, link) = calls.map { it.command }
+        val abi = listOf("-pthread", "-fwasm-exceptions", "-sSUPPORT_LONGJMP=wasm", "-fPIC")
+        assertEquals("/emsdk/upstream/emscripten/emcc", compile.first())
+        assertTrue(compile.containsAll(abi + listOf("-c", "-O2")), "$compile")
+        assertTrue(link.containsAll(abi + listOf("-sSIDE_MODULE=1", "-O2")), "$link")
+        assertFalse(link.any { it.startsWith("-lpython") }, "$link")
+        assertEquals("app/wmod.cpython-315t-wasm32-emscripten.so", result.modules.single().relativePath)
+    }
+
+    @Test
+    fun checkSupport_wasmNeedsEmccAndTheRuntimesEmscriptenVersion() {
+        val headers = fakeHeaders()
+
+        val missing = fakeCompiler(emcc = null).checkSupport("wasm32-emscripten", abi315, headers).exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(missing)
+        assertTrue("emcc" in missing.reason && "EMSDK" in missing.reason, missing.reason)
+
+        // emcc's first run prints a sanity-check line before its version (seen with Emscripten 5.0.3 and a new EM_CACHE)
+        val firstRun = fakeCompiler(emccVersion = "shared:INFO: (Emscripten: Running sanity checks)\nemcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 5.0.3 (abc)\n")
+        assertTrue(firstRun.checkSupport("wasm32-emscripten", abi315, headers).isSuccess)
+
+        val old = fakeCompiler(emccVersion = "emcc (Emscripten gcc/clang-like replacement) 4.0.19 (x)")
+            .checkSupport("wasm32-emscripten", abi315, headers).exceptionOrNull() as? NoCompileBackendException
+        assertNotNull(old)
+        assertTrue("5.0.3" in old.reason && "4.0.19" in old.reason, old.reason)
     }
 
     @Test
