@@ -1265,8 +1265,13 @@ the crate from Kotlin directly (cinterop, JNI) is out of scope.
     `checkSupport_wasmNeedsEmccAndTheRuntimesEmscriptenVersion`; the real build `EmscriptenRealBuildTest`
     (`PPP_WASM_REAL_BUILD=1` with `EMSDK` and `PPP_WASM_RUNTIME_MANIFEST`; off in CI until python-multiplatform publishes
     the runtime, team lead 2026-11-27): a `PyInit_` module is a wasm side module (`dylink.0`) and bundles as
-    `cp315-cp315t-pyemscripten_2026_0_wasm32`. Run locally (2026-11-27, Emscripten 5.0.3, runtime from python-multiplatform
-    e5c4a058): passed. Loading it into the runtime is python-multiplatform's `WasmCompiledWheelTest`.
+    `cp315-cp315t-pyemscripten_2026_0_wasm32`; its `setjmp`/`longjmp` imports the runtime's `__c_longjmp` tag, and a C++
+    module (`.cpp`, the same adapter) that throws and catches a `std::runtime_error` imports `__cpp_exception`, the two
+    tags the runtime exports (`aCppExtensionUsesTheRuntimesCppExceptionTag`). Run locally (2026-11-27, Emscripten 5.0.3,
+    runtime from python-multiplatform e5c4a058): both passed; the C wheel is byte-identical across rebuilds (sha256
+    df57a28e...). Both wheels loaded in that runtime (its build tree's python.sh): the C module returned 42 and 7 through
+    `longjmp`, the C++ module caught 'boom 3'. They are python-multiplatform's `WasmCompiledWheelTest` fixtures (team lead
+    2026-11-27: checked in there, rebuilt from this test with `PPP_WASM_WHEEL_OUT` when Emscripten or the ABI changes).
   - Status: partial. Implemented for bundle type `resource` on macOS (`aarch64-apple-darwin`,
     `x86_64-apple-darwin` via `Clang.kt`), Linux host architecture (`x86_64-unknown-linux-gnu`,
     `aarch64-unknown-linux-gnu` via `Clang.kt`), and Android `aarch64-linux-android` (via `NDK.kt`)
