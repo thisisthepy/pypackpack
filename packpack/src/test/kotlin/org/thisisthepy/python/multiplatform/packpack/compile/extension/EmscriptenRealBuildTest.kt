@@ -18,7 +18,8 @@ import kotlin.test.assertTrue
 /**
  * #82, the real build: a C extension compiled by Emscripten [org.thisisthepy.python.multiplatform.packpack.utils.Platforms.EMSDK_VERSION]
  * against the installed 3.15t wasm runtime's headers is a wasm side module (`\0asm`, a `dylink.0` section), and
- * the single wheel bundler packs it as `cp315-cp315t-pyemscripten_2026_0_wasm32`.
+ * imports the runtime's `__c_longjmp` tag (its `setjmp`/`longjmp` under `-sSUPPORT_LONGJMP=wasm`), and the single wheel
+ * bundler packs it as `cp315-cp315t-pyemscripten_2026_0_wasm32`. With `PPP_WASM_WHEEL_OUT` the wheel is kept there.
  *
  * It needs emsdk and python-multiplatform's wasm runtime, so it runs only with `PPP_WASM_REAL_BUILD=1`, `EMSDK`, and
  * `PPP_WASM_RUNTIME_MANIFEST` (interim (c): `.github/scripts/wasm/pack_pmp_runtime.py`). The team lead (2026-11-27)
@@ -44,8 +45,21 @@ class EmscriptenRealBuildTest {
             writeText(
                 """
                 #include <Python.h>
+                #include <setjmp.h>
                 static PyObject *answer(PyObject *self, PyObject *args) { return PyLong_FromLong(42); }
-                static PyMethodDef methods[] = {{"answer", answer, METH_NOARGS, NULL}, {NULL, NULL, 0, NULL}};
+                /* setjmp/longjmp under -sSUPPORT_LONGJMP=wasm: the module imports the runtime's __c_longjmp tag. */
+                static jmp_buf env;
+                static void jump(int value) { longjmp(env, value); }
+                static PyObject *unwind(PyObject *self, PyObject *args) {
+                    int value = setjmp(env);
+                    if (value == 0) jump(7);
+                    return PyLong_FromLong(value);
+                }
+                static PyMethodDef methods[] = {
+                    {"answer", answer, METH_NOARGS, NULL},
+                    {"unwind", unwind, METH_NOARGS, NULL},
+                    {NULL, NULL, 0, NULL},
+                };
                 static struct PyModuleDef def = {PyModuleDef_HEAD_INIT, "wmod", NULL, -1, methods};
                 PyMODINIT_FUNC PyInit_wmod(void) {
                     PyObject *m = PyModule_Create(&def);
@@ -76,6 +90,7 @@ class EmscriptenRealBuildTest {
         val bytes = module.readBytes()
         assertEquals("\u0000asm", String(bytes.copyOfRange(0, 4), Charsets.ISO_8859_1), "$module is not wasm")
         assertTrue(String(bytes, Charsets.ISO_8859_1).contains("dylink.0"), "$module has no dylink.0 section: not a side module")
+        assertTrue(String(bytes, Charsets.ISO_8859_1).contains("__c_longjmp"), "$module does not import __c_longjmp: not on the runtime's unwinding ABI")
         File(site, "wasmdemo/__init__.py").writeText("")
 
         val wheel = BundlerInterface.create(BundleType.SINGLE)
@@ -84,5 +99,9 @@ class EmscriptenRealBuildTest {
         assertEquals("wasmdemo-0.1.0-cp315-cp315t-pyemscripten_2026_0_wasm32.whl", wheel.name)
         val entries = ZipFile(wheel).use { zip -> zip.entries().asSequence().map { it.name }.toSet() }
         assertTrue("wasmdemo/wmod.cpython-315t-wasm32-emscripten.so" in entries, "$entries")
+        // The handoff to python-multiplatform's WasmCompiledWheelTest: keep the wheel when asked to.
+        System.getenv("PPP_WASM_WHEEL_OUT")?.takeIf { it.isNotBlank() }?.let { out ->
+            wheel.copyTo(File(out, wheel.name).apply { parentFile.mkdirs() }, overwrite = true)
+        }
     }
 }

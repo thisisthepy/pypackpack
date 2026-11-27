@@ -307,6 +307,26 @@ class WheelPatchBundlerTest {
         assertTrue(ft.artifactFile!!.name.contains("-cp315-cp315t-"), ft.artifactFile!!.name)
     }
 
+    /** #82: a wasm patch against a wasm single wheel carries the changed extension and the pyemscripten tags. */
+    @Test
+    fun bundle_wasmPatchCarriesTheChangedExtensionWithThePyemscriptenTag() {
+        val pkg = packageDir("wcore")
+        val target = "wasm32-emscripten"
+        writeDestdir(pkg, "wcore/__init__.py", target = target)
+        writeDestdir(pkg, "wcore/wmod.cpython-315t-wasm32-emscripten.so", "v1".toByteArray(), target = target)
+        writeBaselineSingleBundle(pkg, target = target)
+        pkg.resolve("dist").deleteRecursively()
+        writeDestdir(pkg, "wcore/__init__.py", target = target)
+        writeDestdir(pkg, "wcore/wmod.cpython-315t-wasm32-emscripten.so", "v2".toByteArray(), target = target)
+
+        val patch = bundler().bundle(BundleRequest(packageDir = pkg, target = target)).getOrThrow().artifactFile!!
+
+        assertTrue(patch.name.contains("-cp315-cp315t-pyemscripten_2026_0_wasm32"), patch.name)
+        val entries = zipEntryNames(patch)
+        assertTrue(entries.any { it.endsWith("wcore/wmod.cpython-315t-wasm32-emscripten.so") }, "$entries")
+        assertFalse(entries.any { it.endsWith("wcore/__init__.py") }, "unchanged files are not in a patch: $entries")
+    }
+
     @Test
     fun bundle_derivesAbi3tTagInPatchArchiveName() {
         val pkg = packageDir()
