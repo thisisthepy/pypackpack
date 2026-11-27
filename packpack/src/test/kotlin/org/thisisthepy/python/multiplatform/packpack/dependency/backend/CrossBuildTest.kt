@@ -455,6 +455,54 @@ class CrossBuildTest {
         assertEquals(listOf("hf-xet", "regex"), reinstalled(installCommands.last()), "a package from PyPI (iniconfig) is not named: ${installCommands.last()}")
     }
 
+    /**
+     * #82 (team lead 2026-11-27): uv (0.12.3, 0.13.6) cannot install a `pyemscripten_2026_0` wheel, so for
+     * wasm32-emscripten a pin built in the cross environment leaves uv's command and is installed by [installWheel]
+     * from the built wheel. The other pins stay on uv, and other targets keep the `--find-links` retry.
+     */
+    @Test
+    fun aWasmPinBuiltHereIsInstalledByPypackpackAndTheRestByUv() {
+        val project = File(tempDir, "wasm-project").apply { mkdirs() }
+        val targetDir = File(tempDir, "wasm-deps")
+        val calls = mutableListOf<List<String>>()
+        var installs = 0
+        val builder = object : CrossSdistBuilder(run = { _, _, _ -> error("unused") }) {
+            override fun buildFromPyPI(packageDir: File, canonicalTarget: String, packageSpec: String, recipeDirs: List<File>): Result<File> {
+                val wheel = File(wheelsDir(packageDir, canonicalTarget).apply { mkdirs() }, "wmod-0.1.0-cp315-cp315t-pyemscripten_2026_0_wasm32.whl")
+                val module = "X = 1\n".toByteArray()
+                val digest = "sha256=" + java.util.Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(module))
+                java.util.zip.ZipOutputStream(wheel.outputStream()).use { zip ->
+                    zip.putNextEntry(java.util.zip.ZipEntry("wmod/__init__.py")); zip.write(module); zip.closeEntry()
+                    zip.putNextEntry(java.util.zip.ZipEntry("wmod-0.1.0.dist-info/RECORD"))
+                    zip.write("wmod/__init__.py,$digest,${module.size}\nwmod-0.1.0.dist-info/RECORD,,\n".toByteArray()); zip.closeEntry()
+                }
+                return Result.success(wheel)
+            }
+        }
+        val installer = CrossTargetInstaller(builder, fakePython) { command, _, _ ->
+            calls += command
+            when (command.getOrNull(2)) {
+                "compile" -> {
+                    File(command[command.indexOf("--output-file") + 1]).writeText("wmod==0.1.0\nsix==1.16.0\n")
+                    CompileProcessResult(0, "")
+                }
+                else -> when (++installs) {
+                    1 -> CompileProcessResult(1, "Because wmod==0.1.0 has no usable wheels and you require wmod==0.1.0, we can conclude\n")
+                    else -> CompileProcessResult(0, "Installed 1 package")
+                }
+            }
+        }
+
+        installer.install(project, targetDir, "wasm32-emscripten", listOf("wmod", "six"), mapOf("python-version" to "3.15"), File(tempDir, "wasm-work"), emptyList()).getOrThrow()
+
+        val retry = calls.filter { it.getOrNull(2) == "install" }.last()
+        assertTrue("six==1.16.0" in retry && "wmod==0.1.0" !in retry, "the built pin is not uv's: $retry")
+        assertTrue("--find-links" !in retry && "--reinstall-package" !in retry, "$retry")
+        assertEquals("X = 1\n", File(targetDir, "wmod/__init__.py").readText())
+        assertEquals("pypackpack\n", File(targetDir, "wmod-0.1.0.dist-info/INSTALLER").readText())
+    }
+
     @Test
     fun theTargetInstallPinsThenBuildsEachPinWithoutAWheelAndRetries() {
         val project = File(tempDir, "project").apply { mkdirs() }
