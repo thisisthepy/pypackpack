@@ -925,6 +925,24 @@ macOS.
   backend's Android path sets them. The Rust target must be installed (`rustup target add <triple>`). Another
   cross target is refused naming it. Status: unit test `CrossBuildTest.maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly`;
   real build `CrossSdistRealBuildTest` (a PyO3 0.30 crate, wheel `cp315t-android_24_arm64_v8a`, aarch64 ELF).
+  **iOS** (#182; team lead 2026-11-27; stable Rust): `arm64-apple-ios`, `arm64-apple-ios-simulator` and
+  `x86_64-apple-ios-simulator` too, with Rust's triples (`aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios`).
+  `PYO3_CROSS_LIB_DIR` is the slice's own architecture directory (`lib-arm64`; a simulator slice holds two),
+  `IPHONEOS_DEPLOYMENT_TARGET` is 13.0 (the `ios_13_0_*` tag), and the link arguments name Python.framework
+  (`-F<slice> -framework Python`). `CrossBuildTest.maturinGetsTheRustTargetAndThePyO3CrossEnvironmentOnAndroidOnly` (its iOS
+  half), `maturinForTheIosSimulatorUsesItsRustTriple`; real build `CrossSdistRealBuildTest` on a macOS host (CI's
+  `real-builds-host`, which adds the `aarch64-apple-ios-sim` target): wheel `cp315t-ios_13_0_arm64_iphonesimulator`, an
+  arm64 Mach-O. Run locally (2026-11-27): passed.
+- **iOS compiler shims** (#182): meson-python adds its own iOS cross file naming CPython's iOS compiler shims
+  (`<target>-clang`, `-clang++`, `-cpp`, `-ar`, `-strip`, which CPython's Apple build puts on `PATH`), so the cross
+  environment writes them into its `bin` (first on `PATH`), running the cross build's `xcrun` commands. Without them
+  numpy 2.5.5 stopped with "Unknown compiler(s): [['arm64-apple-ios-simulator-clang']]". `CrossBuildTest.anIosSimulatorTargetTakesItsOwnArchitecturesSysconfigData`.
+  numpy 2.5.5 from PyPI then builds for the arm64 simulator with a recipe defaulting `longdouble_format` to
+  `IEEE_DOUBLE_LE` (Apple arm64's long double is a double; Android's recipe is `IEEE_QUAD_LE`): `CrossSdistRealBuildTest`
+  (`PPP_NUMPY_IOS_REAL_BUILD=1`, not run in CI: numpy is long). Run locally (2026-11-27): without the recipe the build
+  stops at numpy's long double probe ("Can not run test applications in this cross environment"); with it the wheel is
+  `numpy-2.5.5-cp315-cp315t-ios_13_0_arm64_iphonesimulator.whl` with an arm64 `_multiarray_umath`. Not yet imported on a
+  simulator.
 - **Installing for a target from the backend layer** (#168): `CrossTargetInstaller.install(packageDir, targetDir,
   platform, requirements, uvOptions, workingDir, recipeDirs)`, for callers in a Gradle daemon (every directory is a
   parameter). It pins the requirements for the target with `uv pip compile --python-platform` (which reads sdist
@@ -950,7 +968,17 @@ macOS.
   path when uv supports `pyemscripten_2026_0`.** `WheelInstallTest` (a wheel installed with `.data/` mapped and RECORD
   and INSTALLER written; a corrupted RECORD hash, a file RECORD does not list, another target's tags and a path outside
   the target each refused); `CrossBuildTest.aWasmPinBuiltHereIsInstalledByPypackpackAndTheRestByUv`. Building wasm
-  sdists in the cross environment is not implemented yet: `crossTargetIdentity` refuses `wasm32-emscripten`. Unlike `sync`, nothing is first built with the
+  sdists in the cross environment: `crossTargetIdentity("wasm32-emscripten")` reports the wheel platform
+  `pyemscripten_2026_0_wasm32` (the runtime's own sysconfig tag), `sys.platform` `emscripten` and machine `wasm32`;
+  `MesonCross` names Emscripten 5.0.3's `emcc`/`em++`/`emar` with the runtime's ABI flags in the compiler commands
+  (`-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -pthread -fPIC`, so setuptools' `CC`/`LDSHARED` carry them as Meson's
+  binaries do), `system = 'emscripten'`, `cpu_family = 'wasm32'`, and the wasm `TargetPython`'s link argument
+  `-sSIDE_MODULE=1`; another Emscripten is refused naming both versions. `MesonCrossTest.aWasmCrossBuildUsesEmccWithTheRuntimesAbiAndLinksASideModule`,
+  `CrossBuildTest.eachCrossTargetReportsItsWheelPlatformAndTheHostIsRefused`; real builds in `CrossSdistRealBuildTest`
+  (setuptools and meson-python, with `PPP_WASM_REAL_BUILD=1`, `EMSDK` and `PPP_WASM_RUNTIME_MANIFEST` besides
+  `PPP_CROSS_SDIST_REAL_BUILD`; off in CI until the runtime is published). Run locally (2026-11-27, Emscripten 5.0.3,
+  runtime from python-multiplatform e5c4a058): both built `*-cp315-cp315t-pyemscripten_2026_0_wasm32.whl` whose
+  extension is a side module, and both extensions imported in that runtime (its build tree's python.sh). Unlike `sync`, nothing is first built with the
   host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
   `<packageDir>/build/packpack/cross/<target>/`. Before its first build it installs the target's free-threaded
   CPython (`<python-version>t` from the uv options, else 3.15t) into `<packageDir>/<installDirName>`
