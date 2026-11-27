@@ -52,7 +52,7 @@ per-target install directories on top.
 
 ```shell
 uv tool install pypackpack    # puts pypackpack and ppp on PATH
-ppp --version                 # from 0.3.0; on 0.2.0 use `ppp version`
+ppp --version                 # pypackpack's version; `ppp version` adds uv's
 pypackpack --help             # alias: ppp
 uvx pypackpack --help         # or run it without installing
 ```
