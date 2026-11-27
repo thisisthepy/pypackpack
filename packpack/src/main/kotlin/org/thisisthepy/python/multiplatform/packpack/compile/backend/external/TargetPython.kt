@@ -82,7 +82,9 @@ fun targetPythonIn(installDir: File, canonicalTarget: String): TargetPython {
     }
     val root = listOf(installDir, File(installDir, "python"), File(installDir, "install")).firstOrNull { headerDir(File(it, "include")) != null }
         ?: missing("include/python3.Xt/Python.h")
-    return TargetPython(canonicalTarget, headerDir(File(root, "include"))!!, extSuffix(File(root, "lib")), emptyList())
+    // #82: every wasm extension is an Emscripten side module, linked against nothing (python.wasm provides libpython).
+    val linkArgs = if (canonicalTarget == "wasm32-emscripten") listOf("-sSIDE_MODULE=1") else emptyList()
+    return TargetPython(canonicalTarget, headerDir(File(root, "include"))!!, extSuffix(File(root, "lib")), linkArgs)
 }
 
 /** `include/python3.Xt` (the free-threaded headers) under [include]. */

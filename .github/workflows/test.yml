@@ -127,7 +127,7 @@ jobs:
         run: |
           rm -rf packpack/build/test-results/test
           ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
-          grep -q 'tests="6" skipped="1" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+          grep -q 'tests="8" skipped="3" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
             || { echo "CrossSdistRealBuildTest did not run and pass"; exit 1; }
 
   # The native slot's iOS (Xcode) and Windows (LLVM clang, own machine) builds need those hosts (#155).
@@ -167,7 +167,7 @@ jobs:
         run: |
           rm -rf packpack/build/test-results/test
           ./gradlew :packpack:test --tests '*.CrossSdistRealBuildTest' --rerun --console=plain
-          grep -q 'tests="6" skipped="5" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
+          grep -q 'tests="8" skipped="7" failures="0" errors="0"' packpack/build/test-results/test/TEST-*CrossSdistRealBuildTest.xml \
             || { echo "the iOS simulator cross sdist build did not run and pass"; exit 1; }
 
   # The GraalVM native binary on the four release platforms, run through every command group (#160): the

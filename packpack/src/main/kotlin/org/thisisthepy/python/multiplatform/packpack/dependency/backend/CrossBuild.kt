@@ -55,7 +55,11 @@ fun crossTargetIdentity(canonicalTarget: String): CrossTargetIdentity {
         val cpu = linux.rustTriple.substringBefore('-')
         return CrossTargetIdentity("${linux.compatibility}_$cpu", "linux", "$cpu-linux-gnu", "Linux", cpu)
     }
-    throw IllegalArgumentException("The cross build environment does not build for $canonicalTarget (Android, iOS and Linux cross targets only).")
+    if (canonicalTarget == "wasm32-emscripten") {
+        // #82: the platform tag the 3.15t wasm runtime's sysconfig gives (PEP 783), so a backend names the wheel with it.
+        return CrossTargetIdentity(Platforms.wasmPlatformTag("wasm32"), "emscripten", "wasm32-emscripten", "Emscripten", "wasm32")
+    }
+    throw IllegalArgumentException("The cross build environment does not build for $canonicalTarget (Android, iOS, Linux cross targets and wasm32-emscripten only).")
 }
 
 /** The iOS deployment target of the wheels the environment builds (the `ios_13_0_*` tag uv installs). */
