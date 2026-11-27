@@ -155,6 +155,21 @@ class FatWheelBundlerTest {
         assertTrue(zipEntryNames(result.artifactFile!!).contains("core/__init__.py"))
     }
 
+    /** #82: a wasm fat wheel carries its extension and is tagged as the single wheel is, `cp315-cp315t-pyemscripten_2026_0_wasm32`. */
+    @Test
+    fun bundle_wasmFatWheelCarriesTheExtensionWithThePyemscriptenTag() {
+        val pkg = packageDir("wcore", "wcore")
+        val target = "wasm32-emscripten"
+        writeDestdir(pkg, "wcore/__init__.py", target = target, type = "release", level = "native")
+        writeDestdir(pkg, "wcore/wmod.cpython-315t-wasm32-emscripten.so", "\u0000asm".toByteArray(), target = target, type = "release", level = "native")
+
+        val wheel = bundler().bundle(BundleRequest(packageDir = pkg, target = target, buildType = "release", buildLevel = "native")).getOrThrow().artifactFile!!
+
+        assertEquals("wcore-0.1.0-cp315-cp315t-pyemscripten_2026_0_wasm32.whl", wheel.name)
+        assertTrue("wcore/wmod.cpython-315t-wasm32-emscripten.so" in zipEntryNames(wheel), "${zipEntryNames(wheel)}")
+        assertTrue("Tag: cp315-cp315t-pyemscripten_2026_0_wasm32" in zipEntryText(wheel, "wcore-0.1.0.dist-info/WHEEL"))
+    }
+
     @Test
     fun bundle_vendorsWorkspaceLocalDependencyFiles() {
         workspacePyproject(listOf("core", "libs/helper"))

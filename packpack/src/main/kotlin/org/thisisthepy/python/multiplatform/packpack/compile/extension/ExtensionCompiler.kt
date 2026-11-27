@@ -3,6 +3,7 @@ package org.thisisthepy.python.multiplatform.packpack.compile.extension
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.CargoEnvironment
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Clang
 import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.NDK
+import org.thisisthepy.python.multiplatform.packpack.compile.backend.external.Emscripten
 import org.thisisthepy.python.multiplatform.packpack.utils.Platforms
 import org.thisisthepy.python.multiplatform.packpack.utils.sha256Hex
 import java.io.File
@@ -29,7 +30,7 @@ import java.util.concurrent.TimeUnit
  * The C toolchain adapter that builds for a target family. Each maps onto an adapter
  * under `compile/backend/external/` (`Clang.kt`, `NDK.kt`, `XCode.kt`). For 2026-11: [CLANG] for
  * macOS (`aarch64-apple-darwin`, `x86_64-apple-darwin`) and Linux at host arch; [NDK] for
- * `aarch64-linux-android`; [XCODE] (iOS) is out of scope.
+ * `aarch64-linux-android`; [XCODE] (iOS) is out of scope; [EMSCRIPTEN] for `wasm32-emscripten` (#82).
  */
 enum class NativeToolchain(
     val id: String,
@@ -37,6 +38,7 @@ enum class NativeToolchain(
     CLANG("clang"),
     NDK("ndk"),
     XCODE("xcode"),
+    EMSCRIPTEN("emscripten"),
 }
 
 /**
@@ -345,12 +347,14 @@ interface ExtensionCompilerInterface {
         fun create(
             clang: Clang = Clang(),
             ndk: NDK = NDK(),
+            emscripten: Emscripten = Emscripten(),
             hostTarget: () -> String = Platforms::detectHostTarget,
             windowsMachine: () -> String? = { CargoEnvironment.windowsMachineTarget() },
         ): ExtensionCompilerInterface =
             NativeExtensionCompiler(
                 clang = clang,
                 ndk = ndk,
+                emscripten = emscripten,
                 hostTarget = hostTarget,
                 windowsMachine = windowsMachine,
             )
@@ -370,6 +374,7 @@ private val WINDOWS_FREE_THREADED_LIB = Regex("""python3\d+t\.lib""", RegexOptio
 class NativeExtensionCompiler(
     private val clang: Clang = Clang(),
     private val ndk: NDK = NDK(),
+    private val emscripten: Emscripten = Emscripten(),
     private val hostTarget: () -> String = Platforms::detectHostTarget,
     /** The Windows machine's own target (also under x64 emulation on ARM), `null` off Windows; a test seam. */
     private val windowsMachine: () -> String? = { CargoEnvironment.windowsMachineTarget() },
@@ -454,6 +459,19 @@ class NativeExtensionCompiler(
                                     compilerCmd = resolved.compilerCmd,
                                     canonicalTarget = resolved.canonicalTarget,
                                     family = resolved.family,
+                                    buildType = request.buildType,
+                                    workingDir = request.workingDir,
+                                    includeDir = request.includeDir,
+                                    includeDirs = mergedIncludeDirs,
+                                    defines = mergedDefines,
+                                    cFlags = request.options.cFlags,
+                                    source = source,
+                                    objectFile = objFile,
+                                    depFile = depFile,
+                                )
+                            NativeToolchain.EMSCRIPTEN ->
+                                emscripten.compileCommand(
+                                    emcc = resolved.compilerCmd,
                                     buildType = request.buildType,
                                     workingDir = request.workingDir,
                                     includeDir = request.includeDir,
@@ -552,6 +570,14 @@ class NativeExtensionCompiler(
                                 libDir = request.libDir,
                                 libraryName = request.libraryName,
                             )
+                        NativeToolchain.EMSCRIPTEN ->
+                            emscripten.linkCommand(
+                                emcc = resolved.compilerCmd,
+                                buildType = request.buildType,
+                                objects = objects,
+                                linkFlags = request.options.linkFlags,
+                                outputFile = outFile,
+                            )
                         NativeToolchain.NDK ->
                             ndk.linkCommand(
                                 compilerBin = File(resolved.compilerCmd.single()),
@@ -584,6 +610,8 @@ class NativeExtensionCompiler(
                             NativeToolchain.CLANG, NativeToolchain.XCODE ->
                                 clang.stripCommand(resolved.family, outFile).takeIf { resolved.compilerCmd.firstOrNull() != "uv" }
                             NativeToolchain.NDK -> ndk.stripBinary(resolved.ndkRoot!!)?.let { listOf(it.path, "--strip-unneeded", outFile.path) }
+                            // -O2 at link already drops the debug info; a side module keeps the names it is loaded by.
+                            NativeToolchain.EMSCRIPTEN -> null
                         }
                     if (stripCmd != null) {
                         resolved.run(stripCmd, request.workingDir, emptyMap())
@@ -674,13 +702,36 @@ class NativeExtensionCompiler(
                         run = clang.run,
                     )
                 }
-                "wasm" ->
-                    throw NoCompileBackendException(
-                        target = canonical,
-                        pythonAbi = pythonAbi,
-                        toolchain = null,
-                        reason = "no Emscripten backend for '$canonical' yet (#82, waits for python-multiplatform #175's wasm 3.15t).",
+                "wasm" -> {
+                    val emcc =
+                        emscripten.emcc() ?: throw NoCompileBackendException(
+                            target = canonical,
+                            pythonAbi = pythonAbi,
+                            toolchain = NativeToolchain.EMSCRIPTEN,
+                            reason = "no emcc for '$canonical': install Emscripten ${Platforms.EMSDK_VERSION} and set EMSDK " +
+                                "(emcc is \$EMSDK/upstream/emscripten/emcc), or put emcc on PATH (#82).",
+                        )
+                    val line = emscripten.versionOf(emcc).orEmpty()
+                    val version = emscripten.emscriptenVersion(line)
+                    if (version != Platforms.EMSDK_VERSION) {
+                        throw NoCompileBackendException(
+                            target = canonical,
+                            pythonAbi = pythonAbi,
+                            toolchain = NativeToolchain.EMSCRIPTEN,
+                            reason = "'$canonical' extensions are built with Emscripten ${Platforms.EMSDK_VERSION}, the SDK " +
+                                "python-multiplatform's 3.15t runtime is built with, but ${emcc.joinToString(" ")} is " +
+                                "${version ?: "'$line'"} (#82).",
+                        )
+                    }
+                    ResolvedBackend(
+                        canonicalTarget = canonical,
+                        family = family,
+                        toolchain = NativeToolchain.EMSCRIPTEN,
+                        compilerCmd = emcc,
+                        compilerVersion = line,
+                        run = emscripten.run,
                     )
+                }
                 "windows" -> {
                     val machine = windowsMachine()
                     if (machine != canonical) {
