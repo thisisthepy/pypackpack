@@ -86,16 +86,32 @@ class CrossTargetInstaller(
 
             val wheels = crossBuilder.wheelsDir(packageDir, target)
             val built = mutableListOf<String>()
+            // #82: uv has no --python-platform for PEP 783's pyemscripten_2026_0 (uv 0.12.3 and 0.13.6 offer only
+            // wasm32-pyodide2024/2025 and refuse such a wheel), so a wasm pin built here is installed from its wheel by
+            // installWheel, not by uv. Remove when uv supports that platform.
+            val selfInstall = target == "wasm32-emscripten"
+            val builtWheels = linkedMapOf<String, File>()
             while (true) {
-                val command = listOf("uv", "pip", "install") + pins +
+                val uvPins = if (selfInstall) pins.filter { it !in built } else pins
+                val command = listOf("uv", "pip", "install") + uvPins +
                     listOf("--target", targetDir.absolutePath, "--python-platform", platform, "--only-binary", ":all:", "--no-deps") +
                     options +
-                    (if (built.isEmpty()) emptyList() else listOf("--find-links", wheels.absolutePath)) +
+                    (if (built.isEmpty() || selfInstall) emptyList() else listOf("--find-links", wheels.absolutePath)) +
                     // A rebuilt package keeps its wheel's file name (same version), and uv would take the wheel it saw
                     // before from its cache, so a changed recipe never reached the target (toolchain team, 2026-11-27).
-                    built.flatMap { listOf("--reinstall-package", it.substringBefore("==").trim()) }
-                val result = run(command, workingDir, emptyMap())
+                    (if (selfInstall) emptyList() else built.flatMap { listOf("--reinstall-package", it.substringBefore("==").trim()) })
+                val result = if (uvPins.isEmpty()) CompileProcessResult(0, "") else run(command, workingDir, emptyMap())
                 if (result.exitCode == 0) {
+                    if (selfInstall) {
+                        val version = extraArgs["python-version"]?.takeIf { it.isNotBlank() }?.removeSuffix("t") ?: "3.15"
+                        val py = "cp" + version.split('.').take(2).joinToString("")
+                        val platformTag = Platforms.wasmPlatformTag("wasm32")
+                        builtWheels.forEach { (spec, wheel) ->
+                            installWheel(wheel, targetDir, setOf("$py-${py}t-$platformTag", "$py-abi3t-$platformTag")).getOrElse {
+                                throw IllegalStateException("`$spec` was built for $target, but installing its wheel failed: ${it.message}", it)
+                            }
+                        }
+                    }
                     return Result.success(
                         "Installed ${pins.size} pinned requirement(s) for $target" +
                             if (built.isEmpty()) "" else ", building ${built.joinToString()} in the cross environment",
@@ -107,9 +123,10 @@ class CrossTargetInstaller(
                 check(spec !in built) { "`$spec` was built for $target in the cross environment, but uv still finds no wheel for it:\n${result.output}" }
                 built += spec
                 ensureTargetPython(packageDir, target, extraArgs["python-version"])
-                crossBuilder.buildFromPyPI(packageDir, target, spec, recipeDirs).getOrElse {
+                val wheel = crossBuilder.buildFromPyPI(packageDir, target, spec, recipeDirs).getOrElse {
                     throw IllegalStateException("`$spec` has no wheel for $target, and building its sdist in the cross environment failed: ${it.message}", it)
                 }
+                builtWheels[spec] = wheel
             }
             @Suppress("UNREACHABLE_CODE")
             error("unreachable")

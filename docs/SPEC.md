@@ -936,7 +936,21 @@ macOS.
   name, and uv otherwise installs the `--find-links` wheel it saw before from its cache, even into a cleared target
   (toolchain team, 2026-11-27; leader-approved fix). `CrossBuildTest.aPackageBuiltInTheCrossEnvironmentIsReinstalledNotTakenFromUvsCache`;
   checked through toolchain's `pip { jit }` with a pyyaml 6.0.4 recipe: after its marker went from A to B, develop
-  installed A again although the rebuilt wheel held B; with this change the next edit (C) was installed. Unlike `sync`, nothing is first built with the
+  installed A again although the rebuilt wheel held B; with this change the next edit (C) was installed.
+  **wasm32-emscripten (#82; team lead 2026-11-27):** uv has no `--python-platform` for PEP 783's
+  `pyemscripten_2026_0`. Measured 2026-11-27: uv 0.12.3 and uv 0.13.6 list only `wasm32-pyodide2024` and
+  `wasm32-pyodide2025`, and both refuse a `cp315-cp315t-pyemscripten_2026_0_wasm32` wheel ("Wheels are available ... on
+  the following platform: `pyemscripten_2026_0_wasm32`"), even with `--python 3.15t`. So for that target a pin built in
+  the cross environment leaves uv's command, and pypackpack installs its wheel itself (`dependency/backend/WheelInstall.kt`,
+  `installWheel`, PEP 427): the wheel's tags must include `cp3XY-cp3XYt-pyemscripten_2026_0_wasm32` (or `abi3t`); every
+  file must be listed in its own RECORD with a matching SHA-256 and size, and every listed file present; `.data/`
+  `purelib`/`platlib`/`data` go to the target, `scripts` to `bin/`, `headers` to `include/<dist>/`; a path leaving the
+  target is refused; `INSTALLER` (`pypackpack`) and a RECORD of the installed paths are written; nothing is written
+  unless every check passes. Only those wheels: every other pin, and every other target, stays on uv. **Remove this
+  path when uv supports `pyemscripten_2026_0`.** `WheelInstallTest` (a wheel installed with `.data/` mapped and RECORD
+  and INSTALLER written; a corrupted RECORD hash, a file RECORD does not list, another target's tags and a path outside
+  the target each refused); `CrossBuildTest.aWasmPinBuiltHereIsInstalledByPypackpackAndTheRestByUv`. Building wasm
+  sdists in the cross environment is not implemented yet: `crossTargetIdentity` refuses `wasm32-emscripten`. Unlike `sync`, nothing is first built with the
   host compiler, which for numpy or a Rust package costs minutes. The cross environment lives under
   `<packageDir>/build/packpack/cross/<target>/`. Before its first build it installs the target's free-threaded
   CPython (`<python-version>t` from the uv options, else 3.15t) into `<packageDir>/<installDirName>`
